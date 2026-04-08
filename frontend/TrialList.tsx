@@ -13,10 +13,10 @@ type Props = {
 };
 
 function statusBadgeClass(status: string | undefined) {
-  const s = (status || "").toLowerCase();
-  if (s === "recruiting") return "badge badge-status-recruiting";
-  if (s.includes("active")) return "badge badge-status-active";
-  if (s === "completed") return "badge badge-status-completed";
+  const s = (status || "").toUpperCase();
+  if (s === "RECRUITING") return "badge badge-status-recruiting";
+  if (s.includes("ACTIVE")) return "badge badge-status-active";
+  if (s === "COMPLETED") return "badge badge-status-completed";
   return "badge badge-status-default";
 }
 

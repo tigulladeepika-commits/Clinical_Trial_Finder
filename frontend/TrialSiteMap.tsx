@@ -19,16 +19,16 @@ type Props = {
 };
 
 function statusColor(status: string | null) {
-  const s = (status || "").toLowerCase();
-  if (s === "recruiting") return "#16a34a";
-  if (s.includes("active")) return "#2563eb";
+  const s = (status || "").toUpperCase();
+  if (s === "RECRUITING") return "#16a34a";
+  if (s.includes("ACTIVE")) return "#2563eb";
   return "#94a3b8";
 }
 
 function siteBadgeClass(status: string | null) {
-  const s = (status || "").toLowerCase();
-  if (s === "recruiting") return "badge badge-status-recruiting";
-  if (s.includes("active")) return "badge badge-status-active";
+  const s = (status || "").toUpperCase();
+  if (s === "RECRUITING") return "badge badge-status-recruiting";
+  if (s.includes("ACTIVE")) return "badge badge-status-active";
   return "badge badge-status-default";
 }
 
@@ -44,7 +44,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
 
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
   const totalSites = sites.length;
-  const recruitingCount = sites.filter((s) => (s.status || "").toLowerCase() === "recruiting").length;
+  const recruitingCount = sites.filter((s) => (s.status || "").toUpperCase() === "RECRUITING").length;
   const countriesCount = [...new Set(sites.map((s) => s.country).filter(Boolean))].length;
 
   useEffect(() => {
