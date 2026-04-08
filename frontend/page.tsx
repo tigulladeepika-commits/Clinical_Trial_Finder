@@ -168,34 +168,37 @@ export default function Home() {
 
             {selectedTrial && (
               <>
-                {/* Trial Header */}
-                <div className="detail-content" style={{ paddingBottom: 0 }}>
-                  <div className="detail-header">
-                    <div className="detail-nct">{selectedTrial.nctId}</div>
-                    <div className="detail-title">{selectedTrial.title}</div>
-                    <div className="detail-badges">
-                      {selectedTrial.status && (
-                        <span className={`badge ${
-                          (selectedTrial.status || "").toLowerCase() === "recruiting"
-                            ? "badge-status-recruiting"
-                            : "badge-status-default"
-                        }`}>{selectedTrial.status}</span>
-                      )}
-                      {selectedTrial.phases?.map((p) => (
-                        <span key={p} className="badge badge-phase">{p}</span>
-                      ))}
-                    </div>
-                    {selectedTrial.sponsor && (
-                      <div className="detail-sponsor">
-                        Sponsor: <strong>{selectedTrial.sponsor}</strong>
-                      </div>
+                {/* ── Compact trial header ── */}
+                <div style={{
+                  padding: "16px 28px 0",
+                  borderBottom: "1px solid var(--gray-100)",
+                  paddingBottom: 16,
+                  background: "var(--white)",
+                }}>
+                  {/* NCT + badges row */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: "var(--blue-500)",
+                      letterSpacing: "0.6px", textTransform: "uppercase",
+                    }}>{selectedTrial.nctId}</span>
+                    {selectedTrial.status && (
+                      <span className={`badge ${
+                        (selectedTrial.status || "").toLowerCase() === "recruiting"
+                          ? "badge-status-recruiting" : "badge-status-default"
+                      }`}>{selectedTrial.status}</span>
                     )}
+                    {selectedTrial.phases?.map((p) => (
+                      <span key={p} className="badge badge-phase">{p}</span>
+                    ))}
                   </div>
-
-                  {selectedTrial.description && (
-                    <div className="detail-section">
-                      <div className="section-title">About This Trial</div>
-                      <p className="description-text">{selectedTrial.description}</p>
+                  {/* Title — reduced font */}
+                  <div style={{
+                    fontSize: 15, fontWeight: 600, color: "var(--gray-800)",
+                    lineHeight: 1.45, marginBottom: selectedTrial.sponsor ? 4 : 0,
+                  }}>{selectedTrial.title}</div>
+                  {selectedTrial.sponsor && (
+                    <div style={{ fontSize: 12, color: "var(--gray-400)" }}>
+                      Sponsor: <span style={{ color: "var(--gray-600)", fontWeight: 500 }}>{selectedTrial.sponsor}</span>
                     </div>
                   )}
                 </div>
@@ -209,7 +212,7 @@ export default function Home() {
                 )}
 
                 {sitesError && (
-                  <div style={{ padding: "0 28px" }}>
+                  <div style={{ padding: "16px 28px 0" }}>
                     <div className="error-box">
                       <span>Error</span>
                       <p>{sitesError}</p>
@@ -217,9 +220,13 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Map + Sites */}
+                {/* Map + Locations (no description yet) */}
                 {siteData && !sitesLoading && (
-                  <TrialSiteMap sites={siteData.sites} trialTitle={siteData.title} />
+                  <TrialSiteMap
+                    sites={siteData.sites}
+                    trialTitle={siteData.title}
+                    description={selectedTrial.description || null}
+                  />
                 )}
               </>
             )}
