@@ -19,16 +19,28 @@ type Props = {
 };
 
 function statusColor(status: string | null) {
-  const s = (status || "").toUpperCase();
-  if (s === "RECRUITING") return "#16a34a";
-  if (s.includes("ACTIVE")) return "#2563eb";
+  const s = (status || "").toUpperCase().trim();
+  if (s === "RECRUITING")              return "#16a34a";
+  if (s === "NOT_YET_RECRUITING")      return "#84cc16";
+  if (s === "ENROLLING_BY_INVITATION") return "#16a34a";
+  if (s === "ACTIVE_NOT_RECRUITING")   return "#2563eb";
+  if (s === "ACTIVE")                  return "#2563eb";
+  if (s.includes("ACTIVE"))           return "#2563eb";
+  if (s === "TERMINATED")             return "#ef4444";
+  if (s === "WITHDRAWN")              return "#f97316";
+  if (s === "SUSPENDED")              return "#f59e0b";
+  if (s === "COMPLETED")              return "#94a3b8";
+  if (s === "UNKNOWN_STATUS")         return "#94a3b8";
   return "#94a3b8";
 }
 
 function siteBadgeClass(status: string | null) {
-  const s = (status || "").toUpperCase();
-  if (s === "RECRUITING") return "badge badge-status-recruiting";
-  if (s.includes("ACTIVE")) return "badge badge-status-active";
+  const s = (status || "").toUpperCase().trim();
+  if (s === "RECRUITING" || s === "ENROLLING_BY_INVITATION") return "badge badge-status-recruiting";
+  if (s === "NOT_YET_RECRUITING")             return "badge badge-status-soon";
+  if (s.includes("ACTIVE"))                   return "badge badge-status-active";
+  if (s === "TERMINATED")                     return "badge badge-status-terminated";
+  if (s === "WITHDRAWN" || s === "SUSPENDED") return "badge badge-status-warning";
   return "badge badge-status-default";
 }
 
@@ -44,7 +56,10 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
 
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
   const totalSites = sites.length;
-  const recruitingCount = sites.filter((s) => (s.status || "").toUpperCase() === "RECRUITING").length;
+  const recruitingCount = sites.filter((s) => {
+    const st = (s.status || "").toUpperCase().trim();
+    return st === "RECRUITING" || st === "ENROLLING_BY_INVITATION";
+  }).length;
   const countriesCount = [...new Set(sites.map((s) => s.country).filter(Boolean))].length;
 
   useEffect(() => {
@@ -57,24 +72,33 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
 
       L.mapquest.key = mapKey;
 
-      // Inject tooltip styles
-      if (!document.getElementById("trial-tooltip-style")) {
+      if (!document.getElementById("trial-map-style")) {
         const style = document.createElement("style");
-        style.id = "trial-tooltip-style";
+        style.id = "trial-map-style";
         style.textContent = `
           .trial-tooltip {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 6px 10px;
-            font-size: 12px;
-            font-weight: 500;
-            color: #1e293b;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-            white-space: nowrap;
+            background: white !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 8px !important;
+            padding: 8px 12px !important;
+            font-size: 12px !important;
+            font-weight: 500 !important;
+            color: #1e293b !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
+            white-space: nowrap !important;
           }
           .trial-tooltip.leaflet-tooltip-top::before {
             border-top-color: #e2e8f0 !important;
+          }
+          .trial-marker-dot {
+            border-radius: 50% !important;
+            border: 2.5px solid white !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.28) !important;
+            cursor: pointer !important;
+            transition: transform 0.15s !important;
+          }
+          .trial-marker-dot:hover {
+            transform: scale(1.5) !important;
           }
         `;
         document.head.appendChild(style);
@@ -98,7 +122,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
         const color = statusColor(site.status);
 
         const icon = L.divIcon({
-          html: `<div style="width:14px;height:14px;background:${color} !important;border:2.5px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.22);cursor:pointer;"></div>`,
+          html: `<div class="trial-marker-dot" style="width:14px;height:14px;background:${color} !important;"></div>`,
           className: "",
           iconSize: [14, 14],
           iconAnchor: [7, 7],
@@ -106,22 +130,44 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
 
         const marker = L.marker([site.lat, site.lon], { icon }).addTo(map);
 
-        // Tooltip on hover: facility name + city/state/country
         const locationLine = [site.city, site.state, site.country]
           .filter(Boolean)
           .join(", ");
-        const tooltipLabel = [site.facility, locationLine]
-          .filter(Boolean)
-          .join("<br>");
 
-        marker.bindTooltip(tooltipLabel, {
+        const statusPill = site.status
+          ? `<span style="
+              display:inline-block;
+              margin-top:5px;
+              padding:2px 8px;
+              border-radius:20px;
+              font-size:10px;
+              font-weight:600;
+              letter-spacing:0.3px;
+              background:${color}18;
+              color:${color};
+              border:1px solid ${color}40;
+            ">${site.status.replace(/_/g, " ")}</span>`
+          : "";
+
+        const tooltipContent = `
+          <div style="line-height:1.5;">
+            <div style="font-weight:600;font-size:12px;color:#0f172a;">
+              ${site.facility || "Unknown Facility"}
+            </div>
+            ${locationLine
+              ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">${locationLine}</div>`
+              : ""}
+            ${statusPill}
+          </div>
+        `;
+
+        marker.bindTooltip(tooltipContent, {
           permanent: false,
           direction: "top",
           offset: [0, -10],
           className: "trial-tooltip",
         });
 
-        // Click shows the info strip below the map
         marker.on("click", () => setActiveSite(site));
       });
     };
@@ -144,10 +190,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
       initMap();
     } else {
       const iv = setInterval(() => {
-        if (window.L?.mapquest) {
-          clearInterval(iv);
-          initMap();
-        }
+        if (window.L?.mapquest) { clearInterval(iv); initMap(); }
       }, 100);
     }
 
@@ -171,7 +214,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
   return (
     <div className="detail-content" style={{ paddingTop: 0 }}>
 
-      {/* ══ MAP BUBBLE CARD ══ */}
+      {/* ══ MAP CARD ══ */}
       <div className="detail-section" style={{ padding: 0, overflow: "hidden" }}>
 
         {/* Stats strip */}
@@ -214,7 +257,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
             <>
               <div ref={mapDivRef} style={{ height: 420, width: "100%", background: "#e8edf2" }} />
 
-              {/* Custom zoom buttons — top right */}
+              {/* Zoom controls */}
               <div style={{
                 position: "absolute", top: 12, right: 12, zIndex: 1000,
                 display: "flex", flexDirection: "column", gap: 6,
@@ -224,21 +267,31 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
                   { icon: "−", title: "Zoom out",      fn: zoomOut },
                   { icon: "⊡", title: "Fit all sites", fn: fitAll  },
                 ].map((b) => (
-                  <button key={b.title} title={b.title} onClick={b.fn} style={{
-                    width: 36, height: 36, background: "white",
-                    border: "1px solid var(--gray-200)", borderRadius: 8,
-                    fontSize: 18, fontWeight: 700, color: "var(--gray-700)",
-                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.10)", transition: "all 0.15s",
-                    lineHeight: 1,
-                  }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--blue-50)"; e.currentTarget.style.color = "var(--blue-600)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "white"; e.currentTarget.style.color = "var(--gray-700)"; }}
+                  <button
+                    key={b.title}
+                    title={b.title}
+                    onClick={b.fn}
+                    style={{
+                      width: 36, height: 36, background: "white",
+                      border: "1px solid var(--gray-200)", borderRadius: 8,
+                      fontSize: 18, fontWeight: 700, color: "var(--gray-700)",
+                      cursor: "pointer", display: "flex", alignItems: "center",
+                      justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
+                      transition: "all 0.15s", lineHeight: 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--blue-50)";
+                      e.currentTarget.style.color = "var(--blue-600)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "white";
+                      e.currentTarget.style.color = "var(--gray-700)";
+                    }}
                   >{b.icon}</button>
                 ))}
               </div>
 
-              {/* Legend — bottom left */}
+              {/* Legend */}
               <div style={{
                 position: "absolute", bottom: 12, left: 12, zIndex: 1000,
                 background: "rgba(255,255,255,0.94)", backdropFilter: "blur(6px)",
@@ -248,7 +301,10 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
               }}>
                 {[
                   { color: "#16a34a", label: "Recruiting" },
+                  { color: "#84cc16", label: "Opening Soon" },
                   { color: "#2563eb", label: "Active" },
+                  { color: "#f59e0b", label: "Suspended" },
+                  { color: "#ef4444", label: "Terminated" },
                   { color: "#94a3b8", label: "Other" },
                 ].map((l) => (
                   <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -257,7 +313,9 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
                       background: l.color, border: "2px solid white",
                       boxShadow: "0 1px 3px rgba(0,0,0,0.2)", flexShrink: 0,
                     }} />
-                    <span style={{ fontSize: 11, fontWeight: 500, color: "var(--gray-600)" }}>{l.label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: "var(--gray-600)" }}>
+                      {l.label}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -265,7 +323,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
           )}
         </div>
 
-        {/* Active site info strip — appears below the map on click */}
+        {/* Active site info strip */}
         {activeSite && (
           <div style={{
             borderTop: "1px solid var(--blue-100)",
@@ -283,14 +341,19 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
               {activeSite.status && (
-                <span className={siteBadgeClass(activeSite.status)}>{activeSite.status}</span>
+                <span className={siteBadgeClass(activeSite.status)}>
+                  {activeSite.status.replace(/_/g, " ")}
+                </span>
               )}
-              <button onClick={() => setActiveSite(null)} style={{
-                width: 26, height: 26, borderRadius: "50%",
-                border: "1px solid var(--gray-300)", background: "white",
-                cursor: "pointer", fontSize: 15, color: "var(--gray-500)",
-                display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1,
-              }}>×</button>
+              <button
+                onClick={() => setActiveSite(null)}
+                style={{
+                  width: 26, height: 26, borderRadius: "50%",
+                  border: "1px solid var(--gray-300)", background: "white",
+                  cursor: "pointer", fontSize: 15, color: "var(--gray-500)",
+                  display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1,
+                }}
+              >×</button>
             </div>
           </div>
         )}
@@ -329,7 +392,9 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
                   {[site.city, site.state, site.country].filter(Boolean).join(", ") || "Location unknown"}
                 </div>
                 {site.status && (
-                  <span className={`site-status ${siteBadgeClass(site.status)}`}>{site.status}</span>
+                  <span className={`site-status ${siteBadgeClass(site.status)}`}>
+                    {site.status.replace(/_/g, " ")}
+                  </span>
                 )}
               </div>
             ))}

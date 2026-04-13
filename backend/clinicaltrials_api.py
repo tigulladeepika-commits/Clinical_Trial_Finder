@@ -33,14 +33,16 @@ def _extract_text_list(value: Any) -> list[str]:
     return []
 
 
-def _map_location(location: dict[str, Any]) -> dict[str, Any]:
+def _map_location(location: dict[str, Any], overall_status: str | None = None) -> dict[str, Any]:
     geo_point = location.get("geoPoint") or {}
+    site_status = location.get("recruitmentStatus") or None
+    resolved_status = site_status if site_status else overall_status
     return {
         "facility": location.get("facility"),
         "city": location.get("city"),
         "state": location.get("state"),
         "country": location.get("country"),
-        "status": location.get("recruitmentStatus"),
+        "status": resolved_status,
         "lat": geo_point.get("lat"),
         "lon": geo_point.get("lon"),
     }
@@ -49,13 +51,15 @@ def _map_location(location: dict[str, Any]) -> dict[str, Any]:
 def _map_trial(study: dict[str, Any]) -> dict[str, Any]:
     protocol = study.get("protocolSection", {})
     identification = protocol.get("identificationModule", {})
-    status = protocol.get("statusModule", {})
+    status_module = protocol.get("statusModule", {})
     description = protocol.get("descriptionModule", {})
     conditions = protocol.get("conditionsModule", {})
     sponsor_info = protocol.get("sponsorCollaboratorsModule", {})
     design = protocol.get("designModule", {})
     contacts = protocol.get("contactsLocationsModule", {})
     eligibility = protocol.get("eligibilityModule", {})
+
+    overall_status = status_module.get("overallStatus")
 
     central_contact = None
     central_contacts = contacts.get("centralContacts") or []
@@ -71,12 +75,15 @@ def _map_trial(study: dict[str, Any]) -> dict[str, Any]:
     return {
         "nctId": identification.get("nctId"),
         "title": identification.get("briefTitle"),
-        "status": status.get("overallStatus"),
+        "status": overall_status,
         "description": description.get("briefSummary"),
         "conditions": _extract_text_list(conditions.get("conditions")),
         "sponsor": (sponsor_info.get("leadSponsor") or {}).get("name"),
         "phases": _extract_text_list(design.get("phases")),
-        "locations": [_map_location(location) for location in contacts.get("locations", [])],
+        "locations": [
+            _map_location(location, overall_status)
+            for location in contacts.get("locations", [])
+        ],
         "inclusionCriteria": eligibility.get("eligibilityCriteria"),
         "exclusionCriteria": None,
         "pointOfContact": central_contact,
@@ -98,14 +105,23 @@ def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
             return False
 
     locations = trial.get("locations", [])
-    if normalized_city and not any(_normalize_value(location.get("city")) == normalized_city for location in locations):
+    if normalized_city and not any(
+        _normalize_value(location.get("city")) == normalized_city
+        for location in locations
+    ):
         return False
 
-    if normalized_state and not any(_normalize_value(location.get("state")) == normalized_state for location in locations):
+    if normalized_state and not any(
+        _normalize_value(location.get("state")) == normalized_state
+        for location in locations
+    ):
         return False
 
     if filters.get("us_only"):
-        if locations and not any(_normalize_value(location.get("country")) in {"us", "usa", "unitedstates"} for location in locations):
+        if locations and not any(
+            _normalize_value(location.get("country")) in {"us", "usa", "unitedstates"}
+            for location in locations
+        ):
             return False
 
     return True
@@ -131,7 +147,9 @@ def _fetch_study_page(condition: str, page_token: str | None = None) -> dict[str
     return response.json()
 
 
-def fetch_trials_with_filters(filters: dict[str, Any], limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+def fetch_trials_with_filters(
+    filters: dict[str, Any], limit: int, offset: int
+) -> tuple[list[dict[str, Any]], int]:
     condition = (filters.get("condition") or "").strip()
     if not condition:
         return [], 0

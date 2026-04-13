@@ -31,7 +31,9 @@ async def get_trials(
         "us_only": True,
     }
 
-    trials, total_count = await asyncio.to_thread(fetch_trials_with_filters, filters, limit, offset)
+    trials, total_count = await asyncio.to_thread(
+        fetch_trials_with_filters, filters, limit, offset
+    )
 
     return {
         "condition": condition,
@@ -62,6 +64,8 @@ async def get_trial_sites(nct_id: str):
     locations_module = protocol.get("contactsLocationsModule", {})
     raw_locations = locations_module.get("locations", [])
 
+    overall_status = protocol.get("statusModule", {}).get("overallStatus")
+
     sites = []
     geocode_tasks = []
 
@@ -70,19 +74,26 @@ async def get_trial_sites(nct_id: str):
         lat = geo_point.get("lat")
         lon = geo_point.get("lon")
 
+        site_status = location.get("recruitmentStatus") or None
+        resolved_status = site_status if site_status else overall_status
+
         site = {
             "facility": location.get("facility"),
             "city": location.get("city"),
             "state": location.get("state"),
             "country": location.get("country"),
-            "status": location.get("recruitmentStatus"),
+            "status": resolved_status,
             "lat": lat,
             "lon": lon,
         }
         sites.append(site)
 
         if lat is None or lon is None:
-            address = ", ".join(filter(None, [location.get("city"), location.get("state"), location.get("country")]))
+            address = ", ".join(filter(None, [
+                location.get("city"),
+                location.get("state"),
+                location.get("country"),
+            ]))
             geocode_tasks.append((len(sites) - 1, address))
 
     if geocode_tasks:
@@ -99,6 +110,6 @@ async def get_trial_sites(nct_id: str):
     return {
         "nctId": nct_id,
         "title": protocol.get("identificationModule", {}).get("briefTitle"),
-        "status": protocol.get("statusModule", {}).get("overallStatus"),
+        "status": overall_status,
         "sites": sites,
     }
