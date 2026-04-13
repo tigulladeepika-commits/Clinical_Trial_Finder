@@ -57,6 +57,29 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
 
       L.mapquest.key = mapKey;
 
+      // Inject tooltip styles
+      if (!document.getElementById("trial-tooltip-style")) {
+        const style = document.createElement("style");
+        style.id = "trial-tooltip-style";
+        style.textContent = `
+          .trial-tooltip {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #1e293b;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            white-space: nowrap;
+          }
+          .trial-tooltip.leaflet-tooltip-top::before {
+            border-top-color: #e2e8f0 !important;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+
       const lats = mappableSites.map((s) => s.lat as number);
       const lons = mappableSites.map((s) => s.lon as number);
       const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
@@ -73,13 +96,32 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
 
       mappableSites.forEach((site) => {
         const color = statusColor(site.status);
+
         const icon = L.divIcon({
-          html: `<div style="width:14px;height:14px;background:${color};border:2.5px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.28);cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='scale(1.4)'" onmouseout="this.style.transform='scale(1)'"></div>`,
+          html: `<div style="width:14px;height:14px;background:${color} !important;border:2.5px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.22);cursor:pointer;"></div>`,
           className: "",
           iconSize: [14, 14],
           iconAnchor: [7, 7],
         });
+
         const marker = L.marker([site.lat, site.lon], { icon }).addTo(map);
+
+        // Tooltip on hover: facility name + city/state/country
+        const locationLine = [site.city, site.state, site.country]
+          .filter(Boolean)
+          .join(", ");
+        const tooltipLabel = [site.facility, locationLine]
+          .filter(Boolean)
+          .join("<br>");
+
+        marker.bindTooltip(tooltipLabel, {
+          permanent: false,
+          direction: "top",
+          offset: [0, -10],
+          className: "trial-tooltip",
+        });
+
+        // Click shows the info strip below the map
         marker.on("click", () => setActiveSite(site));
       });
     };
@@ -101,11 +143,19 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
     } else if (window.L?.mapquest) {
       initMap();
     } else {
-      const iv = setInterval(() => { if (window.L?.mapquest) { clearInterval(iv); initMap(); } }, 100);
+      const iv = setInterval(() => {
+        if (window.L?.mapquest) {
+          clearInterval(iv);
+          initMap();
+        }
+      }, 100);
     }
 
     return () => {
-      if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; }
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapKey, sites]);
@@ -127,10 +177,10 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
         {/* Stats strip */}
         <div style={{ display: "flex", borderBottom: "1px solid var(--gray-100)" }}>
           {[
-            { label: "Total Sites", value: totalSites },
-            { label: "Recruiting",  value: recruitingCount, accent: true },
-            { label: "On Map",      value: mappableSites.length },
-            { label: "Countries",   value: countriesCount },
+            { label: "Total Sites",  value: totalSites },
+            { label: "Recruiting",   value: recruitingCount, accent: true },
+            { label: "On Map",       value: mappableSites.length },
+            { label: "Countries",    value: countriesCount },
           ].map((st, i, arr) => (
             <div key={i} style={{
               flex: 1, padding: "14px 0", textAlign: "center",
@@ -170,9 +220,9 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
                 {[
-                  { icon: "+",  title: "Zoom in",      fn: zoomIn  },
-                  { icon: "−",  title: "Zoom out",     fn: zoomOut },
-                  { icon: "⊡",  title: "Fit all sites", fn: fitAll  },
+                  { icon: "+", title: "Zoom in",       fn: zoomIn  },
+                  { icon: "−", title: "Zoom out",      fn: zoomOut },
+                  { icon: "⊡", title: "Fit all sites", fn: fitAll  },
                 ].map((b) => (
                   <button key={b.title} title={b.title} onClick={b.fn} style={{
                     width: 36, height: 36, background: "white",
@@ -188,7 +238,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
                 ))}
               </div>
 
-              {/* Legend — bottom left, compact */}
+              {/* Legend — bottom left */}
               <div style={{
                 position: "absolute", bottom: 12, left: 12, zIndex: 1000,
                 background: "rgba(255,255,255,0.94)", backdropFilter: "blur(6px)",
@@ -215,7 +265,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
           )}
         </div>
 
-        {/* Active site info strip — appears BELOW the map, never over it */}
+        {/* Active site info strip — appears below the map on click */}
         {activeSite && (
           <div style={{
             borderTop: "1px solid var(--blue-100)",
