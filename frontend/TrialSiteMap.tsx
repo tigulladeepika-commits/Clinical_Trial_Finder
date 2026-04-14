@@ -29,7 +29,7 @@ function statusColor(status: string | null) {
   if (s === "TERMINATED")             return "#ef4444";
   if (s === "WITHDRAWN")              return "#f97316";
   if (s === "SUSPENDED")              return "#f59e0b";
-  if (s === "COMPLETED")              return "#94a3b8";
+  if (s === "COMPLETED")              return "#7c3aed";
   if (s === "UNKNOWN_STATUS")         return "#94a3b8";
   return "#94a3b8";
 }
@@ -370,6 +370,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
                   { color: "#2563eb", label: "Active" },
                   { color: "#f59e0b", label: "Suspended" },
                   { color: "#ef4444", label: "Terminated" },
+                  { color: "#7c3aed", label: "Completed" },
                   { color: "#94a3b8", label: "Other" },
                 ].map((l) => (
                   <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
