@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from "react";
 
+/* ─── types ──────────────────────────────────────────────────────────────── */
 type SearchFilters = {
   condition: string;
   city: string;
@@ -16,6 +17,7 @@ type SearchFormProps = {
   compact?: boolean;
 };
 
+/* ─── constants ──────────────────────────────────────────────────────────── */
 const PHASES = [
   { label: "Any Phase",     value: "" },
   { label: "Early Phase 1", value: "early phase 1" },
@@ -26,37 +28,35 @@ const PHASES = [
 ];
 
 const STATUSES = [
-  { label: "Any Status",             value: "" },
-  { label: "Recruiting",             value: "recruiting" },
-  { label: "Not Yet Recruiting",     value: "not yet recruiting" },
-  { label: "Active (not recruiting)",value: "active, not recruiting" },
-  { label: "Completed",              value: "completed" },
-  { label: "Terminated",             value: "terminated" },
+  { label: "Any Status",              value: "" },
+  { label: "Recruiting",              value: "recruiting" },
+  { label: "Not Yet Recruiting",      value: "not yet recruiting" },
+  { label: "Active (not recruiting)", value: "active, not recruiting" },
+  { label: "Completed",               value: "completed" },
+  { label: "Terminated",              value: "terminated" },
 ];
 
 const QUICK_CONDITIONS = [
-  "Breast Cancer","Lung Cancer","Diabetes","Alzheimer",
-  "Heart Failure","Depression","COPD","Leukemia","COVID","Stroke",
+  "Breast Cancer", "Lung Cancer", "Diabetes", "Alzheimer",
+  "Heart Failure", "Depression", "COPD", "Leukemia", "COVID", "Stroke",
 ];
 
 const US_STATES = [
-  "","AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN",
+  "", "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN",
   "IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH",
   "NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT",
   "VT","VA","WA","WV","WI","WY","DC",
 ];
 
-/* ─── tokens ─────────────────────────────────────────────────────────────── */
-const C = {
+/* ─── design tokens ──────────────────────────────────────────────────────── */
+const T = {
   bg:          "#f8fafc",
   card:        "#ffffff",
   border:      "#e8edf3",
-  borderFocus: "#3b82f6",
   text:        "#0f172a",
   muted:       "#64748b",
   hint:        "#94a3b8",
   blue:        "#2563eb",
-  blueHover:   "#1d4ed8",
   blueFaint:   "#eff6ff",
   blueBorder:  "#bfdbfe",
   green:       "#22c55e",
@@ -66,6 +66,31 @@ const C = {
   danger:      "#ef4444",
 };
 
+/* ─── shared styles ──────────────────────────────────────────────────────── */
+const input: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 13px",
+  border: `1.5px solid ${T.border}`,
+  borderRadius: 10,
+  fontSize: 14,
+  color: T.text,
+  background: T.bg,
+  outline: "none",
+  fontFamily: "inherit",
+  boxSizing: "border-box",
+};
+
+const label: React.CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  fontWeight: 600,
+  letterSpacing: "0.55px",
+  textTransform: "uppercase",
+  color: T.hint,
+  marginBottom: 6,
+};
+
+/* ─── component ──────────────────────────────────────────────────────────── */
 export default function SearchForm({ onSearch, loading, compact }: SearchFormProps) {
   const [condition, setCondition] = useState("");
   const [city,      setCity]      = useState("");
@@ -84,183 +109,186 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
     onSearch({ condition: q, city: city.trim(), state, status, phase });
   };
 
-  /* ── shared input style ── */
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "10px 13px",
-    border: `1.5px solid ${C.border}`,
-    borderRadius: 10,
-    fontSize: 14,
-    color: C.text,
-    background: C.bg,
-    outline: "none",
-    fontFamily: "inherit",
-    transition: "border-color 0.15s, box-shadow 0.15s",
-    boxSizing: "border-box",
-  };
+  const isDisabled = loading || !condition.trim();
 
-  const labelStyle: React.CSSProperties = {
-    display: "block",
-    fontSize: 11,
-    fontWeight: 600,
-    letterSpacing: "0.55px",
-    textTransform: "uppercase",
-    color: C.hint,
-    marginBottom: 6,
-  };
-
-  /* ── COMPACT mode ── */
+  /* ── COMPACT ─────────────────────────────────────────────────────────── */
   if (compact) {
     return (
-      <form onSubmit={handleSubmit} style={{ width: "100%" }}>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr auto",
-          gap: 12,
-          alignItems: "flex-end",
-        }}>
-          {/* Condition */}
+      <form onSubmit={handleSubmit} style={{ width: "100%", fontFamily: "inherit" }}>
+        <div className="sf-compact-grid">
           <div>
-            <label style={labelStyle}>Condition <span style={{ color: C.danger }}>*</span></label>
-            <input style={inputStyle} type="text" value={condition}
+            <label style={label}>Condition <span style={{ color: T.danger }}>*</span></label>
+            <input style={input} type="text" value={condition}
               onChange={(e) => setCondition(e.target.value)}
               placeholder="e.g. Breast Cancer…" required />
           </div>
-          {/* City */}
           <div>
-            <label style={labelStyle}>City</label>
-            <input style={inputStyle} type="text" value={city}
+            <label style={label}>City</label>
+            <input style={input} type="text" value={city}
               onChange={(e) => setCity(e.target.value)} placeholder="Boston" />
           </div>
-          {/* State */}
           <div>
-            <label style={labelStyle}>State</label>
-            <select style={{ ...inputStyle, cursor: "pointer" }} value={state}
+            <label style={label}>State</label>
+            <select style={{ ...input, cursor: "pointer" }} value={state}
               onChange={(e) => setState(e.target.value)}>
               {US_STATES.map((s) => <option key={s} value={s}>{s || "Any"}</option>)}
             </select>
           </div>
-          {/* Phase */}
           <div>
-            <label style={labelStyle}>Phase</label>
-            <select style={{ ...inputStyle, cursor: "pointer" }} value={phase}
+            <label style={label}>Phase</label>
+            <select style={{ ...input, cursor: "pointer" }} value={phase}
               onChange={(e) => setPhase(e.target.value)}>
               {PHASES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
           </div>
-          {/* Status */}
           <div>
-            <label style={labelStyle}>Status</label>
-            <select style={{ ...inputStyle, cursor: "pointer" }} value={status}
+            <label style={label}>Status</label>
+            <select style={{ ...input, cursor: "pointer" }} value={status}
               onChange={(e) => setStatus(e.target.value)}>
               {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
-          {/* Submit */}
-          <button type="submit" disabled={loading || !condition.trim()}
-            style={{
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+            <button type="submit" disabled={isDisabled} style={{
               padding: "10px 20px",
-              background: C.blue,
+              background: T.blue,
               color: "#fff",
               border: "none",
               borderRadius: 10,
               fontSize: 14,
               fontWeight: 600,
-              cursor: loading || !condition.trim() ? "not-allowed" : "pointer",
-              opacity: loading || !condition.trim() ? 0.55 : 1,
+              cursor: isDisabled ? "not-allowed" : "pointer",
+              opacity: isDisabled ? 0.55 : 1,
               whiteSpace: "nowrap",
               fontFamily: "inherit",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
             }}>
-            {loading ? "Searching…" : "🔍 Search"}
-          </button>
+              {loading ? "Searching…" : "Search"}
+            </button>
+          </div>
         </div>
+
+        <style>{`
+          .sf-compact-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
+            gap: 12px;
+            align-items: flex-end;
+          }
+          @media (max-width: 900px) {
+            .sf-compact-grid { grid-template-columns: repeat(3, 1fr); }
+          }
+          @media (max-width: 560px) {
+            .sf-compact-grid { grid-template-columns: 1fr; }
+          }
+        `}</style>
       </form>
     );
   }
 
-  /* ── HERO mode ── */
+  /* ── HERO ────────────────────────────────────────────────────────────── */
   return (
     <>
-      {/* Outer shell — full width with breathing room */}
-      <div style={{
-        width: "100%",
-        padding: "28px clamp(20px, 4vw, 96px)",
-        background: C.bg,
-        boxSizing: "border-box",
-        fontFamily: "inherit",
-      }}>
-        {/* Card */}
-        <div style={{
-          background: C.card,
-          borderRadius: 16,
-          border: `1px solid ${C.border}`,
-          boxShadow: "0 2px 16px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.03)",
-          padding: "32px 36px 28px",
-        }}>
+      {/* Scoped styles — clamp + media queries can't live in inline styles */}
+      <style>{`
+        .sf-shell {
+          width: 100%;
+          background: ${T.bg};
+          padding: 28px clamp(24px, 5vw, 108px);
+          box-sizing: border-box;
+          font-family: inherit;
+        }
+        .sf-card {
+          background: ${T.card};
+          border-radius: 16px;
+          border: 1px solid ${T.border};
+          box-shadow: 0 2px 16px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.03);
+          padding: 32px 36px 28px;
+        }
+        .sf-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 28px;
+          flex-wrap: wrap;
+        }
+        .sf-filters {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 14px;
+          margin-bottom: 18px;
+        }
+        .sf-quick-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-top: 20px;
+          flex-wrap: wrap;
+        }
+        /* responsive */
+        @media (max-width: 800px) {
+          .sf-filters { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 560px) {
+          .sf-filters  { grid-template-columns: 1fr; }
+          .sf-header   { flex-direction: column; }
+          .sf-card     { padding: 24px 20px; }
+          .sf-live-badge { white-space: normal !important; }
+        }
+        @keyframes sfPulse {
+          0%, 100% { opacity: 1;   transform: scale(1);    }
+          50%       { opacity: 0.5; transform: scale(1.45); }
+        }
+        @keyframes sfSpin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
 
-          {/* ── Header row ── */}
-          <div style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 16,
-            marginBottom: 28,
-            flexWrap: "wrap",
-          }}>
-            {/* Left: title + subtitle */}
+      <div className="sf-shell">
+        <div className="sf-card">
+
+          {/* ── Header: title left, badge right ── */}
+          <div className="sf-header">
             <div>
               <h1 style={{
                 margin: 0,
                 fontSize: "clamp(20px, 2.2vw, 24px)",
                 fontWeight: 700,
-                color: C.text,
+                color: T.text,
                 letterSpacing: "-0.4px",
                 lineHeight: 1.2,
               }}>
                 Clinical Trial Finder
               </h1>
-              <p style={{
-                margin: "5px 0 0",
-                fontSize: 13,
-                color: C.muted,
-                fontWeight: 400,
-              }}>
+              <p style={{ margin: "5px 0 0", fontSize: 13, color: T.muted }}>
                 Find trials by condition, location, phase, or status.
               </p>
             </div>
 
-            {/* Right: live data badge */}
-            <div style={{
+            {/* Live data badge — inside the card, top-right */}
+            <div className="sf-live-badge" style={{
               display: "flex",
               alignItems: "center",
               gap: 7,
               fontSize: 12,
-              color: C.greenText,
-              background: C.greenFaint,
-              border: `1px solid ${C.greenBorder}`,
+              color: T.greenText,
+              background: T.greenFaint,
+              border: `1px solid ${T.greenBorder}`,
               borderRadius: 20,
               padding: "5px 13px",
               flexShrink: 0,
               alignSelf: "flex-start",
-              marginTop: 3,
               whiteSpace: "nowrap",
             }}>
-              {/* Pulsing dot via inline animation */}
               <span style={{
-                width: 7,
-                height: 7,
+                width: 7, height: 7,
                 borderRadius: "50%",
-                background: C.green,
+                background: T.green,
                 flexShrink: 0,
                 display: "inline-block",
                 animation: "sfPulse 2s ease-in-out infinite",
               }} />
-              Search across{" "}
-              <strong style={{ margin: "0 2px" }}>400,000+</strong>{" "}
-              trials from ClinicalTrials.gov in real time.
+              Search across <strong style={{ margin: "0 3px" }}>400,000+</strong> trials · ClinicalTrials.gov
             </div>
           </div>
 
@@ -269,12 +297,11 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
 
             {/* Condition — full width */}
             <div style={{ marginBottom: 18 }}>
-              <label style={labelStyle}>
-                Condition / Disease{" "}
-                <span style={{ color: C.danger }}>*</span>
+              <label style={label}>
+                Condition / Disease <span style={{ color: T.danger }}>*</span>
               </label>
               <input
-                style={{ ...inputStyle, fontSize: 15, padding: "12px 14px" }}
+                style={{ ...input, fontSize: 15, padding: "12px 14px" }}
                 type="text"
                 value={condition}
                 onChange={(e) => setCondition(e.target.value)}
@@ -283,70 +310,63 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
               />
             </div>
 
-            {/* Secondary filters — 4-col grid */}
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: 14,
-              marginBottom: 18,
-            }}>
+            {/* City · State · Phase · Status */}
+            <div className="sf-filters">
               <div>
-                <label style={labelStyle}>City</label>
-                <input style={inputStyle} type="text" value={city}
+                <label style={label}>City</label>
+                <input style={input} type="text" value={city}
                   onChange={(e) => setCity(e.target.value)} placeholder="e.g. Boston" />
               </div>
               <div>
-                <label style={labelStyle}>State</label>
-                <select style={{ ...inputStyle, cursor: "pointer" }} value={state}
+                <label style={label}>State</label>
+                <select style={{ ...input, cursor: "pointer" }} value={state}
                   onChange={(e) => setState(e.target.value)}>
                   {US_STATES.map((s) => <option key={s} value={s}>{s || "Any State"}</option>)}
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Phase</label>
-                <select style={{ ...inputStyle, cursor: "pointer" }} value={phase}
+                <label style={label}>Phase</label>
+                <select style={{ ...input, cursor: "pointer" }} value={phase}
                   onChange={(e) => setPhase(e.target.value)}>
                   {PHASES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Status</label>
-                <select style={{ ...inputStyle, cursor: "pointer" }} value={status}
+                <label style={label}>Status</label>
+                <select style={{ ...input, cursor: "pointer" }} value={status}
                   onChange={(e) => setStatus(e.target.value)}>
                   {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
               </div>
             </div>
 
-            {/* Submit button */}
+            {/* Submit */}
             <button
               type="submit"
-              disabled={loading || !condition.trim()}
+              disabled={isDisabled}
               style={{
                 width: "100%",
                 padding: "13px 24px",
-                background: loading || !condition.trim() ? C.blue : C.blue,
+                background: T.blue,
                 color: "#fff",
                 border: "none",
                 borderRadius: 10,
                 fontSize: 15,
                 fontWeight: 600,
-                cursor: loading || !condition.trim() ? "not-allowed" : "pointer",
-                opacity: loading || !condition.trim() ? 0.55 : 1,
+                cursor: isDisabled ? "not-allowed" : "pointer",
+                opacity: isDisabled ? 0.55 : 1,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 8,
                 fontFamily: "inherit",
                 letterSpacing: "0.1px",
-                transition: "opacity 0.15s, background 0.15s",
               }}
             >
               {loading ? (
                 <>
                   <span style={{
-                    width: 15,
-                    height: 15,
+                    width: 15, height: 15,
                     border: "2px solid rgba(255,255,255,0.3)",
                     borderTopColor: "#fff",
                     borderRadius: "50%",
@@ -359,7 +379,7 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
                 <>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                    <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
                   </svg>
                   Search Trials
                 </>
@@ -368,49 +388,38 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           </form>
 
           {/* ── Quick picks ── */}
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginTop: 20,
-            flexWrap: "wrap",
-          }}>
+          <div className="sf-quick-row">
             <span style={{
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: "0.5px",
-              textTransform: "uppercase",
-              color: C.hint,
-              whiteSpace: "nowrap",
+              fontSize: 11, fontWeight: 600,
+              letterSpacing: "0.5px", textTransform: "uppercase",
+              color: T.hint, whiteSpace: "nowrap",
             }}>
               Quick
             </span>
-            {/* thin divider */}
-            <span style={{ width: 1, height: 16, background: C.border, flexShrink: 0 }} />
+            <span style={{ width: 1, height: 14, background: T.border, flexShrink: 0 }} />
             {QUICK_CONDITIONS.map((q) => (
               <button
                 key={q}
                 type="button"
                 onClick={() => handleQuick(q)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = T.blueFaint;
+                  e.currentTarget.style.borderColor = T.blueBorder;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = T.bg;
+                  e.currentTarget.style.borderColor = T.border;
+                }}
                 style={{
                   padding: "4px 12px",
                   borderRadius: 20,
-                  border: `1.5px solid ${C.border}`,
-                  background: C.bg,
+                  border: `1.5px solid ${T.border}`,
+                  background: T.bg,
                   fontSize: 12.5,
                   fontWeight: 500,
-                  color: C.blue,
+                  color: T.blue,
                   cursor: "pointer",
                   fontFamily: "inherit",
-                  transition: "border-color 0.13s, background 0.13s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = C.blueFaint;
-                  e.currentTarget.style.borderColor = C.blueBorder;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = C.bg;
-                  e.currentTarget.style.borderColor = C.border;
                 }}
               >
                 {q}
@@ -420,22 +429,6 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
 
         </div>
       </div>
-
-      {/* Keyframe animations — minimal, scoped */}
-      <style>{`
-        @keyframes sfPulse {
-          0%,100% { opacity:1;   transform:scale(1);    }
-          50%      { opacity:0.5; transform:scale(1.45); }
-        }
-        @keyframes sfSpin {
-          to { transform: rotate(360deg); }
-        }
-        @media (max-width: 700px) {
-          .sf-filters-grid { grid-template-columns: repeat(2,1fr) !important; }
-          .sf-header-row   { flex-direction: column !important; }
-          .sf-live-badge   { white-space: normal !important; }
-        }
-      `}</style>
     </>
   );
 }
