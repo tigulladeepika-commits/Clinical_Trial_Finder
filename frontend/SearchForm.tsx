@@ -323,35 +323,7 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
                 Search 400,000+ trials across all conditions using the official ClinicalTrials.gov registry.
               </p>
             </div>
-
-            {/* Badge: top-right inside card */}
-            <div className="sf-badge" style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 7,
-              fontSize: 11.5,
-              fontWeight: 600,
-              letterSpacing: "0.4px",
-              color: T.badgeText,
-              background: T.badgeBg,
-              border: `1px solid ${T.badgeBorder}`,
-              borderRadius: 20,
-              padding: "6px 14px",
-              flexShrink: 0,
-              alignSelf: "flex-start",
-              whiteSpace: "nowrap",
-            }}>
-              <span style={{
-                width: 7, height: 7,
-                borderRadius: "50%",
-                background: T.green,
-                display: "inline-block",
-                flexShrink: 0,
-                animation: "sfPulse 2s ease-in-out infinite",
-              }} />
-              LIVE · 400,000+ TRIALS
-            </div>
-          </div>
+              
 
           {/* ── Form ── */}
           <form onSubmit={handleSubmit}>
