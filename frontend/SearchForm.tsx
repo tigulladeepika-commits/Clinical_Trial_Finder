@@ -50,43 +50,25 @@ const US_STATES = [
 
 /* ─── design tokens ──────────────────────────────────────────────────────── */
 const T = {
-  /* card */
   card:        "#ffffff",
   cardBorder:  "#e2e8f0",
-  accent:      "#0d9488",   /* teal — left border stripe */
-
-  /* text */
+  accent:      "#0d9488",
   text:        "#0f172a",
   muted:       "#64748b",
   hint:        "#94a3b8",
-  eyebrow:     "#0d9488",   /* teal eyebrow label */
-
-  /* inputs */
+  eyebrow:     "#0d9488",
   inputBg:     "#ffffff",
   inputBorder: "#e2e8f0",
-
-  /* button */
   blue:        "#2563eb",
-
-  /* badge */
-  badgeBg:     "#f0fdf9",
-  badgeBorder: "#99f6e4",
-  badgeText:   "#0f766e",
-
-  /* quick chips */
   chipBorder:  "#e2e8f0",
   chipBg:      "#f8fafc",
   chipText:    "#2563eb",
   chipBgHov:   "#eff6ff",
   chipBrHov:   "#bfdbfe",
-
-  /* live dot */
-  green:       "#22c55e",
-
   danger:      "#ef4444",
 };
 
-/* ─── shared field styles (defined outside component — stable reference) ── */
+/* ─── shared field styles ─────────────────────────────────────────────────── */
 const fieldInput: React.CSSProperties = {
   width: "100%",
   padding: "10px 13px",
@@ -210,11 +192,10 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
     );
   }
 
-  /* ── HERO ────────────────────────────────────────────────────────────── */
+  /* ── HERO (non-compact) ───────────────────────────────────────────────── */
   return (
     <>
       <style>{`
-        /* Shell: light blue-to-white gradient background, like the reference */
         .sf-shell {
           width: 100%;
           min-height: 100%;
@@ -224,7 +205,6 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           font-family: inherit;
         }
 
-        /* Card: white, subtle shadow, LEFT teal accent border */
         .sf-card {
           background: #ffffff;
           border-radius: 14px;
@@ -235,17 +215,10 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           position: relative;
         }
 
-        /* Header row: eyebrow + title left, badge right */
         .sf-header {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 20px;
-          margin-bottom: 32px;
-          flex-wrap: wrap;
+          margin-bottom: 28px;
         }
 
-        /* 4-col filter grid */
         .sf-filters {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
@@ -253,7 +226,6 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           margin-bottom: 20px;
         }
 
-        /* Quick picks row */
         .sf-quick-row {
           display: flex;
           align-items: center;
@@ -262,7 +234,6 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           flex-wrap: wrap;
         }
 
-        /* Responsive breakpoints */
         @media (max-width: 820px) {
           .sf-filters { grid-template-columns: repeat(2, 1fr); }
         }
@@ -270,15 +241,8 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           .sf-shell   { padding: 20px 16px; }
           .sf-card    { padding: 24px 20px; border-left-width: 4px; }
           .sf-filters { grid-template-columns: 1fr; }
-          .sf-header  { flex-direction: column; }
-          .sf-badge   { white-space: normal !important; }
         }
 
-        /* Animations */
-        @keyframes sfPulse {
-          0%, 100% { opacity: 1;   transform: scale(1);    }
-          50%       { opacity: 0.4; transform: scale(1.5);  }
-        }
         @keyframes sfSpin {
           to { transform: rotate(360deg); }
         }
@@ -289,49 +253,43 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
 
           {/* ── Header ── */}
           <div className="sf-header">
-            <div>
-              {/* Eyebrow — small caps teal label above title */}
-              <p style={{
-                margin: "0 0 10px",
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "1.5px",
-                textTransform: "uppercase",
-                color: T.eyebrow,
-              }}>
-                Clinical Trials · ClinicalTrials.gov
-              </p>
+            <p style={{
+              margin: "0 0 10px",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "1.5px",
+              textTransform: "uppercase",
+              color: T.eyebrow,
+            }}>
+              Clinical Trials · ClinicalTrials.gov
+            </p>
 
-              {/* Editorial headline */}
-              <h1 style={{
-                margin: "0 0 8px",
-                fontSize: "clamp(22px, 3vw, 30px)",
-                fontWeight: 700,
-                color: T.text,
-                lineHeight: 1.2,
-                letterSpacing: "-0.5px",
-              }}>
-                Find a{" "}
-                <span style={{ color: T.accent, fontStyle: "italic", fontWeight: 600 }}>
-                  clinical trial
-                </span>{" "}
-                near you
-              </h1>
+            <h1 style={{
+              margin: "0 0 8px",
+              fontSize: "clamp(22px, 3vw, 30px)",
+              fontWeight: 700,
+              color: T.text,
+              lineHeight: 1.2,
+              letterSpacing: "-0.5px",
+            }}>
+              Find a{" "}
+              <span style={{ color: T.accent, fontStyle: "italic", fontWeight: 600 }}>
+                clinical trial
+              </span>{" "}
+              near you
+            </h1>
 
-              {/* Subline */}
-              <p style={{ margin: 0, fontSize: 13.5, color: T.muted, fontWeight: 400 }}>
-                Search 400,000+ trials across all conditions using the official ClinicalTrials.gov registry.
-              </p>
-            </div>
-              
+            <p style={{ margin: 0, fontSize: 13.5, color: T.muted, fontWeight: 400 }}>
+              Search 400,000+ trials across all conditions using the official ClinicalTrials.gov registry.
+            </p>
+          </div>
 
           {/* ── Form ── */}
           <form onSubmit={handleSubmit}>
 
-            {/* Condition — full width, slightly larger */}
+            {/* Condition */}
             <div style={{ marginBottom: 20 }}>
               <label style={fieldLabel}>
-                {/* pin icon */}
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                   stroke={T.hint} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7z"/>
@@ -348,12 +306,7 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
                 placeholder="e.g. Breast Cancer, Diabetes, Alzheimer…"
                 required
               />
-              <p style={{
-                margin: "5px 0 0",
-                fontSize: 11.5,
-                color: T.hint,
-                fontStyle: "italic",
-              }}>
+              <p style={{ margin: "5px 0 0", fontSize: 11.5, color: T.hint, fontStyle: "italic" }}>
                 Enter a condition, disease, or keyword to search trials
               </p>
             </div>
