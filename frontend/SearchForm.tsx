@@ -68,7 +68,7 @@ const T = {
   danger:      "#ef4444",
 };
 
-/* ─── shared field styles ─────────────────────────────────────────────────── */
+/* ─── shared field styles ────────────────────────────────────────────────── */
 const fieldInput: React.CSSProperties = {
   width: "100%",
   padding: "10px 13px",
@@ -192,7 +192,7 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
     );
   }
 
-  /* ── HERO (non-compact) ───────────────────────────────────────────────── */
+  /* ── HERO ────────────────────────────────────────────────────────────── */
   return (
     <>
       <style>{`
@@ -204,7 +204,6 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           box-sizing: border-box;
           font-family: inherit;
         }
-
         .sf-card {
           background: #ffffff;
           border-radius: 14px;
@@ -214,18 +213,15 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           padding: 36px 40px 32px;
           position: relative;
         }
-
         .sf-header {
-          margin-bottom: 28px;
+          margin-bottom: 32px;
         }
-
         .sf-filters {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: 16px;
           margin-bottom: 20px;
         }
-
         .sf-quick-row {
           display: flex;
           align-items: center;
@@ -233,7 +229,6 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           margin-top: 22px;
           flex-wrap: wrap;
         }
-
         @media (max-width: 820px) {
           .sf-filters { grid-template-columns: repeat(2, 1fr); }
         }
@@ -242,7 +237,6 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           .sf-card    { padding: 24px 20px; border-left-width: 4px; }
           .sf-filters { grid-template-columns: 1fr; }
         }
-
         @keyframes sfSpin {
           to { transform: rotate(360deg); }
         }
@@ -263,7 +257,6 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
             }}>
               Clinical Trials · ClinicalTrials.gov
             </p>
-
             <h1 style={{
               margin: "0 0 8px",
               fontSize: "clamp(22px, 3vw, 30px)",
@@ -278,7 +271,6 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
               </span>{" "}
               near you
             </h1>
-
             <p style={{ margin: 0, fontSize: 13.5, color: T.muted, fontWeight: 400 }}>
               Search 400,000+ trials across all conditions using the official ClinicalTrials.gov registry.
             </p>
