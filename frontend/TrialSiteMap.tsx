@@ -52,7 +52,6 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
   const mapKey = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
-  const [activeSite, setActiveSite] = useState<Site | null>(null);
 
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
   const totalSites = sites.length;
@@ -72,10 +71,12 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
 
       L.mapquest.key = mapKey;
 
+      // Inject styles once
       if (!document.getElementById("trial-map-style")) {
         const style = document.createElement("style");
         style.id = "trial-map-style";
         style.textContent = `
+          /* ── Hover tooltip (lightweight, appears on mouseover) ── */
           .trial-tooltip {
             background: white !important;
             border: 1px solid #e2e8f0 !important;
@@ -84,12 +85,50 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
             font-size: 12px !important;
             font-weight: 500 !important;
             color: #1e293b !important;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.13) !important;
             white-space: nowrap !important;
+            pointer-events: none !important;
           }
           .trial-tooltip.leaflet-tooltip-top::before {
             border-top-color: #e2e8f0 !important;
           }
+
+          /* ── Click popup (richer card, appears on click) ── */
+          .trial-popup .leaflet-popup-content-wrapper {
+            background: white !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.14) !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            min-width: 220px !important;
+            max-width: 280px !important;
+          }
+          .trial-popup .leaflet-popup-content {
+            margin: 0 !important;
+            line-height: 1.5 !important;
+          }
+          .trial-popup .leaflet-popup-tip-container {
+            margin-top: -1px !important;
+          }
+          .trial-popup .leaflet-popup-tip {
+            background: white !important;
+            box-shadow: none !important;
+            border: 1px solid #e2e8f0 !important;
+          }
+          .trial-popup .leaflet-popup-close-button {
+            top: 8px !important;
+            right: 10px !important;
+            font-size: 18px !important;
+            color: #94a3b8 !important;
+            font-weight: 400 !important;
+          }
+          .trial-popup .leaflet-popup-close-button:hover {
+            color: #475569 !important;
+            background: none !important;
+          }
+
+          /* ── Marker dot ── */
           .trial-marker-dot {
             border-radius: 50% !important;
             border: 2.5px solid white !important;
@@ -134,41 +173,67 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
           .filter(Boolean)
           .join(", ");
 
+        // ── Lightweight hover tooltip ──
+        marker.bindTooltip(
+          `<div style="font-weight:600;font-size:12px;color:#0f172a;">${site.facility || "Unknown Facility"}</div>
+           ${locationLine ? `<div style="font-size:11px;color:#64748b;margin-top:1px;">${locationLine}</div>` : ""}`,
+          {
+            permanent: false,
+            direction: "top",
+            offset: [0, -10],
+            className: "trial-tooltip",
+          }
+        );
+
+        // ── Rich click popup ──
         const statusPill = site.status
-          ? `<span style="
-              display:inline-block;
-              margin-top:5px;
-              padding:2px 8px;
-              border-radius:20px;
-              font-size:10px;
-              font-weight:600;
-              letter-spacing:0.3px;
-              background:${color}18;
-              color:${color};
-              border:1px solid ${color}40;
-            ">${site.status.replace(/_/g, " ")}</span>`
+          ? `<div style="
+                display:inline-block;
+                padding:3px 10px;
+                border-radius:20px;
+                font-size:10px;
+                font-weight:700;
+                letter-spacing:0.4px;
+                text-transform:uppercase;
+                background:${color}18;
+                color:${color};
+                border:1px solid ${color}50;
+              ">${site.status.replace(/_/g, " ")}</div>`
           : "";
 
-        const tooltipContent = `
-          <div style="line-height:1.5;">
-            <div style="font-weight:600;font-size:12px;color:#0f172a;">
-              ${site.facility || "Unknown Facility"}
+        const popupContent = `
+          <div>
+            <!-- Colored header bar -->
+            <div style="
+              background:${color}12;
+              border-bottom:1px solid ${color}25;
+              padding:12px 14px 10px;
+            ">
+              <div style="font-weight:700;font-size:13px;color:#0f172a;line-height:1.35;padding-right:16px;">
+                ${site.facility || "Unknown Facility"}
+              </div>
+              ${locationLine
+                ? `<div style="font-size:11px;color:#64748b;margin-top:3px;">📍 ${locationLine}</div>`
+                : ""}
             </div>
-            ${locationLine
-              ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">${locationLine}</div>`
-              : ""}
-            ${statusPill}
+            <!-- Status row -->
+            <div style="padding:10px 14px;">
+              ${statusPill}
+            </div>
           </div>
         `;
 
-        marker.bindTooltip(tooltipContent, {
-          permanent: false,
-          direction: "top",
-          offset: [0, -10],
-          className: "trial-tooltip",
+        marker.bindPopup(popupContent, {
+          className: "trial-popup",
+          offset: [0, -8],
+          maxWidth: 280,
+          closeButton: true,
         });
 
-        marker.on("click", () => setActiveSite(site));
+        // Open popup on click, keep tooltip on hover
+        marker.on("click", () => {
+          marker.openPopup();
+        });
       });
     };
 
@@ -323,40 +388,8 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
           )}
         </div>
 
-        {/* Active site info strip */}
-        {activeSite && (
-          <div style={{
-            borderTop: "1px solid var(--blue-100)",
-            padding: "14px 20px",
-            background: "var(--blue-50)",
-            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
-          }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--gray-800)", marginBottom: 2 }}>
-                📍 {activeSite.facility || "Unknown Facility"}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--gray-500)" }}>
-                {[activeSite.city, activeSite.state, activeSite.country].filter(Boolean).join(", ")}
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-              {activeSite.status && (
-                <span className={siteBadgeClass(activeSite.status)}>
-                  {activeSite.status.replace(/_/g, " ")}
-                </span>
-              )}
-              <button
-                onClick={() => setActiveSite(null)}
-                style={{
-                  width: 26, height: 26, borderRadius: "50%",
-                  border: "1px solid var(--gray-300)", background: "white",
-                  cursor: "pointer", fontSize: 15, color: "var(--gray-500)",
-                  display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1,
-                }}
-              >×</button>
-            </div>
-          </div>
-        )}
+        {/* ── Bottom strip REMOVED — details now show in popup on the marker ── */}
+
       </div>
 
       {/* ══ DESCRIPTION ══ */}
@@ -382,7 +415,6 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
                 onClick={() => {
                   if (site.lat != null && mapInstanceRef.current) {
                     mapInstanceRef.current.setView([site.lat, site.lon], 10);
-                    setActiveSite(site);
                     mapDivRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
                   }
                 }}
