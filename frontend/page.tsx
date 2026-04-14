@@ -89,20 +89,10 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ── HERO STATE (no results yet) ── */}
+      {/* ── SEARCH FORM (no results yet) ── */}
       {!hasResults && (
-        <div className="hero-section">
-          <div className="hero-badge">🔬 Clinical Research Database</div>
-          <h1 className="hero-title">
-            Find <em>Clinical Trials</em><br />Near You
-          </h1>
-          <p className="hero-sub">
-            Search thousands of active clinical trials by condition, location, phase, and status.
-            Select a trial to explore all its research sites on an interactive map.
-          </p>
-          <div className="search-card">
-            <SearchForm onSearch={handleSearch} loading={loading} compact={false} />
-          </div>
+        <div className="search-card">
+          <SearchForm onSearch={handleSearch} loading={loading} compact={false} />
         </div>
       )}
 
@@ -220,7 +210,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Map + Locations (no description yet) */}
+                {/* Map + Locations */}
                 {siteData && !sitesLoading && (
                   <TrialSiteMap
                     sites={siteData.sites}
