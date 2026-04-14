@@ -50,41 +50,64 @@ const US_STATES = [
 
 /* ─── design tokens ──────────────────────────────────────────────────────── */
 const T = {
-  bg:          "#f8fafc",
+  /* card */
   card:        "#ffffff",
-  border:      "#e8edf3",
+  cardBorder:  "#e2e8f0",
+  accent:      "#0d9488",   /* teal — left border stripe */
+
+  /* text */
   text:        "#0f172a",
   muted:       "#64748b",
   hint:        "#94a3b8",
+  eyebrow:     "#0d9488",   /* teal eyebrow label */
+
+  /* inputs */
+  inputBg:     "#ffffff",
+  inputBorder: "#e2e8f0",
+
+  /* button */
   blue:        "#2563eb",
-  blueFaint:   "#eff6ff",
-  blueBorder:  "#bfdbfe",
+
+  /* badge */
+  badgeBg:     "#f0fdf9",
+  badgeBorder: "#99f6e4",
+  badgeText:   "#0f766e",
+
+  /* quick chips */
+  chipBorder:  "#e2e8f0",
+  chipBg:      "#f8fafc",
+  chipText:    "#2563eb",
+  chipBgHov:   "#eff6ff",
+  chipBrHov:   "#bfdbfe",
+
+  /* live dot */
   green:       "#22c55e",
-  greenText:   "#166534",
-  greenFaint:  "#f0fdf4",
-  greenBorder: "#bbf7d0",
+
   danger:      "#ef4444",
 };
 
-/* ─── shared styles ──────────────────────────────────────────────────────── */
-const input: React.CSSProperties = {
+/* ─── shared field styles (defined outside component — stable reference) ── */
+const fieldInput: React.CSSProperties = {
   width: "100%",
   padding: "10px 13px",
-  border: `1.5px solid ${T.border}`,
-  borderRadius: 10,
+  border: `1px solid ${T.inputBorder}`,
+  borderRadius: 8,
   fontSize: 14,
   color: T.text,
-  background: T.bg,
+  background: T.inputBg,
   outline: "none",
   fontFamily: "inherit",
   boxSizing: "border-box",
+  appearance: "none",
 };
 
-const label: React.CSSProperties = {
-  display: "block",
+const fieldLabel: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
   fontSize: 11,
-  fontWeight: 600,
-  letterSpacing: "0.55px",
+  fontWeight: 700,
+  letterSpacing: "0.7px",
   textTransform: "uppercase",
   color: T.hint,
   marginBottom: 6,
@@ -117,33 +140,35 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
       <form onSubmit={handleSubmit} style={{ width: "100%", fontFamily: "inherit" }}>
         <div className="sf-compact-grid">
           <div>
-            <label style={label}>Condition <span style={{ color: T.danger }}>*</span></label>
-            <input style={input} type="text" value={condition}
+            <label style={fieldLabel}>
+              Condition <span style={{ color: T.danger }}>*</span>
+            </label>
+            <input style={fieldInput} type="text" value={condition}
               onChange={(e) => setCondition(e.target.value)}
               placeholder="e.g. Breast Cancer…" required />
           </div>
           <div>
-            <label style={label}>City</label>
-            <input style={input} type="text" value={city}
+            <label style={fieldLabel}>City</label>
+            <input style={fieldInput} type="text" value={city}
               onChange={(e) => setCity(e.target.value)} placeholder="Boston" />
           </div>
           <div>
-            <label style={label}>State</label>
-            <select style={{ ...input, cursor: "pointer" }} value={state}
+            <label style={fieldLabel}>State</label>
+            <select style={{ ...fieldInput, cursor: "pointer" }} value={state}
               onChange={(e) => setState(e.target.value)}>
               {US_STATES.map((s) => <option key={s} value={s}>{s || "Any"}</option>)}
             </select>
           </div>
           <div>
-            <label style={label}>Phase</label>
-            <select style={{ ...input, cursor: "pointer" }} value={phase}
+            <label style={fieldLabel}>Phase</label>
+            <select style={{ ...fieldInput, cursor: "pointer" }} value={phase}
               onChange={(e) => setPhase(e.target.value)}>
               {PHASES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
           </div>
           <div>
-            <label style={label}>Status</label>
-            <select style={{ ...input, cursor: "pointer" }} value={status}
+            <label style={fieldLabel}>Status</label>
+            <select style={{ ...fieldInput, cursor: "pointer" }} value={status}
               onChange={(e) => setStatus(e.target.value)}>
               {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
@@ -154,7 +179,7 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
               background: T.blue,
               color: "#fff",
               border: "none",
-              borderRadius: 10,
+              borderRadius: 8,
               fontSize: 14,
               fontWeight: 600,
               cursor: isDisabled ? "not-allowed" : "pointer",
@@ -188,56 +213,71 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
   /* ── HERO ────────────────────────────────────────────────────────────── */
   return (
     <>
-      {/* Scoped styles — clamp + media queries can't live in inline styles */}
       <style>{`
+        /* Shell: light blue-to-white gradient background, like the reference */
         .sf-shell {
           width: 100%;
-          background: ${T.bg};
-          padding: 28px clamp(24px, 5vw, 108px);
+          min-height: 100%;
+          background: linear-gradient(135deg, #dff3f8 0%, #eaf6f8 40%, #f0f7fa 70%, #f8fafc 100%);
+          padding: 36px clamp(24px, 5vw, 108px);
           box-sizing: border-box;
           font-family: inherit;
         }
+
+        /* Card: white, subtle shadow, LEFT teal accent border */
         .sf-card {
-          background: ${T.card};
-          border-radius: 16px;
-          border: 1px solid ${T.border};
-          box-shadow: 0 2px 16px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.03);
-          padding: 32px 36px 28px;
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1px solid ${T.cardBorder};
+          border-left: 5px solid ${T.accent};
+          box-shadow: 0 4px 24px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04);
+          padding: 36px 40px 32px;
+          position: relative;
         }
+
+        /* Header row: eyebrow + title left, badge right */
         .sf-header {
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
-          gap: 16px;
-          margin-bottom: 28px;
+          gap: 20px;
+          margin-bottom: 32px;
           flex-wrap: wrap;
         }
+
+        /* 4-col filter grid */
         .sf-filters {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 14px;
-          margin-bottom: 18px;
+          gap: 16px;
+          margin-bottom: 20px;
         }
+
+        /* Quick picks row */
         .sf-quick-row {
           display: flex;
           align-items: center;
-          gap: 10px;
-          margin-top: 20px;
+          gap: 8px;
+          margin-top: 22px;
           flex-wrap: wrap;
         }
-        /* responsive */
-        @media (max-width: 800px) {
+
+        /* Responsive breakpoints */
+        @media (max-width: 820px) {
           .sf-filters { grid-template-columns: repeat(2, 1fr); }
         }
         @media (max-width: 560px) {
-          .sf-filters  { grid-template-columns: 1fr; }
-          .sf-header   { flex-direction: column; }
-          .sf-card     { padding: 24px 20px; }
-          .sf-live-badge { white-space: normal !important; }
+          .sf-shell   { padding: 20px 16px; }
+          .sf-card    { padding: 24px 20px; border-left-width: 4px; }
+          .sf-filters { grid-template-columns: 1fr; }
+          .sf-header  { flex-direction: column; }
+          .sf-badge   { white-space: normal !important; }
         }
+
+        /* Animations */
         @keyframes sfPulse {
           0%, 100% { opacity: 1;   transform: scale(1);    }
-          50%       { opacity: 0.5; transform: scale(1.45); }
+          50%       { opacity: 0.4; transform: scale(1.5);  }
         }
         @keyframes sfSpin {
           to { transform: rotate(360deg); }
@@ -247,35 +287,56 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
       <div className="sf-shell">
         <div className="sf-card">
 
-          {/* ── Header: title left, badge right ── */}
+          {/* ── Header ── */}
           <div className="sf-header">
             <div>
+              {/* Eyebrow — small caps teal label above title */}
+              <p style={{
+                margin: "0 0 10px",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "1.5px",
+                textTransform: "uppercase",
+                color: T.eyebrow,
+              }}>
+                Clinical Trials · ClinicalTrials.gov
+              </p>
+
+              {/* Editorial headline */}
               <h1 style={{
-                margin: 0,
-                fontSize: "clamp(20px, 2.2vw, 24px)",
+                margin: "0 0 8px",
+                fontSize: "clamp(22px, 3vw, 30px)",
                 fontWeight: 700,
                 color: T.text,
-                letterSpacing: "-0.4px",
                 lineHeight: 1.2,
+                letterSpacing: "-0.5px",
               }}>
-                Clinical Trial Finder
+                Find a{" "}
+                <span style={{ color: T.accent, fontStyle: "italic", fontWeight: 600 }}>
+                  clinical trial
+                </span>{" "}
+                near you
               </h1>
-              <p style={{ margin: "5px 0 0", fontSize: 13, color: T.muted }}>
-                Find trials by condition, location, phase, or status.
+
+              {/* Subline */}
+              <p style={{ margin: 0, fontSize: 13.5, color: T.muted, fontWeight: 400 }}>
+                Search 400,000+ trials across all conditions using the official ClinicalTrials.gov registry.
               </p>
             </div>
 
-            {/* Live data badge — inside the card, top-right */}
-            <div className="sf-live-badge" style={{
+            {/* Badge: top-right inside card */}
+            <div className="sf-badge" style={{
               display: "flex",
               alignItems: "center",
               gap: 7,
-              fontSize: 12,
-              color: T.greenText,
-              background: T.greenFaint,
-              border: `1px solid ${T.greenBorder}`,
+              fontSize: 11.5,
+              fontWeight: 600,
+              letterSpacing: "0.4px",
+              color: T.badgeText,
+              background: T.badgeBg,
+              border: `1px solid ${T.badgeBorder}`,
               borderRadius: 20,
-              padding: "5px 13px",
+              padding: "6px 14px",
               flexShrink: 0,
               alignSelf: "flex-start",
               whiteSpace: "nowrap",
@@ -284,56 +345,71 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
                 width: 7, height: 7,
                 borderRadius: "50%",
                 background: T.green,
-                flexShrink: 0,
                 display: "inline-block",
+                flexShrink: 0,
                 animation: "sfPulse 2s ease-in-out infinite",
               }} />
-              Search across <strong style={{ margin: "0 3px" }}>400,000+</strong> trials · ClinicalTrials.gov
+              LIVE · 400,000+ TRIALS
             </div>
           </div>
 
           {/* ── Form ── */}
           <form onSubmit={handleSubmit}>
 
-            {/* Condition — full width */}
-            <div style={{ marginBottom: 18 }}>
-              <label style={label}>
-                Condition / Disease <span style={{ color: T.danger }}>*</span>
+            {/* Condition — full width, slightly larger */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={fieldLabel}>
+                {/* pin icon */}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                  stroke={T.hint} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7z"/>
+                  <circle cx="12" cy="9" r="2.5"/>
+                </svg>
+                Condition / Disease
+                <span style={{ color: T.danger, marginLeft: 2 }}>*</span>
               </label>
               <input
-                style={{ ...input, fontSize: 15, padding: "12px 14px" }}
+                style={{ ...fieldInput, fontSize: 15, padding: "12px 14px" }}
                 type="text"
                 value={condition}
                 onChange={(e) => setCondition(e.target.value)}
                 placeholder="e.g. Breast Cancer, Diabetes, Alzheimer…"
                 required
               />
+              <p style={{
+                margin: "5px 0 0",
+                fontSize: 11.5,
+                color: T.hint,
+                fontStyle: "italic",
+              }}>
+                Enter a condition, disease, or keyword to search trials
+              </p>
             </div>
 
             {/* City · State · Phase · Status */}
             <div className="sf-filters">
               <div>
-                <label style={label}>City</label>
-                <input style={input} type="text" value={city}
+                <label style={fieldLabel}>City</label>
+                <input style={fieldInput} type="text" value={city}
                   onChange={(e) => setCity(e.target.value)} placeholder="e.g. Boston" />
               </div>
               <div>
-                <label style={label}>State</label>
-                <select style={{ ...input, cursor: "pointer" }} value={state}
+                <label style={fieldLabel}>State</label>
+                <select style={{ ...fieldInput, cursor: "pointer" }} value={state}
                   onChange={(e) => setState(e.target.value)}>
                   {US_STATES.map((s) => <option key={s} value={s}>{s || "Any State"}</option>)}
                 </select>
               </div>
               <div>
-                <label style={label}>Phase</label>
-                <select style={{ ...input, cursor: "pointer" }} value={phase}
+                <label style={fieldLabel}>Phase</label>
+                <select style={{ ...fieldInput, cursor: "pointer" }} value={phase}
                   onChange={(e) => setPhase(e.target.value)}>
                   {PHASES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
               <div>
-                <label style={label}>Status</label>
-                <select style={{ ...input, cursor: "pointer" }} value={status}
+                <label style={fieldLabel}>Status</label>
+                <select style={{ ...fieldInput, cursor: "pointer" }} value={status}
                   onChange={(e) => setStatus(e.target.value)}>
                   {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
@@ -350,7 +426,7 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
                 background: T.blue,
                 color: "#fff",
                 border: "none",
-                borderRadius: 10,
+                borderRadius: 8,
                 fontSize: 15,
                 fontWeight: 600,
                 cursor: isDisabled ? "not-allowed" : "pointer",
@@ -390,34 +466,37 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
           {/* ── Quick picks ── */}
           <div className="sf-quick-row">
             <span style={{
-              fontSize: 11, fontWeight: 600,
-              letterSpacing: "0.5px", textTransform: "uppercase",
-              color: T.hint, whiteSpace: "nowrap",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.6px",
+              textTransform: "uppercase",
+              color: T.hint,
+              whiteSpace: "nowrap",
             }}>
               Quick
             </span>
-            <span style={{ width: 1, height: 14, background: T.border, flexShrink: 0 }} />
+            <span style={{ width: 1, height: 14, background: T.cardBorder, flexShrink: 0 }} />
             {QUICK_CONDITIONS.map((q) => (
               <button
                 key={q}
                 type="button"
                 onClick={() => handleQuick(q)}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = T.blueFaint;
-                  e.currentTarget.style.borderColor = T.blueBorder;
+                  e.currentTarget.style.background  = T.chipBgHov;
+                  e.currentTarget.style.borderColor = T.chipBrHov;
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = T.bg;
-                  e.currentTarget.style.borderColor = T.border;
+                  e.currentTarget.style.background  = T.chipBg;
+                  e.currentTarget.style.borderColor = T.chipBorder;
                 }}
                 style={{
                   padding: "4px 12px",
                   borderRadius: 20,
-                  border: `1.5px solid ${T.border}`,
-                  background: T.bg,
+                  border: `1.5px solid ${T.chipBorder}`,
+                  background: T.chipBg,
                   fontSize: 12.5,
                   fontWeight: 500,
-                  color: T.blue,
+                  color: T.chipText,
                   cursor: "pointer",
                   fontFamily: "inherit",
                 }}
