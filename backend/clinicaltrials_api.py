@@ -13,6 +13,28 @@ USER_AGENT = "ClinicalTrialLocator/1.0"
 DEFAULT_PAGE_SIZE = 100
 MAX_PAGES = 10
 
+# Maps 2-letter abbreviations (lowercased, stripped) → full state name (lowercased, stripped)
+# The ClinicalTrials.gov API returns full state names like "Connecticut", "New York", etc.
+STATE_ABBREV_TO_FULL = {
+    "al": "alabama",           "ak": "alaska",          "az": "arizona",
+    "ar": "arkansas",          "ca": "california",      "co": "colorado",
+    "ct": "connecticut",       "de": "delaware",        "fl": "florida",
+    "ga": "georgia",           "hi": "hawaii",          "id": "idaho",
+    "il": "illinois",          "in": "indiana",         "ia": "iowa",
+    "ks": "kansas",            "ky": "kentucky",        "la": "louisiana",
+    "me": "maine",             "md": "maryland",        "ma": "massachusetts",
+    "mi": "michigan",          "mn": "minnesota",       "ms": "mississippi",
+    "mo": "missouri",          "mt": "montana",         "ne": "nebraska",
+    "nv": "nevada",            "nh": "newhampshire",    "nj": "newjersey",
+    "nm": "newmexico",         "ny": "newyork",         "nc": "northcarolina",
+    "nd": "northdakota",       "oh": "ohio",            "ok": "oklahoma",
+    "or": "oregon",            "pa": "pennsylvania",    "ri": "rhodeisland",
+    "sc": "southcarolina",     "sd": "southdakota",     "tn": "tennessee",
+    "tx": "texas",             "ut": "utah",            "vt": "vermont",
+    "va": "virginia",          "wa": "washington",      "wv": "westvirginia",
+    "wi": "wisconsin",         "wy": "wyoming",         "dc": "districtofcolumbia",
+}
+
 
 def _normalize_value(value: str | None) -> str:
     if not value:
@@ -105,17 +127,23 @@ def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
             return False
 
     locations = trial.get("locations", [])
+
     if normalized_city and not any(
         _normalize_value(location.get("city")) == normalized_city
         for location in locations
     ):
         return False
 
-    if normalized_state and not any(
-        _normalize_value(location.get("state")) == normalized_state
-        for location in locations
-    ):
-        return False
+    # FIX: Expand 2-letter abbreviation to full state name before comparing.
+    # The API returns full names like "Connecticut", "New York", etc.
+    # The frontend sends abbreviations like "CT", "NY", which normalize to "ct", "ny".
+    if normalized_state:
+        resolved_state = STATE_ABBREV_TO_FULL.get(normalized_state, normalized_state)
+        if not any(
+            _normalize_value(location.get("state")) == resolved_state
+            for location in locations
+        ):
+            return False
 
     if filters.get("us_only"):
         if locations and not any(

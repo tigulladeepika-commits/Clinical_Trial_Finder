@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import SearchForm from "./SearchForm";
 import TrialList from "./TrialList";
 import TrialSiteMap from "./TrialSiteMap";
@@ -30,30 +31,63 @@ type SiteData = {
   }[];
 };
 
-export default function Home() {
-  const [filters, setFilters] = useState<Filters | null>(null);
+// Inner component that uses useSearchParams (must be inside Suspense)
+function HomeInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Derive filters directly from URL — this is the single source of truth.
+  // When the URL has a condition param, we're in "has results" mode.
+  const filtersFromUrl: Filters = {
+    condition: searchParams.get("condition") || "",
+    city:      searchParams.get("city")      || "",
+    state:     searchParams.get("state")     || "",
+    status:    searchParams.get("status")    || "",
+    phase:     searchParams.get("phase")     || "",
+  };
+
+  const hasResults = !!filtersFromUrl.condition;
+
   const [selectedTrial, setSelectedTrial] = useState<Trial | null>(null);
   const [siteData, setSiteData] = useState<SiteData | null>(null);
   const [sitesLoading, setSitesLoading] = useState(false);
   const [sitesError, setSitesError] = useState<string | null>(null);
 
-  const hasResults = filters !== null;
+  // Reset selected trial whenever search params change
+  const prevConditionRef = useRef(filtersFromUrl.condition);
+  useEffect(() => {
+    if (prevConditionRef.current !== filtersFromUrl.condition) {
+      setSelectedTrial(null);
+      setSiteData(null);
+      setSitesError(null);
+      prevConditionRef.current = filtersFromUrl.condition;
+    }
+  }, [filtersFromUrl.condition]);
 
-  const { trials, loading, error, totalCount, hasMore, refetch, loadMore, hasAnyFilter } =
+  const { trials, loading, error, totalCount, hasMore, refetch, loadMore } =
     useTrials(
-      filters?.condition ?? null,
-      filters?.city ?? null,
-      filters?.state ?? null,
-      filters?.status || undefined,
-      filters?.phase || undefined,
+      hasResults ? filtersFromUrl.condition : null,
+      filtersFromUrl.city      || null,
+      filtersFromUrl.state     || null,
+      filtersFromUrl.status    || undefined,
+      filtersFromUrl.phase     || undefined,
     );
 
+  // On search submit: push new params to URL instead of local state.
+  // This means the compact search bar is always pre-filled from URL,
+  // and a page refresh/share will re-run the same search automatically.
   const handleSearch = useCallback((nextFilters: Filters) => {
-    setFilters(nextFilters);
+    const params = new URLSearchParams();
+    if (nextFilters.condition.trim()) params.set("condition", nextFilters.condition.trim());
+    if (nextFilters.city.trim())      params.set("city",      nextFilters.city.trim());
+    if (nextFilters.state)            params.set("state",     nextFilters.state);
+    if (nextFilters.status)           params.set("status",    nextFilters.status);
+    if (nextFilters.phase)            params.set("phase",     nextFilters.phase);
+    router.push(`?${params.toString()}`);
     setSelectedTrial(null);
     setSiteData(null);
     setSitesError(null);
-  }, []);
+  }, [router]);
 
   const handleSelectTrial = useCallback(async (trial: Trial) => {
     if (selectedTrial?.nctId === trial.nctId) {
@@ -89,17 +123,26 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ── SEARCH FORM (no results yet) ── */}
+      {/* ── SEARCH FORM (no results yet — hero mode) ── */}
       {!hasResults && (
         <div className="search-card">
-          <SearchForm onSearch={handleSearch} loading={loading} compact={false} />
+          <SearchForm
+            onSearch={handleSearch}
+            loading={loading}
+            compact={false}
+          />
         </div>
       )}
 
-      {/* ── COMPACT SEARCH BAR (after results) ── */}
+      {/* ── COMPACT SEARCH BAR (after results — pre-filled from URL) ── */}
       {hasResults && (
         <div className="search-card">
-          <SearchForm onSearch={handleSearch} loading={loading} compact={true} />
+          <SearchForm
+            onSearch={handleSearch}
+            loading={loading}
+            compact={true}
+            initialValues={filtersFromUrl}
+          />
         </div>
       )}
 
@@ -181,7 +224,7 @@ export default function Home() {
                       <span key={p} className="badge badge-phase">{p}</span>
                     ))}
                   </div>
-                  {/* Title — reduced font */}
+                  {/* Title */}
                   <div style={{
                     fontSize: 15, fontWeight: 600, color: "var(--gray-800)",
                     lineHeight: 1.45, marginBottom: selectedTrial.sponsor ? 4 : 0,
@@ -224,5 +267,18 @@ export default function Home() {
         </div>
       )}
     </div>
+  );
+}
+
+// Wrap in Suspense because useSearchParams requires it in Next.js App Router
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh" }}>
+        <div className="spinner" />
+      </div>
+    }>
+      <HomeInner />
+    </Suspense>
   );
 }

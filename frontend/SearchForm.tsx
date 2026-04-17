@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 
 /* ─── types ──────────────────────────────────────────────────────────────── */
 type SearchFilters = {
@@ -15,6 +15,9 @@ type SearchFormProps = {
   onSearch: (filters: SearchFilters) => void;
   loading?: boolean;
   compact?: boolean;
+  // When in compact mode (after results), pass current search values so the
+  // form fields are pre-filled and the user can edit + re-search easily.
+  initialValues?: SearchFilters;
 };
 
 /* ─── constants ──────────────────────────────────────────────────────────── */
@@ -96,12 +99,32 @@ const fieldLabel: React.CSSProperties = {
 };
 
 /* ─── component ──────────────────────────────────────────────────────────── */
-export default function SearchForm({ onSearch, loading, compact }: SearchFormProps) {
-  const [condition, setCondition] = useState("");
-  const [city,      setCity]      = useState("");
-  const [state,     setState]     = useState("");
-  const [status,    setStatus]    = useState("");
-  const [phase,     setPhase]     = useState("");
+export default function SearchForm({ onSearch, loading, compact, initialValues }: SearchFormProps) {
+  // Initialize state from initialValues if provided (used in compact/results mode
+  // so the search bar is pre-filled with the current active search).
+  const [condition, setCondition] = useState(initialValues?.condition || "");
+  const [city,      setCity]      = useState(initialValues?.city      || "");
+  const [state,     setState]     = useState(initialValues?.state     || "");
+  const [status,    setStatus]    = useState(initialValues?.status    || "");
+  const [phase,     setPhase]     = useState(initialValues?.phase     || "");
+
+  // Sync fields if initialValues changes (e.g. user navigates back/forward
+  // through browser history, URL params update without unmounting).
+  useEffect(() => {
+    if (initialValues) {
+      setCondition(initialValues.condition || "");
+      setCity(initialValues.city           || "");
+      setState(initialValues.state         || "");
+      setStatus(initialValues.status       || "");
+      setPhase(initialValues.phase         || "");
+    }
+  }, [
+    initialValues?.condition,
+    initialValues?.city,
+    initialValues?.state,
+    initialValues?.status,
+    initialValues?.phase,
+  ]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -116,59 +139,99 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
 
   const isDisabled = loading || !condition.trim();
 
-  /* ── COMPACT ─────────────────────────────────────────────────────────── */
+  /* ── COMPACT (shown above results — always pre-filled) ───────────────── */
   if (compact) {
     return (
       <form onSubmit={handleSubmit} style={{ width: "100%", fontFamily: "inherit" }}>
         <div className="sf-compact-grid">
+          {/* Condition */}
           <div>
             <label style={fieldLabel}>
               Condition <span style={{ color: T.danger }}>*</span>
             </label>
-            <input style={fieldInput} type="text" value={condition}
+            <input
+              style={fieldInput}
+              type="text"
+              value={condition}
               onChange={(e) => setCondition(e.target.value)}
-              placeholder="e.g. Breast Cancer…" required />
+              placeholder="e.g. Breast Cancer…"
+              required
+            />
           </div>
+
+          {/* City */}
           <div>
             <label style={fieldLabel}>City</label>
-            <input style={fieldInput} type="text" value={city}
-              onChange={(e) => setCity(e.target.value)} placeholder="Boston" />
+            <input
+              style={fieldInput}
+              type="text"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="Boston"
+            />
           </div>
+
+          {/* State */}
           <div>
             <label style={fieldLabel}>State</label>
-            <select style={{ ...fieldInput, cursor: "pointer" }} value={state}
-              onChange={(e) => setState(e.target.value)}>
-              {US_STATES.map((s) => <option key={s} value={s}>{s || "Any"}</option>)}
+            <select
+              style={{ ...fieldInput, cursor: "pointer" }}
+              value={state}
+              onChange={(e) => setState(e.target.value)}
+            >
+              {US_STATES.map((s) => (
+                <option key={s} value={s}>{s || "Any"}</option>
+              ))}
             </select>
           </div>
+
+          {/* Phase */}
           <div>
             <label style={fieldLabel}>Phase</label>
-            <select style={{ ...fieldInput, cursor: "pointer" }} value={phase}
-              onChange={(e) => setPhase(e.target.value)}>
-              {PHASES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            <select
+              style={{ ...fieldInput, cursor: "pointer" }}
+              value={phase}
+              onChange={(e) => setPhase(e.target.value)}
+            >
+              {PHASES.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
             </select>
           </div>
+
+          {/* Status */}
           <div>
             <label style={fieldLabel}>Status</label>
-            <select style={{ ...fieldInput, cursor: "pointer" }} value={status}
-              onChange={(e) => setStatus(e.target.value)}>
-              {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            <select
+              style={{ ...fieldInput, cursor: "pointer" }}
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
+              {STATUSES.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
             </select>
           </div>
+
+          {/* Submit */}
           <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-            <button type="submit" disabled={isDisabled} style={{
-              padding: "10px 20px",
-              background: T.blue,
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: isDisabled ? "not-allowed" : "pointer",
-              opacity: isDisabled ? 0.55 : 1,
-              whiteSpace: "nowrap",
-              fontFamily: "inherit",
-            }}>
+            <button
+              type="submit"
+              disabled={isDisabled}
+              style={{
+                padding: "10px 20px",
+                background: T.blue,
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: isDisabled ? "not-allowed" : "pointer",
+                opacity: isDisabled ? 0.55 : 1,
+                whiteSpace: "nowrap",
+                fontFamily: "inherit",
+              }}
+            >
               {loading ? "Searching…" : "Search"}
             </button>
           </div>
@@ -192,7 +255,7 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
     );
   }
 
-  /* ── HERO ────────────────────────────────────────────────────────────── */
+  /* ── HERO (initial landing — no results yet) ─────────────────────────── */
   return (
     <>
       <style>{`
@@ -307,28 +370,48 @@ export default function SearchForm({ onSearch, loading, compact }: SearchFormPro
             <div className="sf-filters">
               <div>
                 <label style={fieldLabel}>City</label>
-                <input style={fieldInput} type="text" value={city}
-                  onChange={(e) => setCity(e.target.value)} placeholder="e.g. Boston" />
+                <input
+                  style={fieldInput}
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="e.g. Boston"
+                />
               </div>
               <div>
                 <label style={fieldLabel}>State</label>
-                <select style={{ ...fieldInput, cursor: "pointer" }} value={state}
-                  onChange={(e) => setState(e.target.value)}>
-                  {US_STATES.map((s) => <option key={s} value={s}>{s || "Any State"}</option>)}
+                <select
+                  style={{ ...fieldInput, cursor: "pointer" }}
+                  value={state}
+                  onChange={(e) => setState(e.target.value)}
+                >
+                  {US_STATES.map((s) => (
+                    <option key={s} value={s}>{s || "Any State"}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label style={fieldLabel}>Phase</label>
-                <select style={{ ...fieldInput, cursor: "pointer" }} value={phase}
-                  onChange={(e) => setPhase(e.target.value)}>
-                  {PHASES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                <select
+                  style={{ ...fieldInput, cursor: "pointer" }}
+                  value={phase}
+                  onChange={(e) => setPhase(e.target.value)}
+                >
+                  {PHASES.map((p) => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label style={fieldLabel}>Status</label>
-                <select style={{ ...fieldInput, cursor: "pointer" }} value={status}
-                  onChange={(e) => setStatus(e.target.value)}>
-                  {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                <select
+                  style={{ ...fieldInput, cursor: "pointer" }}
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                >
+                  {STATUSES.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
                 </select>
               </div>
             </div>

@@ -30,7 +30,16 @@
   --radius-xl: 24px;
 }
 
-html, body { height: 100%; }
+/* FIX (Issue 3 — double scrollbar in Salesforce):
+   Salesforce embeds this app in an iframe and provides its own page-level
+   scrollbar. Setting overflow to visible/auto on html+body would create a
+   second scrollbar inside the iframe. We let content grow naturally and
+   delegate scrolling to the Salesforce container. */
+html, body {
+  height: auto;          /* was: height: 100% — caused a fixed viewport box */
+  overflow-x: hidden;    /* still prevent horizontal overflow */
+  overflow-y: visible;   /* allow Salesforce's scroll to handle vertical */
+}
 
 body {
   font-family: 'DM Sans', sans-serif;
@@ -312,28 +321,27 @@ body {
 }
 
 /* ── RESULTS LAYOUT ── */
+/* FIX (Issue 3): Removed min-height: calc(100vh - ...) which forced a
+   viewport-sized box and triggered a scrollbar inside the Salesforce iframe.
+   Content now grows naturally and Salesforce's own scrollbar handles it. */
 .results-layout {
   display: flex;
-  min-height: calc(100vh - 64px - 85px);
 }
 
 /* Trial list panel */
+/* FIX (Issue 3): Removed height: calc(100vh - 149px), overflow-y: auto,
+   and position: sticky. These caused a second inner scrollbar because the
+   panel had its own fixed-height scroll container. Content now flows freely. */
 .trials-panel {
   width: 420px;
   flex-shrink: 0;
   border-right: 1px solid var(--gray-200);
   background: var(--white);
-  overflow-y: auto;
-  height: calc(100vh - 149px);
-  position: sticky;
-  top: 149px;
 }
 
 .trials-panel-header {
   padding: 20px 24px 16px;
   border-bottom: 1px solid var(--gray-100);
-  position: sticky;
-  top: 0;
   background: var(--white);
   z-index: 10;
 }
@@ -423,9 +431,10 @@ body {
 .load-more-btn:hover { background: var(--blue-50); }
 
 /* ── DETAIL PANEL ── */
+/* FIX (Issue 3): Removed overflow-y: auto which created a second scroll
+   container inside the Salesforce iframe. */
 .detail-panel {
   flex: 1;
-  overflow-y: auto;
   background: var(--gray-50);
 }
 
