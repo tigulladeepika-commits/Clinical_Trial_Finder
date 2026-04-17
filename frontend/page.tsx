@@ -141,8 +141,9 @@ function HomeInner() {
       {/* ── COMPACT SEARCH BAR (results mode — pre-filled from URL, fully editable) ── */}
       {hasResults && (
         <div className="search-card">
+          {/* remount when URL params change */}
           <SearchForm
-            key={searchFormKey}         {/* remount when URL params change */}
+            key={searchFormKey}
             onSearch={handleSearch}
             loading={loading}
             compact={true}
