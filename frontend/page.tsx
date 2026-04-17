@@ -129,12 +129,14 @@ function HomeInner() {
       </header>
 
       {/* ── SEARCH FORM (hero mode — no results yet) ── */}
+      {/* FIX: Pass initialValues so URL params pre-populate on load/back-navigation */}
       {!hasResults && (
         <SearchForm
           key="hero"
           onSearch={handleSearch}
           loading={loading}
           compact={false}
+          initialValues={filtersFromUrl}
         />
       )}
 
