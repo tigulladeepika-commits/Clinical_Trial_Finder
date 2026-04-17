@@ -31,13 +31,11 @@ type SiteData = {
   }[];
 };
 
-// Inner component that uses useSearchParams (must be inside Suspense)
 function HomeInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Derive filters directly from URL — this is the single source of truth.
-  // When the URL has a condition param, we're in "has results" mode.
+  // Derive filters directly from URL — single source of truth
   const filtersFromUrl: Filters = {
     condition: searchParams.get("condition") || "",
     city:      searchParams.get("city")      || "",
@@ -53,7 +51,6 @@ function HomeInner() {
   const [sitesLoading, setSitesLoading] = useState(false);
   const [sitesError, setSitesError] = useState<string | null>(null);
 
-  // Reset selected trial whenever search params change
   const prevConditionRef = useRef(filtersFromUrl.condition);
   useEffect(() => {
     if (prevConditionRef.current !== filtersFromUrl.condition) {
@@ -67,15 +64,12 @@ function HomeInner() {
   const { trials, loading, error, totalCount, hasMore, refetch, loadMore } =
     useTrials(
       hasResults ? filtersFromUrl.condition : null,
-      filtersFromUrl.city      || null,
-      filtersFromUrl.state     || null,
-      filtersFromUrl.status    || undefined,
-      filtersFromUrl.phase     || undefined,
+      filtersFromUrl.city   || null,
+      filtersFromUrl.state  || null,
+      filtersFromUrl.status || undefined,
+      filtersFromUrl.phase  || undefined,
     );
 
-  // On search submit: push new params to URL instead of local state.
-  // This means the compact search bar is always pre-filled from URL,
-  // and a page refresh/share will re-run the same search automatically.
   const handleSearch = useCallback((nextFilters: Filters) => {
     const params = new URLSearchParams();
     if (nextFilters.condition.trim()) params.set("condition", nextFilters.condition.trim());
@@ -109,6 +103,17 @@ function HomeInner() {
     }
   }, [selectedTrial]);
 
+  // Build a stable key from all URL params so SearchForm fully remounts
+  // whenever the user submits a new search — ensuring initialValues always
+  // populate the fields correctly on the results page.
+  const searchFormKey = [
+    filtersFromUrl.condition,
+    filtersFromUrl.city,
+    filtersFromUrl.state,
+    filtersFromUrl.status,
+    filtersFromUrl.phase,
+  ].join("|");
+
   return (
     <div className={`app-shell${hasResults ? " has-results" : ""}`}>
 
@@ -123,21 +128,21 @@ function HomeInner() {
         </div>
       </header>
 
-      {/* ── SEARCH FORM (no results yet — hero mode) ── */}
+      {/* ── SEARCH FORM (hero mode — no results yet) ── */}
       {!hasResults && (
-        <div className="search-card">
-          <SearchForm
-            onSearch={handleSearch}
-            loading={loading}
-            compact={false}
-          />
-        </div>
+        <SearchForm
+          key="hero"
+          onSearch={handleSearch}
+          loading={loading}
+          compact={false}
+        />
       )}
 
-      {/* ── COMPACT SEARCH BAR (after results — pre-filled from URL) ── */}
+      {/* ── COMPACT SEARCH BAR (results mode — pre-filled from URL, fully editable) ── */}
       {hasResults && (
         <div className="search-card">
           <SearchForm
+            key={searchFormKey}         {/* remount when URL params change */}
             onSearch={handleSearch}
             loading={loading}
             compact={true}
@@ -201,14 +206,11 @@ function HomeInner() {
 
             {selectedTrial && (
               <>
-                {/* ── Compact trial header ── */}
                 <div style={{
-                  padding: "16px 28px 0",
+                  padding: "16px 28px",
                   borderBottom: "1px solid var(--gray-100)",
-                  paddingBottom: 16,
                   background: "var(--white)",
                 }}>
-                  {/* NCT + badges row */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                     <span style={{
                       fontSize: 11, fontWeight: 700, color: "var(--blue-500)",
@@ -224,7 +226,6 @@ function HomeInner() {
                       <span key={p} className="badge badge-phase">{p}</span>
                     ))}
                   </div>
-                  {/* Title */}
                   <div style={{
                     fontSize: 15, fontWeight: 600, color: "var(--gray-800)",
                     lineHeight: 1.45, marginBottom: selectedTrial.sponsor ? 4 : 0,
@@ -236,7 +237,6 @@ function HomeInner() {
                   )}
                 </div>
 
-                {/* Loading sites */}
                 {sitesLoading && (
                   <div className="state-box">
                     <div className="spinner" />
@@ -253,7 +253,6 @@ function HomeInner() {
                   </div>
                 )}
 
-                {/* Map + Locations */}
                 {siteData && !sitesLoading && (
                   <TrialSiteMap
                     sites={siteData.sites}
@@ -270,7 +269,6 @@ function HomeInner() {
   );
 }
 
-// Wrap in Suspense because useSearchParams requires it in Next.js App Router
 export default function Home() {
   return (
     <Suspense fallback={

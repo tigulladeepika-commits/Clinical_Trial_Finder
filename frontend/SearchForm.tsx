@@ -15,8 +15,6 @@ type SearchFormProps = {
   onSearch: (filters: SearchFilters) => void;
   loading?: boolean;
   compact?: boolean;
-  // When in compact mode (after results), pass current search values so the
-  // form fields are pre-filled and the user can edit + re-search easily.
   initialValues?: SearchFilters;
 };
 
@@ -100,24 +98,21 @@ const fieldLabel: React.CSSProperties = {
 
 /* ─── component ──────────────────────────────────────────────────────────── */
 export default function SearchForm({ onSearch, loading, compact, initialValues }: SearchFormProps) {
-  // Initialize state from initialValues if provided (used in compact/results mode
-  // so the search bar is pre-filled with the current active search).
-  const [condition, setCondition] = useState(initialValues?.condition || "");
-  const [city,      setCity]      = useState(initialValues?.city      || "");
-  const [state,     setState]     = useState(initialValues?.state     || "");
-  const [status,    setStatus]    = useState(initialValues?.status    || "");
-  const [phase,     setPhase]     = useState(initialValues?.phase     || "");
+  // Always initialize from initialValues so compact bar is pre-filled on first render
+  const [condition, setCondition] = useState(initialValues?.condition ?? "");
+  const [city,      setCity]      = useState(initialValues?.city      ?? "");
+  const [state,     setState]     = useState(initialValues?.state     ?? "");
+  const [status,    setStatus]    = useState(initialValues?.status    ?? "");
+  const [phase,     setPhase]     = useState(initialValues?.phase     ?? "");
 
-  // Sync fields if initialValues changes (e.g. user navigates back/forward
-  // through browser history, URL params update without unmounting).
+  // Sync if URL params change (browser back/forward navigation)
   useEffect(() => {
-    if (initialValues) {
-      setCondition(initialValues.condition || "");
-      setCity(initialValues.city           || "");
-      setState(initialValues.state         || "");
-      setStatus(initialValues.status       || "");
-      setPhase(initialValues.phase         || "");
-    }
+    if (!initialValues) return;
+    setCondition(initialValues.condition ?? "");
+    setCity(initialValues.city           ?? "");
+    setState(initialValues.state         ?? "");
+    setStatus(initialValues.status       ?? "");
+    setPhase(initialValues.phase         ?? "");
   }, [
     initialValues?.condition,
     initialValues?.city,
@@ -139,110 +134,26 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
 
   const isDisabled = loading || !condition.trim();
 
-  /* ── COMPACT (shown above results — always pre-filled) ───────────────── */
+  /* ── COMPACT (shown above results — pre-filled + fully editable) ─────── */
   if (compact) {
     return (
-      <form onSubmit={handleSubmit} style={{ width: "100%", fontFamily: "inherit" }}>
-        <div className="sf-compact-grid">
-          {/* Condition */}
-          <div>
-            <label style={fieldLabel}>
-              Condition <span style={{ color: T.danger }}>*</span>
-            </label>
-            <input
-              style={fieldInput}
-              type="text"
-              value={condition}
-              onChange={(e) => setCondition(e.target.value)}
-              placeholder="e.g. Breast Cancer…"
-              required
-            />
-          </div>
-
-          {/* City */}
-          <div>
-            <label style={fieldLabel}>City</label>
-            <input
-              style={fieldInput}
-              type="text"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="Boston"
-            />
-          </div>
-
-          {/* State */}
-          <div>
-            <label style={fieldLabel}>State</label>
-            <select
-              style={{ ...fieldInput, cursor: "pointer" }}
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-            >
-              {US_STATES.map((s) => (
-                <option key={s} value={s}>{s || "Any"}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Phase */}
-          <div>
-            <label style={fieldLabel}>Phase</label>
-            <select
-              style={{ ...fieldInput, cursor: "pointer" }}
-              value={phase}
-              onChange={(e) => setPhase(e.target.value)}
-            >
-              {PHASES.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Status */}
-          <div>
-            <label style={fieldLabel}>Status</label>
-            <select
-              style={{ ...fieldInput, cursor: "pointer" }}
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              {STATUSES.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Submit */}
-          <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-            <button
-              type="submit"
-              disabled={isDisabled}
-              style={{
-                padding: "10px 20px",
-                background: T.blue,
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: isDisabled ? "not-allowed" : "pointer",
-                opacity: isDisabled ? 0.55 : 1,
-                whiteSpace: "nowrap",
-                fontFamily: "inherit",
-              }}
-            >
-              {loading ? "Searching…" : "Search"}
-            </button>
-          </div>
-        </div>
-
+      <>
         <style>{`
           .sf-compact-grid {
             display: grid;
             grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
             gap: 12px;
             align-items: flex-end;
+          }
+          .sf-compact-grid input,
+          .sf-compact-grid select {
+            transition: border-color 0.15s, box-shadow 0.15s;
+          }
+          .sf-compact-grid input:focus,
+          .sf-compact-grid select:focus {
+            border-color: #60a5fa !important;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+            outline: none;
           }
           @media (max-width: 900px) {
             .sf-compact-grid { grid-template-columns: repeat(3, 1fr); }
@@ -251,7 +162,129 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
             .sf-compact-grid { grid-template-columns: 1fr; }
           }
         `}</style>
-      </form>
+
+        <form onSubmit={handleSubmit} style={{ width: "100%", fontFamily: "inherit" }}>
+          <div className="sf-compact-grid">
+
+            {/* Condition */}
+            <div>
+              <label style={fieldLabel}>
+                Condition <span style={{ color: T.danger, marginLeft: 2 }}>*</span>
+              </label>
+              <input
+                style={fieldInput}
+                type="text"
+                value={condition}
+                onChange={(e) => setCondition(e.target.value)}
+                placeholder="e.g. Breast Cancer…"
+                required
+              />
+            </div>
+
+            {/* City */}
+            <div>
+              <label style={fieldLabel}>City</label>
+              <input
+                style={fieldInput}
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="Any city"
+              />
+            </div>
+
+            {/* State */}
+            <div>
+              <label style={fieldLabel}>State</label>
+              <select
+                style={{ ...fieldInput, cursor: "pointer" }}
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+              >
+                {US_STATES.map((s) => (
+                  <option key={s} value={s}>{s || "Any"}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Phase */}
+            <div>
+              <label style={fieldLabel}>Phase</label>
+              <select
+                style={{ ...fieldInput, cursor: "pointer" }}
+                value={phase}
+                onChange={(e) => setPhase(e.target.value)}
+              >
+                {PHASES.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status */}
+            <div>
+              <label style={fieldLabel}>Status</label>
+              <select
+                style={{ ...fieldInput, cursor: "pointer" }}
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                {STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Submit */}
+            <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+              <button
+                type="submit"
+                disabled={isDisabled}
+                style={{
+                  padding: "10px 20px",
+                  background: T.blue,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: isDisabled ? "not-allowed" : "pointer",
+                  opacity: isDisabled ? 0.55 : 1,
+                  whiteSpace: "nowrap",
+                  fontFamily: "inherit",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  transition: "opacity 0.15s, box-shadow 0.15s",
+                }}
+              >
+                {loading ? (
+                  <>
+                    <span style={{
+                      width: 13, height: 13,
+                      border: "2px solid rgba(255,255,255,0.3)",
+                      borderTopColor: "#fff",
+                      borderRadius: "50%",
+                      display: "inline-block",
+                      animation: "sfSpin 0.7s linear infinite",
+                    }} />
+                    Searching…
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                    </svg>
+                    Search
+                  </>
+                )}
+              </button>
+            </div>
+
+          </div>
+        </form>
+      </>
     );
   }
 
@@ -276,9 +309,7 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
           padding: 36px 40px 32px;
           position: relative;
         }
-        .sf-header {
-          margin-bottom: 32px;
-        }
+        .sf-header { margin-bottom: 32px; }
         .sf-filters {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
@@ -300,9 +331,7 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
           .sf-card    { padding: 24px 20px; border-left-width: 4px; }
           .sf-filters { grid-template-columns: 1fr; }
         }
-        @keyframes sfSpin {
-          to { transform: rotate(360deg); }
-        }
+        @keyframes sfSpin { to { transform: rotate(360deg); } }
       `}</style>
 
       <div className="sf-shell">
@@ -455,7 +484,7 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
                 <>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
                   </svg>
                   Search Trials
                 </>
