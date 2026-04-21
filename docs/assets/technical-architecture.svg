@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <rect width="1200" height="760" fill="#f5f8fc"/>
+  <text x="62" y="58" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#16324f">Clinical Trial Finder - Technical Architecture</text>
+  <text x="62" y="90" font-family="Arial, sans-serif" font-size="15" fill="#577188">Request flow and runtime boundaries across the browser, frontend, backend, and external services.</text>
+
+  <g font-family="Arial, sans-serif">
+    <rect x="60" y="140" width="240" height="520" rx="22" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="122" y="182" font-size="22" font-weight="700" fill="#16324f">Browser</text>
+    <rect x="90" y="214" width="180" height="104" rx="16" fill="#eef5ff" stroke="#c9daee"/>
+    <text x="130" y="248" font-size="18" font-weight="700" fill="#16324f">User Interface</text>
+    <text x="112" y="276" font-size="14" fill="#597186">Search form, results,</text>
+    <text x="111" y="298" font-size="14" fill="#597186">detail panel, and map.</text>
+
+    <rect x="330" y="140" width="280" height="520" rx="22" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="400" y="182" font-size="22" font-weight="700" fill="#16324f">Next.js Frontend</text>
+    <rect x="362" y="214" width="216" height="90" rx="16" fill="#eef5ff" stroke="#c9daee"/>
+    <text x="422" y="247" font-size="18" font-weight="700" fill="#16324f">page.tsx</text>
+    <text x="385" y="274" font-size="14" fill="#597186">Coordinates filters, selected</text>
+    <text x="415" y="294" font-size="14" fill="#597186">trial, and detail state.</text>
+
+    <rect x="362" y="324" width="216" height="90" rx="16" fill="#eef5ff" stroke="#c9daee"/>
+    <text x="404" y="357" font-size="18" font-weight="700" fill="#16324f">SearchForm</text>
+    <text x="399" y="384" font-size="14" fill="#597186">Collects required and</text>
+    <text x="392" y="404" font-size="14" fill="#597186">optional filter values.</text>
+
+    <rect x="362" y="434" width="216" height="90" rx="16" fill="#eef5ff" stroke="#c9daee"/>
+    <text x="413" y="467" font-size="18" font-weight="700" fill="#16324f">useTrials</text>
+    <text x="388" y="494" font-size="14" fill="#597186">Calls backend endpoints</text>
+    <text x="394" y="514" font-size="14" fill="#597186">and tracks pagination.</text>
+
+    <rect x="362" y="544" width="216" height="90" rx="16" fill="#eef5ff" stroke="#c9daee"/>
+    <text x="389" y="577" font-size="18" font-weight="700" fill="#16324f">TrialSiteMap</text>
+    <text x="392" y="604" font-size="14" fill="#597186">Loads the map SDK and</text>
+    <text x="402" y="624" font-size="14" fill="#597186">plots site locations.</text>
+
+    <rect x="640" y="140" width="260" height="520" rx="22" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="708" y="182" font-size="22" font-weight="700" fill="#16324f">FastAPI Backend</text>
+    <rect x="668" y="214" width="204" height="92" rx="16" fill="#eef8f0" stroke="#c9e5d0"/>
+    <text x="735" y="247" font-size="18" font-weight="700" fill="#16324f">main.py</text>
+    <text x="704" y="274" font-size="14" fill="#597186">App creation, router mount,</text>
+    <text x="717" y="294" font-size="14" fill="#597186">health endpoint, CORS.</text>
+
+    <rect x="668" y="326" width="204" height="92" rx="16" fill="#eef8f0" stroke="#c9e5d0"/>
+    <text x="736" y="359" font-size="18" font-weight="700" fill="#16324f">trials.py</text>
+    <text x="701" y="386" font-size="14" fill="#597186">Search and site-detail</text>
+    <text x="742" y="406" font-size="14" fill="#597186">route handlers.</text>
+
+    <rect x="668" y="438" width="204" height="92" rx="16" fill="#eef8f0" stroke="#c9e5d0"/>
+    <text x="676" y="471" font-size="18" font-weight="700" fill="#16324f">clinicaltrials_api.py</text>
+    <text x="699" y="498" font-size="14" fill="#597186">Upstream fetch, mapping,</text>
+    <text x="718" y="518" font-size="14" fill="#597186">and local filtering.</text>
+
+    <rect x="668" y="550" width="204" height="92" rx="16" fill="#eef8f0" stroke="#c9e5d0"/>
+    <text x="684" y="583" font-size="18" font-weight="700" fill="#16324f">mapquest_api.py</text>
+    <text x="699" y="610" font-size="14" fill="#597186">Fallback address lookup</text>
+    <text x="721" y="630" font-size="14" fill="#597186">for missing coordinates.</text>
+
+    <rect x="930" y="140" width="210" height="520" rx="22" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="960" y="182" font-size="22" font-weight="700" fill="#16324f">External Services</text>
+    <rect x="956" y="220" width="158" height="110" rx="16" fill="#fff6ea" stroke="#edd6b2"/>
+    <text x="975" y="256" font-size="18" font-weight="700" fill="#16324f">ClinicalTrials.gov</text>
+    <text x="992" y="286" font-size="14" fill="#597186">Study search and</text>
+    <text x="989" y="306" font-size="14" fill="#597186">study detail APIs.</text>
+
+    <rect x="956" y="364" width="158" height="110" rx="16" fill="#fff6ea" stroke="#edd6b2"/>
+    <text x="986" y="400" font-size="18" font-weight="700" fill="#16324f">MapQuest API</text>
+    <text x="992" y="430" font-size="14" fill="#597186">Fallback geocode</text>
+    <text x="983" y="450" font-size="14" fill="#597186">for missing site points.</text>
+
+    <rect x="956" y="508" width="158" height="110" rx="16" fill="#fff6ea" stroke="#edd6b2"/>
+    <text x="980" y="544" font-size="18" font-weight="700" fill="#16324f">MapQuest JS SDK</text>
+    <text x="987" y="574" font-size="14" fill="#597186">Browser map tiles</text>
+    <text x="987" y="594" font-size="14" fill="#597186">and interaction layer.</text>
+  </g>
+
+  <g stroke="#6b9bd6" stroke-width="4" fill="none" stroke-linecap="round">
+    <line x1="300" y1="266" x2="330" y2="266"/>
+    <line x1="610" y1="480" x2="640" y2="480"/>
+    <line x1="900" y1="272" x2="930" y2="272"/>
+    <line x1="900" y1="596" x2="930" y2="564"/>
+  </g>
+  <g fill="#6b9bd6">
+    <polygon points="330,266 316,258 316,274"/>
+    <polygon points="640,480 626,472 626,488"/>
+    <polygon points="930,272 916,264 916,280"/>
+    <polygon points="930,564 920,552 936,556"/>
+  </g>
+
+  <text x="304" y="248" font-family="Arial, sans-serif" font-size="12" fill="#4f6b84">User actions</text>
+  <text x="606" y="462" font-family="Arial, sans-serif" font-size="12" fill="#4f6b84">HTTP /api/trials</text>
+  <text x="835" y="254" font-family="Arial, sans-serif" font-size="12" fill="#4f6b84">Study search</text>
+  <text x="829" y="548" font-family="Arial, sans-serif" font-size="12" fill="#4f6b84">Map SDK + geocode</text>
+</svg>

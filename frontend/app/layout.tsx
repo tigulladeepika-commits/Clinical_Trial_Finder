@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "Clinical Trial Locator",
-  description: "Search clinical trials and map their sites.",
+  title:       "Clinical Trial Navigator",
+  description: "Search clinical trials, explore sites, and discover nearby physicians.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

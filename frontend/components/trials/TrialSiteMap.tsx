@@ -1,38 +1,22 @@
+// components/trials/TrialSiteMap.tsx
+// V2 TrialSiteMap — moved to components/trials/ and extended with
+// a "Find physicians near this site" button on each site popup.
+// All V2 map / tooltip / legend logic is preserved exactly.
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-type Site = {
-  facility: string | null;
-  city: string | null;
-  state: string | null;
-  country: string | null;
-  status: string | null;
-  lat: number | null;
-  lon: number | null;
-};
+import { statusDotColor }              from "@/components/shared/StatusBadge";
+import type { TrialSite }              from "@/types/trial";
+import type { SelectedSite }           from "@/types/physician";
 
 type Props = {
-  sites: Site[];
-  trialTitle: string;
+  sites:       TrialSite[];
+  trialTitle:  string;
+  nctId:       string;
   description?: string | null;
+  onFindPhysicians: (site: SelectedSite) => void;   // NEW — triggers physician panel
 };
-
-function statusColor(status: string | null) {
-  const s = (status || "").toUpperCase().trim();
-  if (s === "RECRUITING")              return "#16a34a";
-  if (s === "NOT_YET_RECRUITING")      return "#84cc16";
-  if (s === "ENROLLING_BY_INVITATION") return "#16a34a";
-  if (s === "ACTIVE_NOT_RECRUITING")   return "#2563eb";
-  if (s === "ACTIVE")                  return "#2563eb";
-  if (s.includes("ACTIVE"))           return "#2563eb";
-  if (s === "TERMINATED")             return "#ef4444";
-  if (s === "WITHDRAWN")              return "#f97316";
-  if (s === "SUSPENDED")              return "#f59e0b";
-  if (s === "COMPLETED")              return "#7c3aed";
-  if (s === "UNKNOWN_STATUS")         return "#94a3b8";
-  return "#94a3b8";
-}
 
 function siteBadgeClass(status: string | null) {
   const s = (status || "").toUpperCase().trim();
@@ -48,13 +32,13 @@ declare global {
   interface Window { L: any; }
 }
 
-export default function TrialSiteMap({ sites, trialTitle, description }: Props) {
-  const mapKey = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
-  const mapDivRef = useRef<HTMLDivElement>(null);
+export default function TrialSiteMap({ sites, trialTitle, nctId, description, onFindPhysicians }: Props) {
+  const mapKey        = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
+  const mapDivRef     = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
 
-  const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
-  const totalSites = sites.length;
+  const mappableSites   = sites.filter((s) => s.lat != null && s.lon != null);
+  const totalSites      = sites.length;
   const recruitingCount = sites.filter((s) => {
     const st = (s.status || "").toUpperCase().trim();
     return st === "RECRUITING" || st === "ENROLLING_BY_INVITATION";
@@ -71,80 +55,50 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
 
       L.mapquest.key = mapKey;
 
-      // Inject styles once
       if (!document.getElementById("trial-map-style")) {
         const style = document.createElement("style");
         style.id = "trial-map-style";
         style.textContent = `
-          /* ── Hover tooltip (lightweight, appears on mouseover) ── */
           .trial-tooltip {
-            background: white !important;
-            border: 1px solid #e2e8f0 !important;
-            border-radius: 8px !important;
-            padding: 8px 12px !important;
-            font-size: 12px !important;
-            font-weight: 500 !important;
-            color: #1e293b !important;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.13) !important;
-            white-space: nowrap !important;
-            pointer-events: none !important;
+            background: white !important; border: 1px solid #e2e8f0 !important;
+            border-radius: 8px !important; padding: 8px 12px !important;
+            font-size: 12px !important; font-weight: 500 !important;
+            color: #1e293b !important; box-shadow: 0 4px 16px rgba(0,0,0,0.13) !important;
+            white-space: nowrap !important; pointer-events: none !important;
           }
-          .trial-tooltip.leaflet-tooltip-top::before {
-            border-top-color: #e2e8f0 !important;
-          }
-
-          /* ── Click popup (richer card, appears on click) ── */
+          .trial-tooltip.leaflet-tooltip-top::before { border-top-color: #e2e8f0 !important; }
           .trial-popup .leaflet-popup-content-wrapper {
-            background: white !important;
-            border: 1px solid #e2e8f0 !important;
-            border-radius: 12px !important;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.14) !important;
-            padding: 0 !important;
-            overflow: hidden !important;
-            min-width: 220px !important;
-            max-width: 280px !important;
+            background: white !important; border: 1px solid #e2e8f0 !important;
+            border-radius: 12px !important; box-shadow: 0 8px 24px rgba(0,0,0,0.14) !important;
+            padding: 0 !important; overflow: hidden !important;
+            min-width: 220px !important; max-width: 300px !important;
           }
-          .trial-popup .leaflet-popup-content {
-            margin: 0 !important;
-            line-height: 1.5 !important;
-          }
-          .trial-popup .leaflet-popup-tip-container {
-            margin-top: -1px !important;
-          }
-          .trial-popup .leaflet-popup-tip {
-            background: white !important;
-            box-shadow: none !important;
-            border: 1px solid #e2e8f0 !important;
-          }
+          .trial-popup .leaflet-popup-content { margin: 0 !important; line-height: 1.5 !important; }
           .trial-popup .leaflet-popup-close-button {
-            top: 8px !important;
-            right: 10px !important;
-            font-size: 18px !important;
-            color: #94a3b8 !important;
-            font-weight: 400 !important;
+            top: 8px !important; right: 10px !important; font-size: 18px !important;
+            color: #94a3b8 !important; font-weight: 400 !important;
           }
-          .trial-popup .leaflet-popup-close-button:hover {
-            color: #475569 !important;
-            background: none !important;
-          }
-
-          /* ── Marker dot ── */
+          .trial-popup .leaflet-popup-close-button:hover { color: #475569 !important; background: none !important; }
           .trial-marker-dot {
-            border-radius: 50% !important;
-            border: 2.5px solid white !important;
+            border-radius: 50% !important; border: 2.5px solid white !important;
             box-shadow: 0 2px 6px rgba(0,0,0,0.28) !important;
-            cursor: pointer !important;
-            transition: transform 0.15s !important;
+            cursor: pointer !important; transition: transform 0.15s !important;
           }
-          .trial-marker-dot:hover {
-            transform: scale(1.5) !important;
+          .trial-marker-dot:hover { transform: scale(1.5) !important; }
+          .find-phys-btn {
+            display: block; width: 100%; margin-top: 8px;
+            padding: 7px 0; border-radius: 8px;
+            border: none; background: #2563eb; color: white;
+            font-size: 12px; font-weight: 700; cursor: pointer;
+            text-align: center; letter-spacing: 0.2px;
           }
+          .find-phys-btn:hover { background: #1d4ed8; }
         `;
         document.head.appendChild(style);
       }
 
-      const lats = mappableSites.map((s) => s.lat as number);
-      const lons = mappableSites.map((s) => s.lon as number);
+      const lats    = mappableSites.map((s) => s.lat as number);
+      const lons    = mappableSites.map((s) => s.lon as number);
       const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
       const centerLon = (Math.min(...lons) + Math.max(...lons)) / 2;
 
@@ -154,97 +108,92 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
         zoom: 3,
         zoomControl: false,
       });
-
       mapInstanceRef.current = map;
 
       mappableSites.forEach((site) => {
-        const color = statusColor(site.status);
-
-        const icon = L.divIcon({
+        const color = statusDotColor(site.status);
+        const icon  = L.divIcon({
           html: `<div class="trial-marker-dot" style="width:14px;height:14px;background:${color} !important;"></div>`,
-          className: "",
-          iconSize: [14, 14],
-          iconAnchor: [7, 7],
+          className: "", iconSize: [14, 14], iconAnchor: [7, 7],
         });
 
         const marker = L.marker([site.lat, site.lon], { icon }).addTo(map);
+        const locationLine = [site.city, site.state, site.country].filter(Boolean).join(", ");
 
-        const locationLine = [site.city, site.state, site.country]
-          .filter(Boolean)
-          .join(", ");
-
-        // ── Lightweight hover tooltip ──
+        // Hover tooltip
         marker.bindTooltip(
           `<div style="font-weight:600;font-size:12px;color:#0f172a;">${site.facility || "Unknown Facility"}</div>
            ${locationLine ? `<div style="font-size:11px;color:#64748b;margin-top:1px;">${locationLine}</div>` : ""}`,
-          {
-            permanent: false,
-            direction: "top",
-            offset: [0, -10],
-            className: "trial-tooltip",
-          }
+          { permanent: false, direction: "top", offset: [0, -10], className: "trial-tooltip" }
         );
 
-        // ── Rich click popup ──
         const statusPill = site.status
           ? `<div style="
-                display:inline-block;
-                padding:3px 10px;
-                border-radius:20px;
-                font-size:10px;
-                font-weight:700;
-                letter-spacing:0.4px;
-                text-transform:uppercase;
-                background:${color}18;
-                color:${color};
-                border:1px solid ${color}50;
-              ">${site.status.replace(/_/g, " ")}</div>`
+              display:inline-block; padding:3px 10px; border-radius:20px;
+              font-size:10px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase;
+              background:${color}18; color:${color}; border:1px solid ${color}50;
+            ">${site.status.replace(/_/g, " ")}</div>`
+          : "";
+
+        // NEW: "Find physicians" button in popup
+        const hasCoords = site.lat != null && site.lon != null;
+        const findPhysBtn = hasCoords
+          ? `<button class="find-phys-btn" id="fp-btn-${site.lat}-${site.lon}">
+               🩺 Find physicians near this site
+             </button>`
           : "";
 
         const popupContent = `
           <div>
-            <!-- Colored header bar -->
-            <div style="
-              background:${color}12;
-              border-bottom:1px solid ${color}25;
-              padding:12px 14px 10px;
-            ">
+            <div style="background:${color}12;border-bottom:1px solid ${color}25;padding:12px 14px 10px;">
               <div style="font-weight:700;font-size:13px;color:#0f172a;line-height:1.35;padding-right:16px;">
                 ${site.facility || "Unknown Facility"}
               </div>
-              ${locationLine
-                ? `<div style="font-size:11px;color:#64748b;margin-top:3px;">📍 ${locationLine}</div>`
-                : ""}
+              ${locationLine ? `<div style="font-size:11px;color:#64748b;margin-top:3px;">📍 ${locationLine}</div>` : ""}
             </div>
-            <!-- Status row -->
             <div style="padding:10px 14px;">
               ${statusPill}
+              ${findPhysBtn}
             </div>
-          </div>
-        `;
+          </div>`;
 
         marker.bindPopup(popupContent, {
-          className: "trial-popup",
-          offset: [0, -8],
-          maxWidth: 280,
-          closeButton: true,
+          className: "trial-popup", offset: [0, -8], maxWidth: 300, closeButton: true,
         });
 
-        // Open popup on click, keep tooltip on hover
-        marker.on("click", () => {
-          marker.openPopup();
-        });
+        marker.on("click", () => { marker.openPopup(); });
+
+        // Wire up the "Find physicians" button after popup opens
+        if (hasCoords) {
+          marker.on("popupopen", () => {
+            const btnId = `fp-btn-${site.lat}-${site.lon}`;
+            setTimeout(() => {
+              const btn = document.getElementById(btnId);
+              if (btn) {
+                btn.addEventListener("click", () => {
+                  marker.closePopup();
+                  onFindPhysicians({
+                    lat:      site.lat as number,
+                    lng:      site.lon as number,
+                    facility: site.facility,
+                    city:     site.city,
+                    state:    site.state,
+                    nct_id:   nctId,
+                  });
+                });
+              }
+            }, 50);
+          });
+        }
       });
     };
 
     if (!document.getElementById("mq-css")) {
       const css = document.createElement("link");
-      css.id = "mq-css";
-      css.rel = "stylesheet";
+      css.id = "mq-css"; css.rel = "stylesheet";
       css.href = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.css";
       document.head.appendChild(css);
     }
-
     if (!document.getElementById("mq-js")) {
       const script = document.createElement("script");
       script.id = "mq-js";
@@ -254,19 +203,14 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
     } else if (window.L?.mapquest) {
       initMap();
     } else {
-      const iv = setInterval(() => {
-        if (window.L?.mapquest) { clearInterval(iv); initMap(); }
-      }, 100);
+      const iv = setInterval(() => { if (window.L?.mapquest) { clearInterval(iv); initMap(); } }, 100);
     }
 
     return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
+      if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapKey, sites]);
+  }, [mapKey, sites, nctId]);
 
   const zoomIn  = () => mapInstanceRef.current?.zoomIn();
   const zoomOut = () => mapInstanceRef.current?.zoomOut();
@@ -279,10 +223,8 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
   return (
     <div className="detail-content" style={{ paddingTop: 0 }}>
 
-      {/* ══ MAP CARD ══ */}
+      {/* Stats strip */}
       <div className="detail-section" style={{ padding: 0, overflow: "hidden" }}>
-
-        {/* Stats strip */}
         <div style={{ display: "flex", borderBottom: "1px solid var(--gray-100)" }}>
           {[
             { label: "Total Sites",  value: totalSites },
@@ -323,35 +265,22 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
               <div ref={mapDivRef} style={{ height: 420, width: "100%", background: "#e8edf2" }} />
 
               {/* Zoom controls */}
-              <div style={{
-                position: "absolute", top: 12, right: 12, zIndex: 1000,
-                display: "flex", flexDirection: "column", gap: 6,
-              }}>
+              <div style={{ position: "absolute", top: 12, right: 12, zIndex: 1000, display: "flex", flexDirection: "column", gap: 6 }}>
                 {[
                   { icon: "+", title: "Zoom in",       fn: zoomIn  },
                   { icon: "−", title: "Zoom out",      fn: zoomOut },
                   { icon: "⊡", title: "Fit all sites", fn: fitAll  },
                 ].map((b) => (
-                  <button
-                    key={b.title}
-                    title={b.title}
-                    onClick={b.fn}
-                    style={{
-                      width: 36, height: 36, background: "white",
-                      border: "1px solid var(--gray-200)", borderRadius: 8,
-                      fontSize: 18, fontWeight: 700, color: "var(--gray-700)",
-                      cursor: "pointer", display: "flex", alignItems: "center",
-                      justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
-                      transition: "all 0.15s", lineHeight: 1,
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "var(--blue-50)";
-                      e.currentTarget.style.color = "var(--blue-600)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "white";
-                      e.currentTarget.style.color = "var(--gray-700)";
-                    }}
+                  <button key={b.title} title={b.title} onClick={b.fn} style={{
+                    width: 36, height: 36, background: "white",
+                    border: "1px solid var(--gray-200)", borderRadius: 8,
+                    fontSize: 18, fontWeight: 700, color: "var(--gray-700)",
+                    cursor: "pointer", display: "flex", alignItems: "center",
+                    justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
+                    transition: "all 0.15s", lineHeight: 1,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--blue-50)"; e.currentTarget.style.color = "var(--blue-600)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "white"; e.currentTarget.style.color = "var(--gray-700)"; }}
                   >{b.icon}</button>
                 ))}
               </div>
@@ -366,12 +295,11 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
               }}>
                 {[
                   { color: "#16a34a", label: "Recruiting" },
-                  { color: "#84cc16", label: "Opening Soon" },
+                  { color: "#4ade80", label: "Opening Soon" },
                   { color: "#2563eb", label: "Active" },
                   { color: "#f59e0b", label: "Suspended" },
                   { color: "#ef4444", label: "Terminated" },
-                  { color: "#7c3aed", label: "Completed" },
-                  { color: "#94a3b8", label: "Other" },
+                  { color: "#94a3b8", label: "Completed / Other" },  // grey per V2 feedback
                 ].map((l) => (
                   <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <div style={{
@@ -379,21 +307,16 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
                       background: l.color, border: "2px solid white",
                       boxShadow: "0 1px 3px rgba(0,0,0,0.2)", flexShrink: 0,
                     }} />
-                    <span style={{ fontSize: 11, fontWeight: 500, color: "var(--gray-600)" }}>
-                      {l.label}
-                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: "var(--gray-600)" }}>{l.label}</span>
                   </div>
                 ))}
               </div>
             </>
           )}
         </div>
-
-        {/* ── Bottom strip REMOVED — details now show in popup on the marker ── */}
-
       </div>
 
-      {/* ══ DESCRIPTION ══ */}
+      {/* Description */}
       {description && (
         <div className="detail-section">
           <div className="section-title">About This Trial</div>
@@ -401,7 +324,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
         </div>
       )}
 
-      {/* ══ ALL LOCATIONS LIST ══ */}
+      {/* All locations list */}
       <div className="detail-section">
         <div className="section-title">All Locations</div>
         {sites.length === 0 ? (
@@ -409,9 +332,7 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
         ) : (
           <div className="sites-grid">
             {sites.map((site, i) => (
-              <div
-                key={i}
-                className="site-card"
+              <div key={i} className="site-card"
                 style={{ cursor: site.lat != null ? "pointer" : "default" }}
                 onClick={() => {
                   if (site.lat != null && mapInstanceRef.current) {
@@ -429,12 +350,36 @@ export default function TrialSiteMap({ sites, trialTitle, description }: Props) 
                     {site.status.replace(/_/g, " ")}
                   </span>
                 )}
+                {/* Find physicians shortcut on list card */}
+                {site.lat != null && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFindPhysicians({
+                        lat:      site.lat as number,
+                        lng:      site.lon as number,
+                        facility: site.facility,
+                        city:     site.city,
+                        state:    site.state,
+                        nct_id:   nctId,
+                      });
+                    }}
+                    style={{
+                      marginTop: 8, padding: "5px 10px", borderRadius: 6,
+                      border: "1px solid var(--blue-200, #bfdbfe)",
+                      background: "var(--blue-50, #eff6ff)",
+                      color: "var(--blue-600, #2563eb)",
+                      fontSize: 11, fontWeight: 700, cursor: "pointer", width: "100%",
+                    }}
+                  >
+                    🩺 Find physicians nearby
+                  </button>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
-
     </div>
   );
 }

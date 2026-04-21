@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520">
+  <rect width="1200" height="520" fill="#f6f9fc"/>
+  <text x="64" y="58" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#16324f">Clinical Trial Finder - Typical User Workflow</text>
+  <text x="64" y="88" font-family="Arial, sans-serif" font-size="15" fill="#577188">The most common journey is: search first, narrow second, then open one trial for site review.</text>
+
+  <g font-family="Arial, sans-serif">
+    <rect x="56" y="160" width="188" height="172" rx="20" fill="#ffffff" stroke="#d6e0ea" stroke-width="2"/>
+    <circle cx="150" cy="146" r="24" fill="#1f6fdd"/>
+    <text x="143" y="153" font-size="18" font-weight="700" fill="#ffffff">1</text>
+    <text x="106" y="208" font-size="20" font-weight="700" fill="#16324f">Start Search</text>
+    <text x="86" y="240" font-size="14" fill="#5a7288">Enter a condition or</text>
+    <text x="89" y="262" font-size="14" fill="#5a7288">pick a quick-search</text>
+    <text x="122" y="284" font-size="14" fill="#5a7288">chip to begin.</text>
+
+    <rect x="282" y="160" width="188" height="172" rx="20" fill="#ffffff" stroke="#d6e0ea" stroke-width="2"/>
+    <circle cx="376" cy="146" r="24" fill="#1f6fdd"/>
+    <text x="369" y="153" font-size="18" font-weight="700" fill="#ffffff">2</text>
+    <text x="326" y="208" font-size="20" font-weight="700" fill="#16324f">Add Filters</text>
+    <text x="309" y="240" font-size="14" fill="#5a7288">Optional city, state,</text>
+    <text x="309" y="262" font-size="14" fill="#5a7288">phase, and status</text>
+    <text x="335" y="284" font-size="14" fill="#5a7288">narrow results.</text>
+
+    <rect x="508" y="160" width="188" height="172" rx="20" fill="#ffffff" stroke="#d6e0ea" stroke-width="2"/>
+    <circle cx="602" cy="146" r="24" fill="#1f6fdd"/>
+    <text x="595" y="153" font-size="18" font-weight="700" fill="#ffffff">3</text>
+    <text x="545" y="208" font-size="20" font-weight="700" fill="#16324f">Review Results</text>
+    <text x="532" y="240" font-size="14" fill="#5a7288">Read trial cards with</text>
+    <text x="531" y="262" font-size="14" fill="#5a7288">status, phase, and</text>
+    <text x="558" y="284" font-size="14" fill="#5a7288">site count.</text>
+
+    <rect x="734" y="160" width="188" height="172" rx="20" fill="#ffffff" stroke="#d6e0ea" stroke-width="2"/>
+    <circle cx="828" cy="146" r="24" fill="#1f6fdd"/>
+    <text x="821" y="153" font-size="18" font-weight="700" fill="#ffffff">4</text>
+    <text x="770" y="208" font-size="20" font-weight="700" fill="#16324f">Open Trial</text>
+    <text x="758" y="240" font-size="14" fill="#5a7288">Select one study to</text>
+    <text x="753" y="262" font-size="14" fill="#5a7288">load site details and</text>
+    <text x="785" y="284" font-size="14" fill="#5a7288">summary info.</text>
+
+    <rect x="960" y="160" width="188" height="172" rx="20" fill="#ffffff" stroke="#d6e0ea" stroke-width="2"/>
+    <circle cx="1054" cy="146" r="24" fill="#1f6fdd"/>
+    <text x="1047" y="153" font-size="18" font-weight="700" fill="#ffffff">5</text>
+    <text x="998" y="208" font-size="20" font-weight="700" fill="#16324f">Use Map And List</text>
+    <text x="986" y="240" font-size="14" fill="#5a7288">Inspect geographic</text>
+    <text x="985" y="262" font-size="14" fill="#5a7288">spread, then confirm</text>
+    <text x="1008" y="284" font-size="14" fill="#5a7288">specific sites.</text>
+  </g>
+
+  <g stroke="#7aa6dd" stroke-width="4" fill="none" stroke-linecap="round">
+    <line x1="244" y1="246" x2="282" y2="246"/>
+    <line x1="470" y1="246" x2="508" y2="246"/>
+    <line x1="696" y1="246" x2="734" y2="246"/>
+    <line x1="922" y1="246" x2="960" y2="246"/>
+  </g>
+  <g fill="#7aa6dd">
+    <polygon points="282,246 268,238 268,254"/>
+    <polygon points="508,246 494,238 494,254"/>
+    <polygon points="734,246 720,238 720,254"/>
+    <polygon points="960,246 946,238 946,254"/>
+  </g>
+
+  <rect x="56" y="374" width="1092" height="90" rx="18" fill="#eaf3fd" stroke="#c9daec"/>
+  <text x="84" y="409" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#16324f">Key reminder</text>
+  <text x="84" y="438" font-family="Arial, sans-serif" font-size="15" fill="#46627c">A condition is always required. Location, phase, and status should be added only when the user needs a narrower result set.</text>
+</svg>

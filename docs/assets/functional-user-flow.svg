@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#f5f8fc"/>
+  <text x="62" y="58" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#16324f">Functional Flow And Supporting Behaviors</text>
+  <text x="62" y="90" font-family="Arial, sans-serif" font-size="15" fill="#577188">This view separates the main user journey from the system behaviors that make the journey usable.</text>
+
+  <text x="78" y="154" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#16324f">Primary user journey</text>
+  <text x="78" y="416" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#16324f">Supporting system behaviors</text>
+
+  <g font-family="Arial, sans-serif">
+    <rect x="70" y="182" width="182" height="128" rx="18" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="112" y="220" font-size="18" font-weight="700" fill="#16324f">Enter</text>
+    <text x="98" y="246" font-size="18" font-weight="700" fill="#16324f">Condition</text>
+    <text x="92" y="276" font-size="14" fill="#597186">Search starts only</text>
+    <text x="88" y="298" font-size="14" fill="#597186">with a condition value.</text>
+
+    <rect x="286" y="182" width="182" height="128" rx="18" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="327" y="220" font-size="18" font-weight="700" fill="#16324f">Apply</text>
+    <text x="314" y="246" font-size="18" font-weight="700" fill="#16324f">Optional Filters</text>
+    <text x="305" y="276" font-size="14" fill="#597186">City, state, phase,</text>
+    <text x="318" y="298" font-size="14" fill="#597186">and status.</text>
+
+    <rect x="502" y="182" width="182" height="128" rx="18" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="549" y="220" font-size="18" font-weight="700" fill="#16324f">Review</text>
+    <text x="540" y="246" font-size="18" font-weight="700" fill="#16324f">Trial Results</text>
+    <text x="525" y="276" font-size="14" fill="#597186">Read titles, IDs,</text>
+    <text x="521" y="298" font-size="14" fill="#597186">phases, and statuses.</text>
+
+    <rect x="718" y="182" width="182" height="128" rx="18" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="759" y="220" font-size="18" font-weight="700" fill="#16324f">Select</text>
+    <text x="749" y="246" font-size="18" font-weight="700" fill="#16324f">One Trial</text>
+    <text x="744" y="276" font-size="14" fill="#597186">Open the detail</text>
+    <text x="742" y="298" font-size="14" fill="#597186">panel for one study.</text>
+
+    <rect x="934" y="182" width="182" height="128" rx="18" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="974" y="220" font-size="18" font-weight="700" fill="#16324f">Review</text>
+    <text x="953" y="246" font-size="18" font-weight="700" fill="#16324f">Sites And Map</text>
+    <text x="958" y="276" font-size="14" fill="#597186">Use map and list</text>
+    <text x="951" y="298" font-size="14" fill="#597186">together to confirm.</text>
+  </g>
+
+  <g stroke="#7aa6dd" stroke-width="4" fill="none" stroke-linecap="round">
+    <line x1="252" y1="246" x2="286" y2="246"/>
+    <line x1="468" y1="246" x2="502" y2="246"/>
+    <line x1="684" y1="246" x2="718" y2="246"/>
+    <line x1="900" y1="246" x2="934" y2="246"/>
+  </g>
+  <g fill="#7aa6dd">
+    <polygon points="286,246 272,238 272,254"/>
+    <polygon points="502,246 488,238 488,254"/>
+    <polygon points="718,246 704,238 704,254"/>
+    <polygon points="934,246 920,238 920,254"/>
+  </g>
+
+  <g font-family="Arial, sans-serif">
+    <rect x="70" y="446" width="244" height="162" rx="18" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="101" y="484" font-size="19" font-weight="700" fill="#16324f">Validation</text>
+    <text x="94" y="514" font-size="14" fill="#597186">- Condition is required</text>
+    <text x="94" y="538" font-size="14" fill="#597186">- Limit must be positive</text>
+    <text x="94" y="562" font-size="14" fill="#597186">- Offset must be zero or more</text>
+
+    <rect x="342" y="446" width="244" height="162" rx="18" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="382" y="484" font-size="19" font-weight="700" fill="#16324f">Pagination</text>
+    <text x="366" y="514" font-size="14" fill="#597186">- First page loads first</text>
+    <text x="366" y="538" font-size="14" fill="#597186">- Additional pages append</text>
+    <text x="366" y="562" font-size="14" fill="#597186">- Total match count is shown</text>
+
+    <rect x="614" y="446" width="244" height="162" rx="18" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="655" y="484" font-size="19" font-weight="700" fill="#16324f">Map Behavior</text>
+    <text x="638" y="514" font-size="14" fill="#597186">- Use embedded coordinates first</text>
+    <text x="638" y="538" font-size="14" fill="#597186">- Geocode missing points if needed</text>
+    <text x="638" y="562" font-size="14" fill="#597186">- Keep full site list visible</text>
+
+    <rect x="886" y="446" width="244" height="162" rx="18" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="917" y="484" font-size="19" font-weight="700" fill="#16324f">UX Recovery States</text>
+    <text x="910" y="514" font-size="14" fill="#597186">- Loading indicators</text>
+    <text x="910" y="538" font-size="14" fill="#597186">- Empty state messaging</text>
+    <text x="910" y="562" font-size="14" fill="#597186">- Retryable error messaging</text>
+  </g>
+</svg>

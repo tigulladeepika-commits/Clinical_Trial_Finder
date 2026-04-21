@@ -6,8 +6,8 @@ try:
     from .clinicaltrials_api import fetch_study_detail, fetch_trials_with_filters
     from .mapquest_api import geocode_address
 except ImportError:
-    from clinicaltrials_api import fetch_study_detail, fetch_trials_with_filters
-    from mapquest_api import geocode_address
+    from backend.services.clinicaltrials_api import fetch_study_detail, fetch_trials_with_filters
+    from backend.services.mapquest_api import geocode_address
 
 router = APIRouter()
 

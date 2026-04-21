@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620">
+  <rect width="1200" height="620" fill="#f6f9fc"/>
+  <text x="60" y="56" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#16324f">Search And Site Detail Request Flow</text>
+  <text x="60" y="88" font-family="Arial, sans-serif" font-size="15" fill="#577188">Two common paths exist: the search path and the selected-trial site-detail path.</text>
+
+  <g font-family="Arial, sans-serif">
+    <rect x="60" y="130" width="220" height="192" rx="20" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="131" y="168" font-size="22" font-weight="700" fill="#16324f">Browser</text>
+    <rect x="88" y="198" width="164" height="92" rx="16" fill="#eef5ff" stroke="#c9daee"/>
+    <text x="127" y="232" font-size="18" font-weight="700" fill="#16324f">Submit Search</text>
+    <text x="113" y="259" font-size="14" fill="#597186">Condition plus optional</text>
+    <text x="120" y="279" font-size="14" fill="#597186">city, state, phase, status.</text>
+
+    <rect x="60" y="362" width="220" height="192" rx="20" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="111" y="400" font-size="22" font-weight="700" fill="#16324f">Browser</text>
+    <rect x="88" y="430" width="164" height="92" rx="16" fill="#eef5ff" stroke="#c9daee"/>
+    <text x="129" y="464" font-size="18" font-weight="700" fill="#16324f">Open Trial</text>
+    <text x="111" y="491" font-size="14" fill="#597186">Pick one result card to</text>
+    <text x="111" y="511" font-size="14" fill="#597186">load the detail panel.</text>
+
+    <rect x="330" y="130" width="240" height="192" rx="20" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="393" y="168" font-size="22" font-weight="700" fill="#16324f">Next.js</text>
+    <rect x="360" y="198" width="180" height="92" rx="16" fill="#eef5ff" stroke="#c9daee"/>
+    <text x="389" y="232" font-size="18" font-weight="700" fill="#16324f">GET /api/trials/</text>
+    <text x="390" y="259" font-size="14" fill="#597186">Frontend hook builds</text>
+    <text x="392" y="279" font-size="14" fill="#597186">query string and sends it.</text>
+
+    <rect x="330" y="362" width="240" height="192" rx="20" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="393" y="400" font-size="22" font-weight="700" fill="#16324f">Next.js</text>
+    <rect x="360" y="430" width="180" height="92" rx="16" fill="#eef5ff" stroke="#c9daee"/>
+    <text x="366" y="464" font-size="18" font-weight="700" fill="#16324f">GET /api/trials/{id}/sites</text>
+    <text x="385" y="491" font-size="14" fill="#597186">Fetch site detail for</text>
+    <text x="393" y="511" font-size="14" fill="#597186">the selected trial.</text>
+
+    <rect x="620" y="130" width="250" height="192" rx="20" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="688" y="168" font-size="22" font-weight="700" fill="#16324f">FastAPI</text>
+    <rect x="648" y="198" width="194" height="92" rx="16" fill="#eef8f0" stroke="#c9e5d0"/>
+    <text x="691" y="232" font-size="18" font-weight="700" fill="#16324f">Search Route</text>
+    <text x="667" y="259" font-size="14" fill="#597186">Calls ClinicalTrials.gov,</text>
+    <text x="673" y="279" font-size="14" fill="#597186">maps and filters studies.</text>
+
+    <rect x="620" y="362" width="250" height="192" rx="20" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="688" y="400" font-size="22" font-weight="700" fill="#16324f">FastAPI</text>
+    <rect x="648" y="430" width="194" height="92" rx="16" fill="#eef8f0" stroke="#c9e5d0"/>
+    <text x="669" y="464" font-size="18" font-weight="700" fill="#16324f">Site Detail Route</text>
+    <text x="665" y="491" font-size="14" fill="#597186">Loads study detail and</text>
+    <text x="677" y="511" font-size="14" fill="#597186">geocodes missing points.</text>
+
+    <rect x="920" y="130" width="220" height="192" rx="20" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="947" y="168" font-size="22" font-weight="700" fill="#16324f">External Services</text>
+    <rect x="948" y="198" width="164" height="92" rx="16" fill="#fff6ea" stroke="#edd6b2"/>
+    <text x="969" y="232" font-size="18" font-weight="700" fill="#16324f">ClinicalTrials.gov</text>
+    <text x="976" y="259" font-size="14" fill="#597186">Search response or</text>
+    <text x="982" y="279" font-size="14" fill="#597186">study detail payload.</text>
+
+    <rect x="920" y="362" width="220" height="192" rx="20" fill="#ffffff" stroke="#d8e2ec" stroke-width="2"/>
+    <text x="947" y="400" font-size="22" font-weight="700" fill="#16324f">External Services</text>
+    <rect x="948" y="430" width="164" height="92" rx="16" fill="#fff6ea" stroke="#edd6b2"/>
+    <text x="990" y="464" font-size="18" font-weight="700" fill="#16324f">MapQuest</text>
+    <text x="980" y="491" font-size="14" fill="#597186">Fallback geocode when</text>
+    <text x="980" y="511" font-size="14" fill="#597186">coordinates are missing.</text>
+  </g>
+
+  <g stroke="#6b9bd6" stroke-width="4" fill="none" stroke-linecap="round">
+    <line x1="280" y1="244" x2="330" y2="244"/>
+    <line x1="570" y1="244" x2="620" y2="244"/>
+    <line x1="870" y1="244" x2="920" y2="244"/>
+    <line x1="280" y1="476" x2="330" y2="476"/>
+    <line x1="570" y1="476" x2="620" y2="476"/>
+    <line x1="870" y1="476" x2="920" y2="476"/>
+  </g>
+  <g fill="#6b9bd6">
+    <polygon points="330,244 316,236 316,252"/>
+    <polygon points="620,244 606,236 606,252"/>
+    <polygon points="920,244 906,236 906,252"/>
+    <polygon points="330,476 316,468 316,484"/>
+    <polygon points="620,476 606,468 606,484"/>
+    <polygon points="920,476 906,468 906,484"/>
+  </g>
+
+  <text x="304" y="226" font-family="Arial, sans-serif" font-size="12" fill="#4f6b84">1</text>
+  <text x="592" y="226" font-family="Arial, sans-serif" font-size="12" fill="#4f6b84">2</text>
+  <text x="893" y="226" font-family="Arial, sans-serif" font-size="12" fill="#4f6b84">3</text>
+  <text x="304" y="458" font-family="Arial, sans-serif" font-size="12" fill="#4f6b84">4</text>
+  <text x="592" y="458" font-family="Arial, sans-serif" font-size="12" fill="#4f6b84">5</text>
+  <text x="893" y="458" font-family="Arial, sans-serif" font-size="12" fill="#4f6b84">6</text>
+</svg>

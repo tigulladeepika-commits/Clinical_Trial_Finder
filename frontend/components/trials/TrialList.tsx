@@ -1,22 +1,22 @@
 "use client";
 
-import { Trial } from "./types";
+import type { Trial } from "@/types/trial";
 
 type Props = {
-  trials: Trial[];
+  trials:     Trial[];
   totalCount: number;
   selectedId: string | null;
-  onSelect: (trial: Trial) => void;
-  hasMore: boolean;
+  onSelect:   (trial: Trial) => void;
+  hasMore:    boolean;
   onLoadMore: () => void;
-  loading: boolean;
+  loading:    boolean;
 };
 
-function statusBadgeClass(status: string | undefined) {
+function statusBadgeClass(status: string | undefined): string {
   const s = (status || "").toUpperCase();
-  if (s === "RECRUITING") return "badge badge-status-recruiting";
+  if (s === "RECRUITING")   return "badge badge-status-recruiting";
   if (s.includes("ACTIVE")) return "badge badge-status-active";
-  if (s === "COMPLETED") return "badge badge-status-completed";
+  if (s === "COMPLETED")    return "badge badge-status-completed";
   return "badge badge-status-default";
 }
 
@@ -43,11 +43,8 @@ export default function TrialList({
             <span className={statusBadgeClass(trial.status)}>
               {trial.status || "Unknown"}
             </span>
-            {trial.phases?.length > 0 && (
-              <span className="badge badge-phase">{trial.phases.join(", ")}</span>
-            )}
-            {trial.locations?.length > 0 && (
-              <span className="badge badge-sites">📍 {trial.locations.length} sites</span>
+            {(trial.phases?.length ?? 0) > 0 && (
+              <span className="badge badge-phase">{trial.phases!.join(", ")}</span>
             )}
           </div>
         </div>
@@ -55,7 +52,7 @@ export default function TrialList({
 
       {hasMore && (
         <button className="load-more-btn" onClick={onLoadMore} disabled={loading}>
-          {loading ? "Loading…" : `Load more trials`}
+          {loading ? "Loading…" : "Load more trials"}
         </button>
       )}
     </div>
