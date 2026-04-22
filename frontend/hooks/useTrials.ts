@@ -35,14 +35,15 @@ export function useTrials(
     const currentOffset = reset ? 0 : offset;
 
     try {
+      // FIX: backend uses page_size + page (1-based), not limit + offset
       const data = await fetchTrials({
         condition,
         city,
         state,
         status,
         phase,
-        limit:  LIMIT,
-        offset: currentOffset,
+        page_size: LIMIT,
+        page: Math.floor(currentOffset / LIMIT) + 1,
       });
 
       // Discard stale responses if condition changed mid-flight

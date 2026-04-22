@@ -11,6 +11,10 @@ Fix v2.1.2:
     race condition seen in production logs.
   - No other logic changed; background=True preserves original behaviour
     for local development.
+
+Fix v2.1.3:
+  - Cast local_cache (PosixPath) to str before concatenating ".tmp" suffix
+    to fix: unsupported operand type(s) for +: 'PosixPath' and 'str'
 """
 
 import io
@@ -105,7 +109,8 @@ def _load_zip_database() -> None:
                 except (ValueError, IndexError):
                     pass
 
-        # Atomic write to disk cache
+        # FIX v2.1.3: cast to str before concatenating ".tmp" to avoid
+        # TypeError: unsupported operand type(s) for +: 'PosixPath' and 'str'
         tmp = str(local_cache) + ".tmp"
         with open(tmp, "w") as f:
             json.dump({k: list(v) for k, v in db.items()}, f)

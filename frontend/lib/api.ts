@@ -33,7 +33,8 @@ export async function fetchTrials(
       .filter(([, v]) => v !== undefined && v !== null && v !== "")
       .map(([k, v]) => [k, String(v)])
   ).toString();
-  return apiFetch<TrialFetchResponse>(`/api/trials/search?${qs}`);
+  // FIX: was /api/trials/search — backend route is /api/trials/ (no "search" suffix)
+  return apiFetch<TrialFetchResponse>(`/api/trials/?${qs}`);
 }
 
 /**

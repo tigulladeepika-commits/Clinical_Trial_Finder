@@ -54,6 +54,8 @@ async def lifespan(app: FastAPI):
     logger.info("Taxonomy initializing (seed ready immediately)")
 
     # ZIP database: sync on Render (blocks until ready), async locally
+    # background=False → synchronous load (ZIP_LOAD_SYNC=True on Render)
+    # background=True  → background thread (local dev)
     from services import zip_database
     zip_database.initialize(background=not cfg.ZIP_LOAD_SYNC)
     logger.info("ZIP DB initializing (sync=%s)", cfg.ZIP_LOAD_SYNC)
