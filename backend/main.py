@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 
     # ZIP database: sync on Render (blocks until ready), async locally
     from services import zip_database
-    zip_database.initialize(sync=cfg.ZIP_LOAD_SYNC, data_path=cfg.ZIP_DB_PATH)
+    zip_database.initialize(background=not cfg.ZIP_LOAD_SYNC)
     logger.info("ZIP DB initializing (sync=%s)", cfg.ZIP_LOAD_SYNC)
 
     logger.info("Clintrial Navigator V3 ready on port %d", cfg.PORT)
