@@ -31,6 +31,15 @@ export interface PointOfContact {
   email: string | null;
 }
 
+// Used by SearchForm, page.tsx, and URL param parsing
+export interface TrialSearchFilters {
+  condition: string;
+  city:      string;
+  state:     string;
+  status:    string;
+  phase:     string;
+}
+
 export interface TrialFetchParams {
   condition:  string;
   city?:      string | null;
