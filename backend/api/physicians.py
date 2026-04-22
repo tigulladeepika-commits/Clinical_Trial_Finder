@@ -77,9 +77,11 @@ async def search_physicians(
     # ── 2. Find ZIP codes within radius ───────────────────────────────────────
     if not zip_database.is_ready():
         logger.warning("ZIP DB not ready yet — waiting up to %.0fs", cfg.ZIP_DB_WAIT)
-        zip_database.wait_until_ready(cfg.ZIP_DB_WAIT)
+        # FIX: was wait_until_ready() — actual function name is wait_for_ready()
+        zip_database.wait_for_ready(cfg.ZIP_DB_WAIT)
 
-    nearby_zips = zip_database.get_zips_in_radius(lat, lng, radius)
+    # FIX: was get_zips_in_radius() — actual function name is find_zips_in_radius()
+    nearby_zips = zip_database.find_zips_in_radius(lat, lng, radius)
 
     if not nearby_zips:
         logger.info("No ZIPs found within %.1f miles of (%.4f, %.4f)", radius, lat, lng)

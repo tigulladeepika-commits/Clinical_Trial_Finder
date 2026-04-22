@@ -382,4 +382,4 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
       </div>
     </div>
   );
-}
+} 
