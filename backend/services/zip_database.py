@@ -106,7 +106,7 @@ def _load_zip_database() -> None:
                     pass
 
         # Atomic write to disk cache
-        tmp = local_cache + ".tmp"
+        tmp = str(local_cache) + ".tmp"
         with open(tmp, "w") as f:
             json.dump({k: list(v) for k, v in db.items()}, f)
         os.replace(tmp, local_cache)
