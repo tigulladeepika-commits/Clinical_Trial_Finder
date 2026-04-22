@@ -21,7 +21,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from core.config import cfg
-from core.validation import validate_lat_lng, validate_radius, validate_descriptions
+# FIX: removed unused `validate_descriptions` import
+from core.validation import validate_lat_lng, validate_radius
 from core.helpers import sanitise
 from services import nppes, zip_database, taxonomy as tax_service
 
@@ -83,8 +84,8 @@ async def search_physicians(
     if not nearby_zips:
         logger.info("No ZIPs found within %.1f miles of (%.4f, %.4f)", radius, lat, lng)
         return {
-            "physicians": [],
-            "total": 0,
+            "physicians":   [],
+            "total":        0,
             "radius_miles": radius,
             "zips_searched": 0,
         }
@@ -107,9 +108,9 @@ async def search_physicians(
         if descriptions:
             for desc in descriptions[: cfg.MAX_TAX_QUERIES]:
                 rows, _ = nppes.fetch_with_retry({
-                    "postal_code": zipcode,
+                    "postal_code":          zipcode,
                     "taxonomy_description": desc,
-                    "limit": 50,
+                    "limit":                50,
                 })
                 for row in rows:
                     parsed = nppes.parse_physician(row)
@@ -119,7 +120,7 @@ async def search_physicians(
         else:
             rows, _ = nppes.fetch_with_retry({
                 "postal_code": zipcode,
-                "limit": 50,
+                "limit":       50,
             })
             for row in rows:
                 parsed = nppes.parse_physician(row)
@@ -129,15 +130,17 @@ async def search_physicians(
 
     if not raw_physicians:
         return {
-            "physicians": [],
-            "total": 0,
+            "physicians":   [],
+            "total":        0,
             "radius_miles": radius,
             "zips_searched": len(zip_batch),
         }
 
     # ── 4. Assign ZIP centroid coords for distance pre-filter ─────────────────
     for p in raw_physicians:
-        if p["lat"] is None:
+        # FIX: guard against None/empty zip before calling get_zip_coords —
+        # previously get_zip_coords(None) could be called silently.
+        if p["lat"] is None and p.get("zip"):
             z_lat, z_lng = zip_database.get_zip_coords(p["zip"])
             if z_lat is not None:
                 p["lat"] = z_lat
@@ -174,8 +177,8 @@ async def search_physicians(
         p.pop("_geocoded", None)
 
     return {
-        "physicians": top,
-        "total": len(precise),
+        "physicians":   top,
+        "total":        len(precise),
         "radius_miles": radius,
         "zips_searched": len(zip_batch),
     }

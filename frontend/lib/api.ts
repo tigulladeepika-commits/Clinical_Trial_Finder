@@ -11,10 +11,18 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+// FIX: added optional `signal` parameter so callers (e.g. usePhysicians) can
+// pass an AbortSignal and actually cancel the in-flight HTTP request.
+async function apiFetch<T>(
+  path:     string,
+  options?: RequestInit,
+  signal?:  AbortSignal,
+): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
+    // signal from caller takes precedence; options.signal (if any) is overridden
+    ...(signal ? { signal } : {}),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => res.statusText);
@@ -33,7 +41,6 @@ export async function fetchTrials(
       .filter(([, v]) => v !== undefined && v !== null && v !== "")
       .map(([k, v]) => [k, String(v)])
   ).toString();
-  // FIX: was /api/trials/search — backend route is /api/trials/ (no "search" suffix)
   return apiFetch<TrialFetchResponse>(`/api/trials/?${qs}`);
 }
 
@@ -48,15 +55,20 @@ export async function fetchTrialSites(nctId: string): Promise<SiteData> {
 
 // ── Physicians ────────────────────────────────────────────────────────────────
 
+// FIX: added optional `signal?: AbortSignal` second parameter.
+// usePhysicians.ts creates a new AbortController on every search and passes
+// its signal here so the outbound fetch is actually cancelled (not just the
+// state update) when the user triggers a new search mid-flight.
 export async function fetchPhysicians(
-  params: PhysicianSearchParams
+  params:  PhysicianSearchParams,
+  signal?: AbortSignal,
 ): Promise<PhysicianFetchResponse> {
   const qs = new URLSearchParams(
     Object.entries(params)
       .filter(([, v]) => v !== undefined && v !== null && v !== "")
       .map(([k, v]) => [k, String(v)])
   ).toString();
-  return apiFetch<PhysicianFetchResponse>(`/api/physicians/search?${qs}`);
+  return apiFetch<PhysicianFetchResponse>(`/api/physicians/search?${qs}`, undefined, signal);
 }
 
 // ── Leads ─────────────────────────────────────────────────────────────────────

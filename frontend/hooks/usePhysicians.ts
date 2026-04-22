@@ -37,13 +37,17 @@ export function usePhysicians() {
   const abortRef = useRef<AbortController | null>(null);
 
   const search = useCallback(async (
-    site:      SelectedSite,
-    radius:    number = 25,
+    site:       SelectedSite,
+    radius:     number = 25,
     specialty?: string,
   ) => {
-    // Cancel any in-flight request
+    // Cancel any in-flight request — both the state update AND the outbound
+    // HTTP request. FIX: previously the AbortController was created but its
+    // signal was never forwarded to fetchPhysicians, so in-flight requests
+    // kept running even after a new search was triggered.
     abortRef.current?.abort();
-    abortRef.current = new AbortController();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
@@ -55,7 +59,10 @@ export function usePhysicians() {
         ...(specialty ? { specialty } : {}),
       };
 
-      const result = await fetchPhysicians(params);
+      // FIX: pass the AbortSignal so the fetch is actually cancelled when
+      // the user navigates away or triggers a new search before this one
+      // completes. fetchPhysicians in lib/api.ts must accept and forward it.
+      const result = await fetchPhysicians(params, controller.signal);
 
       setState({
         physicians:   result.physicians,
@@ -67,6 +74,7 @@ export function usePhysicians() {
         zipsSearched: result.zips_searched,
       });
     } catch (err: unknown) {
+      // Ignore abort errors — they are intentional cancellations
       if ((err as Error).name === "AbortError") return;
       setState((prev) => ({
         ...prev,

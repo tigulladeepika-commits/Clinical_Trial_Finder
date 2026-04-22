@@ -37,14 +37,10 @@ STATE_ABBREV_TO_FULL = {
 
 
 def _normalize_value(value: str | None) -> str:
+    """Strip all non-alphanumeric characters and lowercase."""
     if not value:
         return ""
     return re.sub(r"[^a-z0-9]+", "", value.lower())
-
-
-def _normalize_phase(value: str | None) -> str:
-    normalized = _normalize_value(value)
-    return normalized.replace("phase", "phase")
 
 
 def _extract_text_list(value: Any) -> list[str]:
@@ -61,25 +57,25 @@ def _map_location(location: dict[str, Any], overall_status: str | None = None) -
     resolved_status = site_status if site_status else overall_status
     return {
         "facility": location.get("facility"),
-        "city": location.get("city"),
-        "state": location.get("state"),
-        "country": location.get("country"),
-        "status": resolved_status,
-        "lat": geo_point.get("lat"),
-        "lon": geo_point.get("lon"),
+        "city":     location.get("city"),
+        "state":    location.get("state"),
+        "country":  location.get("country"),
+        "status":   resolved_status,
+        "lat":      geo_point.get("lat"),
+        "lon":      geo_point.get("lon"),
     }
 
 
 def _map_trial(study: dict[str, Any]) -> dict[str, Any]:
-    protocol = study.get("protocolSection", {})
+    protocol       = study.get("protocolSection", {})
     identification = protocol.get("identificationModule", {})
-    status_module = protocol.get("statusModule", {})
-    description = protocol.get("descriptionModule", {})
-    conditions = protocol.get("conditionsModule", {})
-    sponsor_info = protocol.get("sponsorCollaboratorsModule", {})
-    design = protocol.get("designModule", {})
-    contacts = protocol.get("contactsLocationsModule", {})
-    eligibility = protocol.get("eligibilityModule", {})
+    status_module  = protocol.get("statusModule", {})
+    description    = protocol.get("descriptionModule", {})
+    conditions     = protocol.get("conditionsModule", {})
+    sponsor_info   = protocol.get("sponsorCollaboratorsModule", {})
+    design         = protocol.get("designModule", {})
+    contacts       = protocol.get("contactsLocationsModule", {})
+    eligibility    = protocol.get("eligibilityModule", {})
 
     overall_status = status_module.get("overallStatus")
 
@@ -88,41 +84,45 @@ def _map_trial(study: dict[str, Any]) -> dict[str, Any]:
     if central_contacts:
         first_contact = central_contacts[0]
         central_contact = {
-            "name": first_contact.get("name"),
-            "role": first_contact.get("role"),
+            "name":  first_contact.get("name"),
+            "role":  first_contact.get("role"),
             "phone": first_contact.get("phone"),
             "email": first_contact.get("email"),
         }
 
     return {
-        "nctId": identification.get("nctId"),
-        "title": identification.get("briefTitle"),
-        "status": overall_status,
-        "description": description.get("briefSummary"),
-        "conditions": _extract_text_list(conditions.get("conditions")),
-        "sponsor": (sponsor_info.get("leadSponsor") or {}).get("name"),
-        "phases": _extract_text_list(design.get("phases")),
-        "locations": [
+        "nctId":             identification.get("nctId"),
+        "title":             identification.get("briefTitle"),
+        "status":            overall_status,
+        "description":       description.get("briefSummary"),
+        "conditions":        _extract_text_list(conditions.get("conditions")),
+        "sponsor":           (sponsor_info.get("leadSponsor") or {}).get("name"),
+        "phases":            _extract_text_list(design.get("phases")),
+        "locations":         [
             _map_location(location, overall_status)
             for location in contacts.get("locations", [])
         ],
         "inclusionCriteria": eligibility.get("eligibilityCriteria"),
         "exclusionCriteria": None,
-        "pointOfContact": central_contact,
+        "pointOfContact":    central_contact,
     }
 
 
 def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
     normalized_status = _normalize_value(filters.get("status"))
-    normalized_phase = _normalize_value(filters.get("phase"))
-    normalized_city = _normalize_value(filters.get("city"))
-    normalized_state = _normalize_value(filters.get("state"))
+    # FIX: use _normalize_value directly — the old _normalize_phase was a no-op
+    # (it replaced "phase" with "phase") and has been removed.
+    # _normalize_value strips underscores/spaces/hyphens, so both
+    # "PHASE1" (from API) and "phase1" (from frontend) → "phase1". ✓
+    normalized_phase  = _normalize_value(filters.get("phase"))
+    normalized_city   = _normalize_value(filters.get("city"))
+    normalized_state  = _normalize_value(filters.get("state"))
 
     if normalized_status and _normalize_value(trial.get("status")) != normalized_status:
         return False
 
     if normalized_phase:
-        trial_phases = [_normalize_phase(phase) for phase in trial.get("phases", [])]
+        trial_phases = [_normalize_value(phase) for phase in trial.get("phases", [])]
         if normalized_phase not in trial_phases:
             return False
 
@@ -134,9 +134,9 @@ def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
     ):
         return False
 
-    # FIX: Expand 2-letter abbreviation to full state name before comparing.
+    # Expand 2-letter abbreviation to full state name before comparing.
     # The API returns full names like "Connecticut", "New York", etc.
-    # The frontend sends abbreviations like "CT", "NY", which normalize to "ct", "ny".
+    # The frontend sends abbreviations like "CT", "NY" → normalize → "ct", "ny".
     if normalized_state:
         resolved_state = STATE_ABBREV_TO_FULL.get(normalized_state, normalized_state)
         if not any(
@@ -158,9 +158,9 @@ def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
 def _fetch_study_page(condition: str, page_token: str | None = None) -> dict[str, Any]:
     params: dict[str, Any] = {
         "query.cond": condition,
-        "pageSize": DEFAULT_PAGE_SIZE,
+        "pageSize":   DEFAULT_PAGE_SIZE,
         "countTotal": "true",
-        "format": "json",
+        "format":     "json",
     }
     if page_token:
         params["pageToken"] = page_token
@@ -208,6 +208,11 @@ def fetch_trials_with_filters(
         if not page_token:
             break
 
+    # NOTE: processed_matches only reflects studies scanned so far
+    # (up to MAX_PAGES × DEFAULT_PAGE_SIZE = 1 000 studies).
+    # The actual total across all ClinicalTrials.gov pages may be higher.
+    # The API response labels this as "matched_in_scan" so the UI can
+    # surface a "showing results from first N pages" caveat if needed.
     total_count = processed_matches
     return matched_trials, total_count
 

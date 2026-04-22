@@ -5,16 +5,16 @@ import { useState, FormEvent, useEffect } from "react";
 /* ─── types ──────────────────────────────────────────────────────────────── */
 type SearchFilters = {
   condition: string;
-  city: string;
-  state: string;
-  status: string;
-  phase: string;
+  city:      string;
+  state:     string;
+  status:    string;
+  phase:     string;
 };
 
 type SearchFormProps = {
-  onSearch: (filters: SearchFilters) => void;
-  loading?: boolean;
-  compact?: boolean;
+  onSearch:      (filters: SearchFilters) => void;
+  loading?:      boolean;
+  compact?:      boolean;
   initialValues?: SearchFilters;
 };
 
@@ -71,30 +71,36 @@ const T = {
 
 /* ─── shared field styles ────────────────────────────────────────────────── */
 const fieldInput: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 13px",
-  border: `1px solid ${T.inputBorder}`,
+  width:       "100%",
+  padding:     "10px 13px",
+  border:      `1px solid ${T.inputBorder}`,
   borderRadius: 8,
-  fontSize: 14,
-  color: T.text,
-  background: T.inputBg,
-  outline: "none",
-  fontFamily: "inherit",
-  boxSizing: "border-box",
-  appearance: "none",
+  fontSize:    14,
+  color:       T.text,
+  background:  T.inputBg,
+  outline:     "none",
+  fontFamily:  "inherit",
+  boxSizing:   "border-box",
+  appearance:  "none",
 };
 
 const fieldLabel: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 5,
-  fontSize: 11,
-  fontWeight: 700,
+  display:       "flex",
+  alignItems:    "center",
+  gap:           5,
+  fontSize:      11,
+  fontWeight:    700,
   letterSpacing: "0.7px",
   textTransform: "uppercase",
-  color: T.hint,
-  marginBottom: 6,
+  color:         T.hint,
+  marginBottom:  6,
 };
+
+// FIX: sfSpin keyframe extracted into a shared constant so both the compact
+// and hero <style> blocks can include it. Previously the keyframe was only
+// declared in the hero block — the compact spinner would not animate if the
+// hero form had never been rendered in the same session.
+const SPIN_KEYFRAME = `@keyframes sfSpin { to { transform: rotate(360deg); } }`;
 
 /* ─── component ──────────────────────────────────────────────────────────── */
 export default function SearchForm({ onSearch, loading, compact, initialValues }: SearchFormProps) {
@@ -138,7 +144,10 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
   if (compact) {
     return (
       <>
+        {/* FIX: sfSpin keyframe included here so the compact spinner animates
+            even when the hero form has never been rendered. */}
         <style>{`
+          ${SPIN_KEYFRAME}
           .sf-compact-grid {
             display: grid;
             grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
@@ -241,21 +250,21 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
                 type="submit"
                 disabled={isDisabled}
                 style={{
-                  padding: "10px 20px",
-                  background: T.blue,
-                  color: "#fff",
-                  border: "none",
+                  padding:     "10px 20px",
+                  background:  T.blue,
+                  color:       "#fff",
+                  border:      "none",
                   borderRadius: 8,
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: isDisabled ? "not-allowed" : "pointer",
-                  opacity: isDisabled ? 0.55 : 1,
-                  whiteSpace: "nowrap",
-                  fontFamily: "inherit",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  transition: "opacity 0.15s, box-shadow 0.15s",
+                  fontSize:    14,
+                  fontWeight:  600,
+                  cursor:      isDisabled ? "not-allowed" : "pointer",
+                  opacity:     isDisabled ? 0.55 : 1,
+                  whiteSpace:  "nowrap",
+                  fontFamily:  "inherit",
+                  display:     "flex",
+                  alignItems:  "center",
+                  gap:         6,
+                  transition:  "opacity 0.15s, box-shadow 0.15s",
                 }}
               >
                 {loading ? (
@@ -292,6 +301,7 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
   return (
     <>
       <style>{`
+        ${SPIN_KEYFRAME}
         .sf-shell {
           width: 100%;
           min-height: 100%;
@@ -331,7 +341,6 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
           .sf-card    { padding: 24px 20px; border-left-width: 4px; }
           .sf-filters { grid-template-columns: 1fr; }
         }
-        @keyframes sfSpin { to { transform: rotate(360deg); } }
       `}</style>
 
       <div className="sf-shell">
@@ -340,21 +349,21 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
           {/* ── Header ── */}
           <div className="sf-header">
             <p style={{
-              margin: "0 0 10px",
-              fontSize: 11,
-              fontWeight: 700,
+              margin:        "0 0 10px",
+              fontSize:      11,
+              fontWeight:    700,
               letterSpacing: "1.5px",
               textTransform: "uppercase",
-              color: T.eyebrow,
+              color:         T.eyebrow,
             }}>
               Clinical Trials · ClinicalTrials.gov
             </p>
             <h1 style={{
-              margin: "0 0 8px",
-              fontSize: "clamp(22px, 3vw, 30px)",
-              fontWeight: 700,
-              color: T.text,
-              lineHeight: 1.2,
+              margin:      "0 0 8px",
+              fontSize:    "clamp(22px, 3vw, 30px)",
+              fontWeight:  700,
+              color:       T.text,
+              lineHeight:  1.2,
               letterSpacing: "-0.5px",
             }}>
               Find a{" "}
@@ -450,33 +459,33 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
               type="submit"
               disabled={isDisabled}
               style={{
-                width: "100%",
-                padding: "13px 24px",
-                background: T.blue,
-                color: "#fff",
-                border: "none",
+                width:        "100%",
+                padding:      "13px 24px",
+                background:   T.blue,
+                color:        "#fff",
+                border:       "none",
                 borderRadius: 8,
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: isDisabled ? "not-allowed" : "pointer",
-                opacity: isDisabled ? 0.55 : 1,
-                display: "flex",
-                alignItems: "center",
+                fontSize:     15,
+                fontWeight:   600,
+                cursor:       isDisabled ? "not-allowed" : "pointer",
+                opacity:      isDisabled ? 0.55 : 1,
+                display:      "flex",
+                alignItems:   "center",
                 justifyContent: "center",
-                gap: 8,
-                fontFamily: "inherit",
+                gap:          8,
+                fontFamily:   "inherit",
                 letterSpacing: "0.1px",
               }}
             >
               {loading ? (
                 <>
                   <span style={{
-                    width: 15, height: 15,
+                    width:  15, height: 15,
                     border: "2px solid rgba(255,255,255,0.3)",
                     borderTopColor: "#fff",
-                    borderRadius: "50%",
-                    display: "inline-block",
-                    animation: "sfSpin 0.7s linear infinite",
+                    borderRadius:   "50%",
+                    display:        "inline-block",
+                    animation:      "sfSpin 0.7s linear infinite",
                   }} />
                   Searching…
                 </>
@@ -495,12 +504,12 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
           {/* ── Quick picks ── */}
           <div className="sf-quick-row">
             <span style={{
-              fontSize: 11,
-              fontWeight: 700,
+              fontSize:      11,
+              fontWeight:    700,
               letterSpacing: "0.6px",
               textTransform: "uppercase",
-              color: T.hint,
-              whiteSpace: "nowrap",
+              color:         T.hint,
+              whiteSpace:    "nowrap",
             }}>
               Quick
             </span>
@@ -519,15 +528,15 @@ export default function SearchForm({ onSearch, loading, compact, initialValues }
                   e.currentTarget.style.borderColor = T.chipBorder;
                 }}
                 style={{
-                  padding: "4px 12px",
+                  padding:      "4px 12px",
                   borderRadius: 20,
-                  border: `1.5px solid ${T.chipBorder}`,
-                  background: T.chipBg,
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  color: T.chipText,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
+                  border:       `1.5px solid ${T.chipBorder}`,
+                  background:   T.chipBg,
+                  fontSize:     12.5,
+                  fontWeight:   500,
+                  color:        T.chipText,
+                  cursor:       "pointer",
+                  fontFamily:   "inherit",
                 }}
               >
                 {q}
