@@ -12,7 +12,8 @@ type Props = {
   loading:    boolean;
 };
 
-function statusBadgeClass(status: string | undefined): string {
+// FIX: accept string | null (Trial.status is string | null)
+function statusBadgeClass(status: string | null): string {
   const s = (status || "").toUpperCase();
   if (s === "RECRUITING")   return "badge badge-status-recruiting";
   if (s.includes("ACTIVE")) return "badge badge-status-active";

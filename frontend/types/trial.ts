@@ -61,3 +61,6 @@ export interface SiteData {
   title: string;
   sites: TrialLocation[];
 }
+
+// Alias used by TrialSiteMap — same shape as TrialLocation
+export type TrialSite = TrialLocation;
