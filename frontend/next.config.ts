@@ -9,6 +9,7 @@ const apiUrl = rawApiUrl ? rawApiUrl.replace(/\/+$/, "") : "";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  outputFileTracingRoot: process.cwd(),
   async rewrites() {
     if (!apiUrl) {
       return [];

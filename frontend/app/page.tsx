@@ -35,7 +35,17 @@ function HomeInner() {
   const [sitesError,     setSitesError]     = useState<string | null>(null);
   const [selectedSite,   setSelectedSite]   = useState<SelectedSite | null>(null);
 
-  const physicians = usePhysicians();
+  const {
+    physicians: nearbyPhysicians,
+    total: physicianTotal,
+    loading: physiciansLoading,
+    error: physiciansError,
+    searched: physiciansSearched,
+    hasMore: physiciansHasMore,
+    search: searchPhysicians,
+    loadMore: loadMorePhysicians,
+    reset: resetPhysicians,
+  } = usePhysicians();
 
   const prevConditionRef = useRef(filtersFromUrl.condition);
   useEffect(() => {
@@ -44,11 +54,10 @@ function HomeInner() {
       setSiteData(null);
       setSitesError(null);
       setSelectedSite(null);
-      physicians.reset();
+      resetPhysicians();
       prevConditionRef.current = filtersFromUrl.condition;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtersFromUrl.condition]);
+  }, [filtersFromUrl.condition, resetPhysicians]);
 
   const { trials, loading, error, totalCount, hasMore, refetch, loadMore } = useTrials(
     hasResults ? filtersFromUrl.condition : null,
@@ -70,22 +79,22 @@ function HomeInner() {
     setSiteData(null);
     setSitesError(null);
     setSelectedSite(null);
-    physicians.reset();
-  }, [router, physicians]);
+    resetPhysicians();
+  }, [resetPhysicians, router]);
 
   const handleSelectTrial = useCallback(async (trial: Trial) => {
     if (selectedTrial?.nctId === trial.nctId) {
       setSelectedTrial(null);
       setSiteData(null);
       setSelectedSite(null);
-      physicians.reset();
+      resetPhysicians();
       return;
     }
     setSelectedTrial(trial);
     setSiteData(null);
     setSitesError(null);
     setSelectedSite(null);
-    physicians.reset();
+    resetPhysicians();
     setSitesLoading(true);
     try {
       const data = await fetchTrialSites(trial.nctId);
@@ -95,23 +104,23 @@ function HomeInner() {
     } finally {
       setSitesLoading(false);
     }
-  }, [selectedTrial, physicians]);
+  }, [resetPhysicians, selectedTrial]);
 
   const handleFindPhysicians = useCallback((site: SelectedSite) => {
     setSelectedSite(site);
-    physicians.reset();
-    physicians.search(site, 25);
-  }, [physicians]);
+    resetPhysicians();
+    searchPhysicians(site, 25);
+  }, [resetPhysicians, searchPhysicians]);
 
   const handlePhysicianSearch = useCallback((radius: number, specialty: string) => {
     if (!selectedSite) return;
-    physicians.search(selectedSite, radius, specialty || undefined);
-  }, [selectedSite, physicians]);
+    searchPhysicians(selectedSite, radius, specialty || undefined);
+  }, [searchPhysicians, selectedSite]);
 
   const handleBackToSites = useCallback(() => {
     setSelectedSite(null);
-    physicians.reset();
-  }, [physicians]);
+    resetPhysicians();
+  }, [resetPhysicians]);
 
   const searchFormKey = [
     filtersFromUrl.condition, filtersFromUrl.city, filtersFromUrl.state,
@@ -545,12 +554,14 @@ function HomeInner() {
                   {siteData && !sitesLoading && selectedSite && (
                     <PhysicianPanel
                       site={selectedSite}
-                      physicians={physicians.physicians}
-                      total={physicians.total}
-                      loading={physicians.loading}
-                      error={physicians.error}
-                      searched={physicians.searched}
+                      physicians={nearbyPhysicians}
+                      total={physicianTotal}
+                      loading={physiciansLoading}
+                      error={physiciansError}
+                      searched={physiciansSearched}
+                      hasMore={physiciansHasMore}
                       onSearch={handlePhysicianSearch}
+                      onLoadMore={loadMorePhysicians}
                       onBack={handleBackToSites}
                     />
                   )}

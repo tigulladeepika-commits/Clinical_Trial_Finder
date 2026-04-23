@@ -9,7 +9,7 @@ import type {
   LeadPayload,
 } from "@/types/physician";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/+$/, "");
 
 // FIX: added optional `signal` parameter so callers (e.g. usePhysicians) can
 // pass an AbortSignal and actually cancel the in-flight HTTP request.
@@ -34,14 +34,15 @@ async function apiFetch<T>(
 // ── Trials ────────────────────────────────────────────────────────────────────
 
 export async function fetchTrials(
-  params: TrialFetchParams
+  params: TrialFetchParams,
+  signal?: AbortSignal,
 ): Promise<TrialFetchResponse> {
   const qs = new URLSearchParams(
     Object.entries(params)
       .filter(([, v]) => v !== undefined && v !== null && v !== "")
       .map(([k, v]) => [k, String(v)])
   ).toString();
-  return apiFetch<TrialFetchResponse>(`/api/trials/?${qs}`);
+  return apiFetch<TrialFetchResponse>(`/api/trials/?${qs}`, undefined, signal);
 }
 
 /**
