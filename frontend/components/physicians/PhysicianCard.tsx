@@ -1,12 +1,11 @@
 // components/physicians/PhysicianCard.tsx
-// Single physician list item — shows name, specialty, address,
-// distance, phone and a "Capture Lead" button.
+// Updated: improved design with universal color conventions, better layout.
 
 "use client";
 
-import React, { useState }    from "react";
-import LeadCaptureModal        from "@/components/shared/LeadCaptureModal";
-import type { Physician }      from "@/types/physician";
+import React, { useState } from "react";
+import LeadCaptureModal    from "@/components/shared/LeadCaptureModal";
+import type { Physician }  from "@/types/physician";
 
 type Props = {
   physician:  Physician;
@@ -18,66 +17,86 @@ type Props = {
 };
 
 export default function PhysicianCard({
-  physician,
-  index,
-  nctId,
-  siteName,
-  isSelected,
-  onSelect,
+  physician, index, nctId, siteName, isSelected, onSelect,
 }: Props) {
   const [showLead, setShowLead] = useState(false);
 
-  const cardStyle: React.CSSProperties = {
-    background:   isSelected ? "var(--blue-50, #eff6ff)" : "var(--white, #fff)",
-    border:       `1px solid ${isSelected ? "var(--blue-200, #bfdbfe)" : "var(--gray-100, #f1f5f9)"}`,
-    borderRadius: 12,
-    padding:      "14px 16px",
-    cursor:       "pointer",
-    transition:   "all 0.15s",
-    display:      "flex",
-    flexDirection:"column",
-    gap:          8,
-  };
-
   return (
     <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+        .phys-card {
+          background: #fff;
+          border: 1px solid #f1f5f9;
+          border-radius: 12px;
+          padding: 14px 16px;
+          cursor: pointer;
+          transition: all 0.15s;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          font-family: 'Sora', sans-serif;
+          border-left: 3px solid transparent;
+        }
+        .phys-card:hover {
+          border-color: #bfdbfe;
+          border-left-color: #2563eb;
+          background: #f0f9ff;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 8px rgba(37,99,235,0.08);
+        }
+        .phys-card.selected {
+          background: #eff6ff;
+          border-color: #bfdbfe;
+          border-left-color: #2563eb;
+          box-shadow: 0 2px 10px rgba(37,99,235,0.12);
+        }
+        .phys-capture-btn {
+          padding: 5px 13px;
+          border-radius: 7px;
+          border: 1px solid #bfdbfe;
+          background: #eff6ff;
+          color: #2563eb;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: all 0.12s;
+          font-family: 'Sora', sans-serif;
+        }
+        .phys-capture-btn:hover {
+          background: #2563eb;
+          color: #fff;
+          border-color: #2563eb;
+        }
+      `}</style>
+
       <div
-        style={cardStyle}
+        className={`phys-card${isSelected ? " selected" : ""}`}
         onClick={() => onSelect(physician)}
-        onMouseEnter={(e) => {
-          if (!isSelected) {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--blue-200, #bfdbfe)";
-            (e.currentTarget as HTMLDivElement).style.background  = "var(--gray-50, #f8fafc)";
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!isSelected) {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--gray-100, #f1f5f9)";
-            (e.currentTarget as HTMLDivElement).style.background  = "var(--white, #fff)";
-          }
-        }}
       >
         {/* Row 1: index + name + distance */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           {/* Number badge */}
           <div style={{
-            width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-            background: isSelected ? "var(--blue-600, #2563eb)" : "var(--gray-200, #e2e8f0)",
-            color:      isSelected ? "#fff" : "var(--gray-600, #475569)",
+            width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+            background: isSelected ? "#2563eb" : "#f1f5f9",
+            color:      isSelected ? "#fff" : "#64748b",
             fontSize: 11, fontWeight: 700,
             display: "flex", alignItems: "center", justifyContent: "center",
+            fontFamily: "'IBM Plex Mono', monospace",
+            transition: "all 0.15s",
           }}>{index + 1}</div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
-              fontSize: 14, fontWeight: 700,
-              color: "var(--gray-800, #1e293b)",
+              fontSize: 14, fontWeight: 700, color: "#0f172a",
               whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
             }}>
               {physician.name}
             </div>
             {physician.taxonomy_desc && (
-              <div style={{ fontSize: 12, color: "var(--blue-500, #3b82f6)", marginTop: 1, fontWeight: 500 }}>
+              <div style={{ fontSize: 11, color: "#2563eb", marginTop: 1, fontWeight: 600 }}>
                 {physician.taxonomy_desc}
               </div>
             )}
@@ -85,10 +104,18 @@ export default function PhysicianCard({
 
           {physician.distance_miles != null && (
             <div style={{
-              fontSize: 11, fontWeight: 700, color: "var(--gray-500, #64748b)",
-              whiteSpace: "nowrap", flexShrink: 0,
+              display: "flex", flexDirection: "column", alignItems: "flex-end",
+              flexShrink: 0,
             }}>
-              {physician.distance_miles} mi
+              <span style={{
+                fontSize: 13, fontWeight: 700, color: "#0f172a",
+                fontFamily: "'IBM Plex Mono', monospace",
+              }}>
+                {physician.distance_miles}
+              </span>
+              <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, letterSpacing: "0.3px" }}>
+                MI
+              </span>
             </div>
           )}
         </div>
@@ -96,56 +123,50 @@ export default function PhysicianCard({
         {/* Row 2: address */}
         {physician.address && (
           <div style={{
-            fontSize: 12, color: "var(--gray-500, #64748b)",
-            paddingLeft: 34, lineHeight: 1.45,
+            fontSize: 12, color: "#64748b",
+            paddingLeft: 36, lineHeight: 1.45,
+            display: "flex", alignItems: "flex-start", gap: 4,
           }}>
-            📍 {physician.address}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1.5 }}>
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+            {physician.address}
           </div>
         )}
 
-        {/* Row 3: phone + NPI + lead button */}
+        {/* Row 3: phone + NPI + capture button */}
         <div style={{
           display: "flex", alignItems: "center",
-          gap: 10, paddingLeft: 34, flexWrap: "wrap",
+          gap: 8, paddingLeft: 36, flexWrap: "wrap",
         }}>
           {physician.phone && (
             <a
               href={`tel:${physician.phone}`}
-              style={{ fontSize: 12, color: "var(--blue-500, #3b82f6)", textDecoration: "none", fontWeight: 500 }}
+              style={{
+                fontSize: 12, color: "#2563eb",
+                textDecoration: "none", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 3,
+              }}
               onClick={(e) => e.stopPropagation()}
             >
-              📞 {physician.phone}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.5 2 2 0 0 1 3.6 1.3h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2z"/>
+              </svg>
+              {physician.phone}
             </a>
           )}
-          <span style={{ fontSize: 11, color: "var(--gray-400, #94a3b8)" }}>
+          <span style={{
+            fontSize: 10, color: "#94a3b8",
+            fontFamily: "'IBM Plex Mono', monospace",
+          }}>
             NPI {physician.npi}
           </span>
 
-          {/* Spacer */}
           <div style={{ flex: 1 }} />
 
           <button
+            className="phys-capture-btn"
             onClick={(e) => { e.stopPropagation(); setShowLead(true); }}
-            style={{
-              padding:      "5px 12px",
-              borderRadius: 6,
-              border:       "1px solid var(--blue-200, #bfdbfe)",
-              background:   "var(--blue-50, #eff6ff)",
-              color:        "var(--blue-600, #2563eb)",
-              fontSize:     11,
-              fontWeight:   700,
-              cursor:       "pointer",
-              whiteSpace:   "nowrap",
-              transition:   "all 0.12s",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "var(--blue-600, #2563eb)";
-              (e.currentTarget as HTMLButtonElement).style.color = "#fff";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "var(--blue-50, #eff6ff)";
-              (e.currentTarget as HTMLButtonElement).style.color = "var(--blue-600, #2563eb)";
-            }}
           >
             + Capture Lead
           </button>

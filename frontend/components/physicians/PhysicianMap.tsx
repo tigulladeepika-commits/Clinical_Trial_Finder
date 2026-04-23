@@ -1,6 +1,6 @@
 // components/physicians/PhysicianMap.tsx
-// MapQuest map that renders physician markers alongside the selected
-// trial site marker. Reuses the same MapQuest SDK as TrialSiteMap.
+// Updated: doctor SVG markers for physicians, hospital icon for trial site,
+// improved tooltip/popup styling, haversine distance note in popup.
 
 "use client";
 
@@ -15,13 +15,39 @@ type Props = {
   onSelect:     (p: Physician) => void;
 };
 
-declare global {
-  interface Window { L: any; }
+declare global { interface Window { L: any; } }
+
+// ── SVG icon generators ───────────────────────────────────────────────────────
+
+/** Hospital cross marker for the trial site (red) */
+function hospitalMarkerHtml(color = "#ef4444", size = 30): string {
+  return `
+    <div style="filter:drop-shadow(0 2px 8px rgba(0,0,0,0.30));cursor:pointer;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 30 30">
+        <circle cx="15" cy="15" r="14" fill="${color}" stroke="white" stroke-width="2.5"/>
+        <rect x="12" y="7" width="6" height="16" rx="1.5" fill="white"/>
+        <rect x="7" y="12" width="16" height="6" rx="1.5" fill="white"/>
+      </svg>
+    </div>`.trim();
 }
 
-// Physician markers are blue dots; the trial site is a red pin
-const PHYSICIAN_COLOR = "#2563eb";
-const SITE_COLOR      = "#ef4444";
+/** Doctor/person marker for physicians */
+function doctorMarkerHtml(color: string, size: number, selected: boolean): string {
+  const glow = selected ? `filter:drop-shadow(0 0 8px ${color});` : "filter:drop-shadow(0 2px 6px rgba(0,0,0,0.25));";
+  return `
+    <div style="${glow}cursor:pointer;transition:transform 0.15s;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 30 30">
+        <circle cx="15" cy="15" r="14" fill="${color}" stroke="white" stroke-width="${selected ? 3 : 2}"/>
+        <!-- Head -->
+        <circle cx="15" cy="11" r="4" fill="white"/>
+        <!-- Body -->
+        <path d="M8 25c0-4.4 3.1-7 7-7s7 2.6 7 7" fill="white"/>
+        <!-- Stethoscope arc -->
+        <path d="M12 17.5 Q10 21 13 22.5" stroke="${color}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <circle cx="13.5" cy="23" r="1.2" fill="${color}"/>
+      </svg>
+    </div>`.trim();
+}
 
 export default function PhysicianMap({ physicians, selectedSite, selectedNpi, onSelect }: Props) {
   const mapKey      = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
@@ -31,7 +57,6 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
 
   const mappable = physicians.filter((p) => p.lat != null && p.lng != null);
 
-  // ── Build / rebuild map ────────────────────────────────────────────────────
   const initMap = () => {
     if (!mapDivRef.current || mapRef.current) return;
     const L = window.L;
@@ -39,45 +64,56 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
 
     L.mapquest.key = mapKey;
 
-    // Inject styles once
-    if (!document.getElementById("phys-map-style")) {
+    if (!document.getElementById("phys-map-style-v2")) {
       const style = document.createElement("style");
-      style.id    = "phys-map-style";
+      style.id = "phys-map-style-v2";
       style.textContent = `
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap');
         .phys-tooltip {
-          background: white !important; border: 1px solid #e2e8f0 !important;
-          border-radius: 8px !important; padding: 6px 10px !important;
-          font-size: 12px !important; font-weight: 500 !important;
-          color: #1e293b !important; box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
-          white-space: nowrap !important; pointer-events: none !important;
+          background: white !important;
+          border: 1px solid #e2e8f0 !important;
+          border-radius: 10px !important;
+          padding: 7px 12px !important;
+          font-size: 12px !important;
+          font-weight: 500 !important;
+          color: #1e293b !important;
+          box-shadow: 0 4px 14px rgba(0,0,0,0.12) !important;
+          white-space: nowrap !important;
+          pointer-events: none !important;
+          font-family: 'Sora', sans-serif !important;
         }
         .phys-popup .leaflet-popup-content-wrapper {
-          background: white !important; border: 1px solid #e2e8f0 !important;
-          border-radius: 12px !important; box-shadow: 0 8px 24px rgba(0,0,0,0.14) !important;
-          padding: 0 !important; overflow: hidden !important; min-width: 200px !important;
+          background: white !important;
+          border: 1px solid #e2e8f0 !important;
+          border-radius: 14px !important;
+          box-shadow: 0 10px 32px rgba(0,0,0,0.14) !important;
+          padding: 0 !important;
+          overflow: hidden !important;
+          min-width: 210px !important;
         }
         .phys-popup .leaflet-popup-content { margin: 0 !important; }
         .phys-popup .leaflet-popup-close-button {
-          top: 8px !important; right: 10px !important; font-size: 18px !important;
-          color: #94a3b8 !important;
+          top: 10px !important; right: 12px !important;
+          font-size: 20px !important; color: #94a3b8 !important;
+          font-weight: 300 !important;
         }
-        .phys-dot {
-          border-radius: 50% !important; border: 2.5px solid white !important;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.28) !important;
-          cursor: pointer !important; transition: transform 0.15s !important;
-        }
-        .phys-dot:hover { transform: scale(1.5) !important; }
-        .site-pin {
-          border-radius: 50% 50% 50% 0 !important;
-          transform: rotate(-45deg) !important;
-          border: 2.5px solid white !important;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.35) !important;
+        .phys-popup .leaflet-popup-close-button:hover { color: #475569 !important; background: none !important; }
+        .site-tooltip {
+          background: white !important;
+          border: 1px solid #fecaca !important;
+          border-radius: 10px !important;
+          padding: 7px 12px !important;
+          font-size: 12px !important;
+          font-weight: 600 !important;
+          color: #dc2626 !important;
+          box-shadow: 0 4px 14px rgba(0,0,0,0.12) !important;
+          pointer-events: none !important;
+          font-family: 'Sora', sans-serif !important;
         }
       `;
       document.head.appendChild(style);
     }
 
-    // Center: average of all mappable physicians or fall back to site
     const centerLat = mappable.length
       ? mappable.reduce((s, p) => s + p.lat!, 0) / mappable.length
       : selectedSite.lat;
@@ -93,66 +129,78 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
     });
     mapRef.current = map;
 
-    // Trial site marker (red pin)
+    // Trial site marker (red hospital cross)
     const siteIcon = L.divIcon({
-      html: `<div class="site-pin" style="width:16px;height:16px;background:${SITE_COLOR};"></div>`,
-      className: "", iconSize: [16, 16], iconAnchor: [8, 16],
+      html:      hospitalMarkerHtml("#ef4444", 30),
+      className: "",
+      iconSize:  [30, 30],
+      iconAnchor:[15, 15],
     });
     const siteMarker = L.marker([selectedSite.lat, selectedSite.lng], { icon: siteIcon }).addTo(map);
     siteMarker.bindTooltip(
-      `<div style="font-weight:700;color:#dc2626;">📍 Trial Site</div>
-       <div style="font-size:11px;color:#64748b;">${selectedSite.facility ?? ""}</div>`,
-      { permanent: false, direction: "top", offset: [0, -14], className: "phys-tooltip" }
+      `<div style="font-weight:700;color:#dc2626;">🏥 Trial Site</div>
+       ${selectedSite.facility ? `<div style="font-size:11px;color:#64748b;">${selectedSite.facility}</div>` : ""}`,
+      { permanent: false, direction: "top", offset: [0, -18], className: "site-tooltip" }
     );
 
-    // Physician markers
+    // Physician markers (doctor icons)
     markersRef.current = mappable.map((p) => {
       const isSelected = p.npi === selectedNpi;
-      const color      = isSelected ? "#1d4ed8" : PHYSICIAN_COLOR;
-      const size       = isSelected ? 18 : 14;
+      const color      = isSelected ? "#1d4ed8" : "#2563eb";
+      const size       = isSelected ? 30 : 24;
 
       const icon = L.divIcon({
-        html: `<div class="phys-dot" style="width:${size}px;height:${size}px;background:${color};"></div>`,
-        className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+        html:      doctorMarkerHtml(color, size, isSelected),
+        className: "",
+        iconSize:  [size, size],
+        iconAnchor:[size / 2, size / 2],
       });
 
       const marker = L.marker([p.lat, p.lng], { icon }).addTo(map);
 
       marker.bindTooltip(
-        `<div style="font-weight:600;">${p.name}</div>
-         <div style="font-size:11px;color:#64748b;">${p.taxonomy_desc ?? ""}</div>`,
-        { permanent: false, direction: "top", offset: [0, -10], className: "phys-tooltip" }
+        `<div style="font-weight:700;">${p.name}</div>
+         ${p.taxonomy_desc ? `<div style="font-size:11px;color:#3b82f6;">${p.taxonomy_desc}</div>` : ""}`,
+        { permanent: false, direction: "top", offset: [0, -12], className: "phys-tooltip" }
       );
+
+      const distNote = p.distance_miles != null
+        ? `<div style="margin-top:4px;font-weight:700;color:#2563eb;font-size:12px;">
+             📏 ${p.distance_miles} mi from site
+           </div>`
+        : "";
 
       const popupHtml = `
         <div>
-          <div style="padding:12px 14px 10px;border-bottom:1px solid #f1f5f9;">
-            <div style="font-weight:700;font-size:13px;color:#0f172a;padding-right:16px;">${p.name}</div>
-            ${p.taxonomy_desc ? `<div style="font-size:11px;color:#3b82f6;margin-top:2px;">${p.taxonomy_desc}</div>` : ""}
+          <div style="padding:13px 16px 11px;border-bottom:1px solid #f1f5f9;background:#f0f9ff;">
+            <div style="font-weight:700;font-size:13px;color:#0f172a;padding-right:18px;font-family:'Sora',sans-serif;">${p.name}</div>
+            ${p.taxonomy_desc
+              ? `<div style="font-size:11px;color:#2563eb;margin-top:2px;font-weight:600;">${p.taxonomy_desc}</div>`
+              : ""}
           </div>
-          <div style="padding:10px 14px;font-size:12px;color:#64748b;">
+          <div style="padding:11px 16px 13px;font-size:12px;color:#64748b;font-family:'Sora',sans-serif;">
             ${p.address ? `<div>📍 ${p.address}</div>` : ""}
-            ${p.phone   ? `<div style="margin-top:4px;">📞 ${p.phone}</div>` : ""}
-            ${p.distance_miles != null ? `<div style="margin-top:4px;font-weight:600;color:#2563eb;">${p.distance_miles} mi from site</div>` : ""}
+            ${p.phone   ? `<div style="margin-top:4px;">📞 <a href="tel:${p.phone}" style="color:#2563eb;font-weight:600;">${p.phone}</a></div>` : ""}
+            ${distNote}
+            <div style="margin-top:6px;font-size:10px;color:#cbd5e1;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>
           </div>
         </div>`;
 
       marker.bindPopup(popupHtml, {
-        className: "phys-popup", offset: [0, -8], maxWidth: 260, closeButton: true,
+        className: "phys-popup", offset: [0, -10], maxWidth: 280, closeButton: true,
       });
 
       marker.on("click", () => { onSelect(p); marker.openPopup(); });
-
       return marker;
     });
 
-    // Fit bounds to include site + all physician markers
+    // Fit bounds
     const allPoints: [number, number][] = [
       [selectedSite.lat, selectedSite.lng],
       ...mappable.map((p) => [p.lat!, p.lng!] as [number, number]),
     ];
     if (allPoints.length > 1) {
-      map.fitBounds(L.latLngBounds(allPoints), { padding: [40, 40] });
+      map.fitBounds(window.L.latLngBounds(allPoints), { padding: [40, 40] });
     }
   };
 
@@ -186,7 +234,7 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
       markersRef.current = [];
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapKey, physicians, selectedSite]);
 
   const zoomIn  = () => mapRef.current?.zoomIn();
@@ -204,10 +252,13 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
     return (
       <div style={{
         height: 340, display: "flex", alignItems: "center", justifyContent: "center",
-        flexDirection: "column", gap: 10, background: "var(--gray-50, #f8fafc)",
-        color: "var(--gray-400, #94a3b8)", borderRadius: 12,
+        flexDirection: "column", gap: 10, background: "#f8fafc",
+        color: "#94a3b8", borderRadius: 12,
       }}>
-        <div style={{ fontSize: 36 }}>🗺️</div>
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+          <circle cx="12" cy="10" r="3"/>
+        </svg>
         <div style={{ fontSize: 14 }}>MapQuest API key not configured</div>
       </div>
     );
@@ -223,16 +274,16 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
         display: "flex", flexDirection: "column", gap: 6,
       }}>
         {[
-          { icon: "+", title: "Zoom in",       fn: zoomIn  },
-          { icon: "−", title: "Zoom out",      fn: zoomOut },
-          { icon: "⊡", title: "Fit all",       fn: fitAll  },
+          { icon: "+", title: "Zoom in",  fn: zoomIn  },
+          { icon: "−", title: "Zoom out", fn: zoomOut },
+          { icon: "⊡", title: "Fit all",  fn: fitAll  },
         ].map((b) => (
           <button key={b.title} title={b.title} onClick={b.fn} style={{
             width: 32, height: 32, background: "white",
-            border: "1px solid var(--gray-200, #e2e8f0)", borderRadius: 8,
-            fontSize: 16, fontWeight: 700, color: "var(--gray-700, #334155)",
+            border: "1px solid #e2e8f0", borderRadius: 8,
+            fontSize: 16, fontWeight: 700, color: "#334155",
             cursor: "pointer", display: "flex", alignItems: "center",
-            justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,0.10)",
+            justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
           }}>{b.icon}</button>
         ))}
       </div>
@@ -240,25 +291,29 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
       {/* Legend */}
       <div style={{
         position: "absolute", bottom: 10, left: 10, zIndex: 1000,
-        background: "rgba(255,255,255,0.95)", border: "1px solid var(--gray-200, #e2e8f0)",
-        borderRadius: 8, padding: "8px 12px",
-        display: "flex", flexDirection: "column", gap: 5,
+        background: "rgba(255,255,255,0.95)",
+        border: "1px solid #e2e8f0", borderRadius: 10,
+        padding: "9px 13px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        display: "flex", flexDirection: "column", gap: 7,
       }}>
-        {[
-          { color: SITE_COLOR,      label: "Trial site" },
-          { color: PHYSICIAN_COLOR, label: "Physician"  },
-        ].map((l) => (
-          <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <div style={{
-              width: 10, height: 10, borderRadius: "50%",
-              background: l.color, border: "2px solid white",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-            }} />
-            <span style={{ fontSize: 11, fontWeight: 500, color: "var(--gray-600, #475569)" }}>
-              {l.label}
-            </span>
-          </div>
-        ))}
+        {/* Site legend */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="14" height="14" viewBox="0 0 30 30">
+            <circle cx="15" cy="15" r="14" fill="#ef4444"/>
+            <rect x="12" y="7" width="6" height="16" rx="1.5" fill="white"/>
+            <rect x="7" y="12" width="16" height="6" rx="1.5" fill="white"/>
+          </svg>
+          <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>Trial Site</span>
+        </div>
+        {/* Physician legend */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="14" height="14" viewBox="0 0 30 30">
+            <circle cx="15" cy="15" r="14" fill="#2563eb"/>
+            <circle cx="15" cy="11" r="4" fill="white"/>
+            <path d="M8 25c0-4.4 3.1-7 7-7s7 2.6 7 7" fill="white"/>
+          </svg>
+          <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>Physician</span>
+        </div>
       </div>
     </div>
   );
