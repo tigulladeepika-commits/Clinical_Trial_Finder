@@ -11,6 +11,11 @@ import { usePhysicians }                 from "@/hooks/usePhysicians";
 import type { Trial, TrialSearchFilters, SiteData } from "@/types/trial";
 import type { SelectedSite }             from "@/types/physician";
 
+// Heights as CSS custom properties so they stay in sync everywhere
+const HEADER_H   = 58;   // px  — .site-header
+const SEARCH_H   = 73;   // px  — .search-card  (padding 16*2 + input ~41)
+const PANEL_TOP  = HEADER_H + SEARCH_H; // 131px
+
 function HomeInner() {
   const router       = useRouter();
   const searchParams = useSearchParams();
@@ -121,6 +126,10 @@ function HomeInner() {
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
+          --header-h:   ${HEADER_H}px;
+          --search-h:   ${SEARCH_H}px;
+          --panel-top:  ${PANEL_TOP}px;
+
           --white:      #ffffff;
           --gray-50:    #f8fafc;
           --gray-100:   #f1f5f9;
@@ -154,16 +163,17 @@ function HomeInner() {
         .app-shell {
           display: flex;
           flex-direction: column;
-          min-height: 100vh;
+          height: 100vh;           /* fill exactly the viewport */
+          overflow: hidden;        /* shell itself never scrolls */
           background: var(--gray-50);
         }
 
         /* ── Header ── */
         .site-header {
+          height: var(--header-h);
+          flex-shrink: 0;          /* never squish */
           background: #fff;
           border-bottom: 1px solid var(--gray-100);
-          position: sticky;
-          top: 0;
           z-index: 100;
           box-shadow: 0 1px 4px rgba(0,0,0,0.04);
         }
@@ -171,7 +181,7 @@ function HomeInner() {
           max-width: 1600px;
           margin: 0 auto;
           padding: 0 28px;
-          height: 58px;
+          height: 100%;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -203,35 +213,32 @@ function HomeInner() {
           color: var(--gray-900);
           letter-spacing: -0.3px;
         }
-        .logo-text span {
-          color: var(--blue-600);
-        }
+        .logo-text span { color: var(--blue-600); }
         .header-tagline {
           font-size: 12px;
           color: var(--gray-400);
           font-weight: 500;
           font-style: italic;
         }
-        @media (max-width: 640px) {
-          .header-tagline { display: none; }
-        }
+        @media (max-width: 640px) { .header-tagline { display: none; } }
 
         /* ── Compact search bar ── */
         .search-card {
+          height: var(--search-h);
+          flex-shrink: 0;          /* never squish */
           background: #fff;
           border-bottom: 1px solid var(--gray-100);
           padding: 16px 28px;
           box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+          overflow: hidden;        /* clip any inner overflow */
         }
 
-        /* ── Results layout ──
-             Left column reduced from 380px → 300px (saves ~80px / ~1 inch)
-             giving that space back to the detail/map panel.               */
+        /* ── Results layout ── */
         .results-layout {
-          flex: 1;
+          flex: 1;                 /* takes remaining height after header+searchbar */
+          min-height: 0;           /* required for flex children to shrink */
           display: grid;
           grid-template-columns: 300px 1fr;
-          min-height: 0;
           animation: appFadeIn 0.3s ease both;
         }
         @media (max-width: 900px) {
@@ -241,21 +248,19 @@ function HomeInner() {
           }
         }
 
-        /* ── Trials panel (left) ── */
+        /* ── Trials panel (left) ──
+           Height = fill the results-layout row, scroll internally.
+           No more calc() referencing magic numbers that drift.           */
         .trials-panel {
           border-right: 1px solid var(--gray-100);
-          overflow-y: auto;
+          overflow-y: auto;        /* list scrolls inside the panel */
           background: #fff;
-          height: calc(100vh - 120px);
-          position: sticky;
-          top: 58px;
+          /* height is determined by the flex/grid parent — do NOT set it here */
+          display: flex;
+          flex-direction: column;
         }
         @media (max-width: 900px) {
-          .trials-panel {
-            height: auto;
-            max-height: 50vh;
-            position: static;
-          }
+          .trials-panel { max-height: 50vh; }
         }
 
         /* ── Detail panel (right) ── */
@@ -284,11 +289,7 @@ function HomeInner() {
           border-radius: 50%;
           animation: spinnerAnim 0.75s linear infinite;
         }
-        .state-msg {
-          font-size: 14px;
-          color: var(--gray-400);
-          font-weight: 500;
-        }
+        .state-msg { font-size: 14px; color: var(--gray-400); font-weight: 500; }
 
         .error-box {
           margin: 16px;
@@ -387,14 +388,8 @@ function HomeInner() {
           line-height: 1.45;
           margin-bottom: 5px;
         }
-        .trial-detail-sponsor {
-          font-size: 11px;
-          color: var(--gray-400);
-        }
-        .trial-detail-sponsor strong {
-          color: var(--gray-600);
-          font-weight: 600;
-        }
+        .trial-detail-sponsor { font-size: 11px; color: var(--gray-400); }
+        .trial-detail-sponsor strong { color: var(--gray-600); font-weight: 600; }
 
         /* Status & phase badges */
         .badge {
@@ -432,15 +427,17 @@ function HomeInner() {
           </div>
         </header>
 
-        {/* Hero search */}
+        {/* Hero search — only shown before any results */}
         {!hasResults && (
-          <SearchForm
-            key="hero"
-            onSearch={handleSearch}
-            loading={loading}
-            compact={false}
-            initialValues={filtersFromUrl}
-          />
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            <SearchForm
+              key="hero"
+              onSearch={handleSearch}
+              loading={loading}
+              compact={false}
+              initialValues={filtersFromUrl}
+            />
+          </div>
         )}
 
         {/* Compact search bar */}
@@ -456,7 +453,7 @@ function HomeInner() {
           </div>
         )}
 
-        {/* Results layout */}
+        {/* Results layout — fills remaining height */}
         {hasResults && (
           <div className="results-layout">
 
@@ -498,7 +495,6 @@ function HomeInner() {
             {/* RIGHT: Detail panel */}
             <div className="detail-panel">
 
-              {/* Empty state */}
               {!selectedTrial && (
                 <div className="detail-empty">
                   <div className="detail-empty-icon">🗺️</div>
@@ -508,7 +504,6 @@ function HomeInner() {
 
               {selectedTrial && (
                 <>
-                  {/* Trial header */}
                   <div className="trial-detail-header">
                     <div className="trial-detail-badges">
                       <span className="trial-detail-nct">{selectedTrial.nctId}</span>
@@ -533,7 +528,6 @@ function HomeInner() {
                     )}
                   </div>
 
-                  {/* Sites loading */}
                   {sitesLoading && (
                     <div className="state-box">
                       <div className="spinner" />
@@ -541,7 +535,6 @@ function HomeInner() {
                     </div>
                   )}
 
-                  {/* Sites error */}
                   {sitesError && (
                     <div className="error-box">
                       <span>Error</span>
@@ -549,7 +542,6 @@ function HomeInner() {
                     </div>
                   )}
 
-                  {/* Physician panel */}
                   {siteData && !sitesLoading && selectedSite && (
                     <PhysicianPanel
                       site={selectedSite}
@@ -563,7 +555,6 @@ function HomeInner() {
                     />
                   )}
 
-                  {/* Trial site map */}
                   {siteData && !sitesLoading && !selectedSite && (
                     <TrialSiteMap
                       sites={siteData.sites}

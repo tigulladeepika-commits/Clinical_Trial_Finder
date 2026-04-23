@@ -152,7 +152,6 @@ export default function TrialList({
   onLoadMore,
   loading,
 }: Props) {
-  // Sort flat list by status order — no grouping headers (change #7)
   const sorted = useMemo(() => {
     return [...trials].sort((a, b) => {
       const orderA = STATUS_GROUP_ORDER.indexOf(classifyStatus(a.status ?? null));
@@ -175,7 +174,13 @@ export default function TrialList({
           to   { opacity: 1; transform: translateY(0); }
         }
 
-        .trial-list-wrap { font-family: 'Sora', sans-serif; }
+        /* Wrapper fills its flex parent — parent scrolls, not this div */
+        .trial-list-wrap {
+          font-family: 'Sora', sans-serif;
+          display: flex;
+          flex-direction: column;
+          /* Do NOT set height/min-height here; the parent .trials-panel owns height */
+        }
 
         .trial-list-header {
           padding: 12px 16px 10px;
@@ -183,10 +188,12 @@ export default function TrialList({
           display: flex;
           align-items: center;
           justify-content: space-between;
+          /* sticky within the scrolling .trials-panel */
           position: sticky;
           top: 0;
           background: #fff;
           z-index: 3;
+          flex-shrink: 0;
         }
         .trial-list-count {
           font-size: 12px;
@@ -206,6 +213,7 @@ export default function TrialList({
           border-left: 3px solid transparent;
           animation: trialFadeIn 0.22s ease both;
           position: relative;
+          flex-shrink: 0;
         }
         .trial-card-item:hover {
           background: #f8fafc;
@@ -253,8 +261,9 @@ export default function TrialList({
           text-overflow: ellipsis;
         }
 
+        /* Load-more button — tight bottom margin, no extra padding below */
         .trial-load-more {
-          margin: 14px 16px 18px;
+          margin: 12px 16px;        /* equal top/bottom — was 14px top 18px bottom */
           width: calc(100% - 32px);
           padding: 10px 0;
           border-radius: 10px;
@@ -270,6 +279,7 @@ export default function TrialList({
           align-items: center;
           justify-content: center;
           gap: 6px;
+          flex-shrink: 0;
         }
         .trial-load-more:hover:not(:disabled) {
           border-color: #2563eb;
@@ -280,82 +290,80 @@ export default function TrialList({
           opacity: 0.55;
           cursor: not-allowed;
         }
+
+        /* End note — snug, no extra whitespace */
         .trial-end-note {
           text-align: center;
-          padding: 14px 16px;
+          padding: 12px 16px;
           font-size: 11px;
           color: #cbd5e1;
           font-style: italic;
+          flex-shrink: 0;
         }
       `}</style>
 
-      <div className="trial-list-wrap">
-
-        {/* Header — count only, no "Grouped by status" label */}
-        <div className="trial-list-header">
-          <span className="trial-list-count">
-            Showing <strong>{trials.length}</strong> of{" "}
-            <strong>{totalCount.toLocaleString()}</strong> trials
-          </span>
-        </div>
-
-        {/* Flat sorted list */}
-        {sorted.map((trial, idx) => {
-          const group = classifyStatus(trial.status ?? null);
-          return (
-            <div
-              key={trial.nctId}
-              className={`trial-card-item${selectedId === trial.nctId ? " active" : ""}`}
-              onClick={() => onSelect(trial)}
-              style={{ animationDelay: `${idx * 0.025}s` }}
-            >
-              <div className="trial-card-nct">{trial.nctId}</div>
-              <div className="trial-card-title">{trial.title}</div>
-              <div className="trial-card-meta">
-                <StatusDot group={group} />
-                {(trial.phases?.length ?? 0) > 0 &&
-                  trial.phases!.map((p) => (
-                    <PhaseBadge key={p} phase={p} />
-                  ))}
-              </div>
-              {trial.sponsor && (
-                <div className="trial-card-sponsor" title={trial.sponsor}>
-                  {trial.sponsor}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Load More */}
-        {hasMore && (
-          <button
-            className="trial-load-more"
-            onClick={onLoadMore}
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <span style={{
-                  width: 12, height: 12,
-                  border: "2px solid #cbd5e1",
-                  borderTopColor: "#2563eb",
-                  borderRadius: "50%",
-                  display: "inline-block",
-                  animation: "trialPulse 0.8s linear infinite",
-                }} />
-                Loading…
-              </>
-            ) : (
-              <>↓ Load next 10 trials</>
-            )}
-          </button>
-        )}
-
-        {!hasMore && trials.length > 0 && (
-          <div className="trial-end-note">All {trials.length} trials shown</div>
-        )}
+      {/* No extra wrapper div — the fragment keeps DOM flat */}
+      <div className="trial-list-header">
+        <span className="trial-list-count">
+          Showing <strong>{trials.length}</strong> of{" "}
+          <strong>{totalCount.toLocaleString()}</strong> trials
+        </span>
       </div>
+
+      {sorted.map((trial, idx) => {
+        const group = classifyStatus(trial.status ?? null);
+        return (
+          <div
+            key={trial.nctId}
+            className={`trial-card-item${selectedId === trial.nctId ? " active" : ""}`}
+            onClick={() => onSelect(trial)}
+            style={{ animationDelay: `${idx * 0.025}s` }}
+          >
+            <div className="trial-card-nct">{trial.nctId}</div>
+            <div className="trial-card-title">{trial.title}</div>
+            <div className="trial-card-meta">
+              <StatusDot group={group} />
+              {(trial.phases?.length ?? 0) > 0 &&
+                trial.phases!.map((p) => (
+                  <PhaseBadge key={p} phase={p} />
+                ))}
+            </div>
+            {trial.sponsor && (
+              <div className="trial-card-sponsor" title={trial.sponsor}>
+                {trial.sponsor}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {hasMore && (
+        <button
+          className="trial-load-more"
+          onClick={onLoadMore}
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <span style={{
+                width: 12, height: 12,
+                border: "2px solid #cbd5e1",
+                borderTopColor: "#2563eb",
+                borderRadius: "50%",
+                display: "inline-block",
+                animation: "trialPulse 0.8s linear infinite",
+              }} />
+              Loading…
+            </>
+          ) : (
+            <>↓ Load next 10 trials</>
+          )}
+        </button>
+      )}
+
+      {!hasMore && trials.length > 0 && (
+        <div className="trial-end-note">All {trials.length} trials shown</div>
+      )}
     </>
   );
 }

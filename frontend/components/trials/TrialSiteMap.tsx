@@ -1,6 +1,4 @@
 // components/trials/TrialSiteMap.tsx
-// Updated: hospital SVG marker icons, improved UI, universal color conventions
-
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -18,12 +16,12 @@ type Props = {
 // ── Status → universal color ─────────────────────────────────────────────────
 function statusColor(status: string | null): string {
   const s = (status || "").toUpperCase().trim();
-  if (s === "RECRUITING" || s === "ENROLLING_BY_INVITATION") return "#16a34a"; // green
-  if (s === "NOT_YET_RECRUITING")              return "#f59e0b"; // amber
-  if (s.includes("ACTIVE"))                    return "#2563eb"; // blue
-  if (s === "TERMINATED")                      return "#ef4444"; // red
-  if (s === "WITHDRAWN" || s === "SUSPENDED")  return "#f59e0b"; // amber
-  if (s === "COMPLETED")                       return "#64748b"; // slate
+  if (s === "RECRUITING" || s === "ENROLLING_BY_INVITATION") return "#16a34a";
+  if (s === "NOT_YET_RECRUITING")              return "#f59e0b";
+  if (s.includes("ACTIVE"))                    return "#2563eb";
+  if (s === "TERMINATED")                      return "#ef4444";
+  if (s === "WITHDRAWN" || s === "SUSPENDED")  return "#f59e0b";
+  if (s === "COMPLETED")                       return "#64748b";
   return "#9ca3af";
 }
 
@@ -31,8 +29,6 @@ function statusLabel(status: string | null): string {
   return (status || "Unknown").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// ── Hospital SVG icon (inline for map markers) ───────────────────────────────
-// Generates an SVG hospital cross marker as a data URL
 function hospitalMarkerHtml(color: string, size = 28): string {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 28 28">
@@ -72,6 +68,13 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
         const style = document.createElement("style");
         style.id = "trial-map-style";
         style.textContent = `
+          /* Push Leaflet's own pane z-indexes down so our overlays sit above */
+          .leaflet-map-pane   { z-index: 1 !important; }
+          .leaflet-tile-pane  { z-index: 2 !important; }
+          .leaflet-overlay-pane { z-index: 3 !important; }
+          .leaflet-marker-pane  { z-index: 4 !important; }
+          .leaflet-popup-pane   { z-index: 5 !important; }
+
           .trial-tooltip {
             background: white !important;
             border: 1px solid #e2e8f0 !important;
@@ -212,7 +215,6 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
         }
       });
 
-      // Fit all markers
       if (mappableSites.length > 1) {
         const bounds = L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon]));
         map.fitBounds(bounds, { padding: [40, 40] });
@@ -276,9 +278,7 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
           padding: 14px 0;
           text-align: center;
         }
-        .tsm-stat + .tsm-stat {
-          border-left: 1px solid #f1f5f9;
-        }
+        .tsm-stat + .tsm-stat { border-left: 1px solid #f1f5f9; }
         .tsm-stat-val {
           font-size: 22px;
           font-weight: 700;
@@ -358,11 +358,7 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
           transition: all 0.12s;
           text-align: center;
         }
-        .tsm-find-btn:hover {
-          background: #2563eb;
-          color: white;
-          border-color: #2563eb;
-        }
+        .tsm-find-btn:hover { background: #2563eb; color: white; border-color: #2563eb; }
         .tsm-status-pill {
           display: inline-flex;
           align-items: center;
@@ -374,6 +370,59 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
           text-transform: uppercase;
           letter-spacing: 0.3px;
         }
+
+        /* ── Map overlay z-index fixes ───────────────────────────────────────
+           Leaflet uses z-index ~200-600 internally for its panes.
+           We set our custom controls to 1000+ so they always sit on top.    */
+        .tsm-map-controls {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          z-index: 1000;        /* above all Leaflet panes */
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          pointer-events: auto; /* ensure clicks register */
+        }
+        .tsm-map-legend {
+          position: absolute;
+          bottom: 12px;
+          left: 12px;
+          z-index: 1000;        /* above all Leaflet panes */
+          background: rgba(255,255,255,0.97);
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 10px 14px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          pointer-events: none; /* legend is display-only */
+          max-width: 220px;     /* prevents legend stretching wide on large screens */
+        }
+        .tsm-legend-title {
+          font-size: 9px;
+          font-weight: 700;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          color: #94a3b8;
+          margin-bottom: 2px;
+          font-family: 'IBM Plex Mono', monospace;
+        }
+        .tsm-legend-row {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          white-space: nowrap;
+        }
+        .tsm-legend-label {
+          font-size: 11px;
+          color: #475569;
+          font-weight: 500;
+          /* allow wrapping only if label is very long */
+          white-space: normal;
+          line-height: 1.3;
+        }
       `}</style>
 
       <div style={{ fontFamily: "'Sora', sans-serif" }}>
@@ -381,10 +430,10 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
         {/* Stats strip */}
         <div className="tsm-stats-strip">
           {[
-            { label: "Total Sites",  value: totalSites,         accent: false },
-            { label: "Recruiting",   value: recruitingCount,    accent: true  },
+            { label: "Total Sites",  value: totalSites,          accent: false },
+            { label: "Recruiting",   value: recruitingCount,     accent: true  },
             { label: "On Map",       value: mappableSites.length, accent: false },
-            { label: "Countries",    value: countriesCount,     accent: false },
+            { label: "Countries",    value: countriesCount,      accent: false },
           ].map((st, i) => (
             <div key={i} className="tsm-stat">
               <div className={`tsm-stat-val${st.accent ? " accent" : ""}`}>{st.value}</div>
@@ -413,50 +462,42 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
             <>
               <div ref={mapDivRef} style={{ height: 420, width: "100%", background: "#e8edf2" }} />
 
-              {/* Zoom controls */}
-              <div style={{
-                position: "absolute", top: 12, right: 12, zIndex: 1000,
-                display: "flex", flexDirection: "column", gap: 6,
-              }}>
+              {/* Zoom controls — z-index 1000 via class */}
+              <div className="tsm-map-controls">
                 {[
                   { icon: "+", title: "Zoom in",  fn: zoomIn  },
                   { icon: "−", title: "Zoom out", fn: zoomOut },
                   { icon: "⊡", title: "Fit all",  fn: fitAll  },
                 ].map((b) => (
-                  <button key={b.title} title={b.title} onClick={b.fn} style={{
-                    width: 34, height: 34, background: "white",
-                    border: "1px solid #e2e8f0", borderRadius: 8,
-                    fontSize: 17, fontWeight: 700, color: "#334155",
-                    cursor: "pointer", display: "flex", alignItems: "center",
-                    justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                    transition: "all 0.12s",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "#eff6ff"; e.currentTarget.style.color = "#2563eb"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "white"; e.currentTarget.style.color = "#334155"; }}
+                  <button
+                    key={b.title}
+                    title={b.title}
+                    onClick={b.fn}
+                    style={{
+                      width: 34, height: 34, background: "white",
+                      border: "1px solid #e2e8f0", borderRadius: 8,
+                      fontSize: 17, fontWeight: 700, color: "#334155",
+                      cursor: "pointer", display: "flex", alignItems: "center",
+                      justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                      transition: "all 0.12s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "#eff6ff"; e.currentTarget.style.color = "#2563eb"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "white";   e.currentTarget.style.color = "#334155"; }}
                   >{b.icon}</button>
                 ))}
               </div>
 
-              {/* Legend — hospital cross icon */}
-              <div style={{
-                position: "absolute", bottom: 12, left: 12, zIndex: 1000,
-                background: "rgba(255,255,255,0.95)",
-                border: "1px solid #e2e8f0", borderRadius: 10,
-                padding: "10px 14px", boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
-                display: "flex", flexDirection: "column", gap: 6,
-              }}>
-                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "#94a3b8", marginBottom: 2, fontFamily: "'IBM Plex Mono',monospace" }}>
-                  Status Legend
-                </div>
+              {/* Legend — z-index 1000 via class */}
+              <div className="tsm-map-legend">
+                <div className="tsm-legend-title">Status Legend</div>
                 {LEGEND.map((l) => (
-                  <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                    {/* Mini hospital cross */}
-                    <svg width="14" height="14" viewBox="0 0 28 28">
+                  <div key={l.label} className="tsm-legend-row">
+                    <svg width="14" height="14" viewBox="0 0 28 28" style={{ flexShrink: 0 }}>
                       <circle cx="14" cy="14" r="13" fill={l.color}/>
                       <rect x="11" y="7" width="6" height="14" rx="1.5" fill="white"/>
                       <rect x="7" y="11" width="14" height="6" rx="1.5" fill="white"/>
                     </svg>
-                    <span style={{ fontSize: 11, color: "#475569", fontWeight: 500 }}>{l.label}</span>
+                    <span className="tsm-legend-label">{l.label}</span>
                   </div>
                 ))}
               </div>
@@ -492,7 +533,6 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
                     }
                   }}
                 >
-                  {/* Mini hospital icon */}
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
                     <svg width="16" height="16" viewBox="0 0 28 28" style={{ flexShrink: 0, marginTop: 1 }}>
                       <circle cx="14" cy="14" r="13" fill={color}/>
