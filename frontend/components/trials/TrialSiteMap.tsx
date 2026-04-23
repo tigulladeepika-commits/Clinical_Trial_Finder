@@ -6,10 +6,13 @@ import type { TrialSite }    from "@/types/trial";
 import type { SelectedSite } from "@/types/physician";
 
 type Props = {
-  sites:       TrialSite[];
-  trialTitle:  string;
-  nctId:       string;
+  sites:        TrialSite[];
+  trialTitle:   string;
+  nctId:        string;
   description?: string | null;
+  // NEW: first condition of the trial so it can be forwarded to the
+  // physician search as the primary specialty anchor.
+  condition?:   string | null;
   onFindPhysicians: (site: SelectedSite) => void;
 };
 
@@ -41,9 +44,16 @@ function hospitalMarkerHtml(color: string, size = 28): string {
 
 declare global { interface Window { L: any; } }
 
-export default function TrialSiteMap({ sites, trialTitle, nctId, description, onFindPhysicians }: Props) {
-  const mapKey        = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
-  const mapDivRef     = useRef<HTMLDivElement>(null);
+export default function TrialSiteMap({
+  sites,
+  trialTitle,
+  nctId,
+  description,
+  condition,        // NEW prop
+  onFindPhysicians,
+}: Props) {
+  const mapKey         = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
+  const mapDivRef      = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
 
   const mappableSites   = sites.filter((s) => s.lat != null && s.lon != null);
@@ -68,7 +78,6 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
         const style = document.createElement("style");
         style.id = "trial-map-style";
         style.textContent = `
-          /* Push Leaflet's own pane z-indexes down so our overlays sit above */
           .leaflet-map-pane   { z-index: 1 !important; }
           .leaflet-tile-pane  { z-index: 2 !important; }
           .leaflet-overlay-pane { z-index: 3 !important; }
@@ -119,8 +128,8 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
         document.head.appendChild(style);
       }
 
-      const lats    = mappableSites.map((s) => s.lat as number);
-      const lons    = mappableSites.map((s) => s.lon as number);
+      const lats      = mappableSites.map((s) => s.lat as number);
+      const lons      = mappableSites.map((s) => s.lon as number);
       const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
       const centerLon = (Math.min(...lons) + Math.max(...lons)) / 2;
 
@@ -134,25 +143,27 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
 
       mappableSites.forEach((site) => {
         const color = statusColor(site.status);
-        const icon = L.divIcon({
+        const icon  = L.divIcon({
           html:      hospitalMarkerHtml(color, 28),
           className: "",
           iconSize:  [28, 28],
           iconAnchor:[14, 14],
         });
 
-        const marker = L.marker([site.lat, site.lon], { icon }).addTo(map);
+        const marker       = L.marker([site.lat, site.lon], { icon }).addTo(map);
         const locationLine = [site.city, site.state, site.country].filter(Boolean).join(", ");
 
         marker.bindTooltip(
           `<div style="font-weight:700;font-size:13px;color:#0f172a;">
             ${site.facility || "Unknown Facility"}
            </div>
-           ${locationLine ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">📍 ${locationLine}</div>` : ""}`,
+           ${locationLine
+             ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">📍 ${locationLine}</div>`
+             : ""}`,
           { permanent: false, direction: "top", offset: [0, -16], className: "trial-tooltip" }
         );
 
-        const hasCoords = site.lat != null && site.lon != null;
+        const hasCoords   = site.lat != null && site.lon != null;
         const findPhysBtn = hasCoords
           ? `<button class="find-phys-btn" id="fp-btn-${site.lat}-${site.lon}">
                🩺 Find physicians near this site
@@ -200,13 +211,16 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
               if (btn) {
                 btn.addEventListener("click", () => {
                   marker.closePopup();
+                  // NEW: condition forwarded so PhysicianPanel can pre-fill
+                  // the specialty field and pass it to the backend.
                   onFindPhysicians({
-                    lat:      site.lat as number,
-                    lng:      site.lon as number,
-                    facility: site.facility,
-                    city:     site.city,
-                    state:    site.state,
-                    nct_id:   nctId,
+                    lat:       site.lat as number,
+                    lng:       site.lon as number,
+                    facility:  site.facility,
+                    city:      site.city,
+                    state:     site.state,
+                    nct_id:    nctId,
+                    condition: condition ?? null,
                   });
                 });
               }
@@ -223,20 +237,22 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
 
     const loadAndInit = () => {
       if (window.L?.mapquest) { initMap(); return; }
-      const iv = setInterval(() => { if (window.L?.mapquest) { clearInterval(iv); initMap(); } }, 100);
+      const iv = setInterval(() => {
+        if (window.L?.mapquest) { clearInterval(iv); initMap(); }
+      }, 100);
     };
 
     if (!document.getElementById("mq-css")) {
-      const css = document.createElement("link");
-      css.id = "mq-css"; css.rel = "stylesheet";
-      css.href = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.css";
+      const css  = document.createElement("link");
+      css.id     = "mq-css"; css.rel = "stylesheet";
+      css.href   = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.css";
       document.head.appendChild(css);
     }
     if (!document.getElementById("mq-js")) {
-      const script = document.createElement("script");
-      script.id = "mq-js";
-      script.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
-      script.onload = loadAndInit;
+      const script    = document.createElement("script");
+      script.id       = "mq-js";
+      script.src      = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
+      script.onload   = loadAndInit;
       document.head.appendChild(script);
     } else {
       loadAndInit();
@@ -370,25 +386,21 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
           text-transform: uppercase;
           letter-spacing: 0.3px;
         }
-
-        /* ── Map overlay z-index fixes ───────────────────────────────────────
-           Leaflet uses z-index ~200-600 internally for its panes.
-           We set our custom controls to 1000+ so they always sit on top.    */
         .tsm-map-controls {
           position: absolute;
           top: 12px;
           right: 12px;
-          z-index: 1000;        /* above all Leaflet panes */
+          z-index: 1000;
           display: flex;
           flex-direction: column;
           gap: 6px;
-          pointer-events: auto; /* ensure clicks register */
+          pointer-events: auto;
         }
         .tsm-map-legend {
           position: absolute;
           bottom: 12px;
           left: 12px;
-          z-index: 1000;        /* above all Leaflet panes */
+          z-index: 1000;
           background: rgba(255,255,255,0.97);
           border: 1px solid #e2e8f0;
           border-radius: 10px;
@@ -397,8 +409,8 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
           display: flex;
           flex-direction: column;
           gap: 6px;
-          pointer-events: none; /* legend is display-only */
-          max-width: 220px;     /* prevents legend stretching wide on large screens */
+          pointer-events: none;
+          max-width: 220px;
         }
         .tsm-legend-title {
           font-size: 9px;
@@ -419,7 +431,6 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
           font-size: 11px;
           color: #475569;
           font-weight: 500;
-          /* allow wrapping only if label is very long */
           white-space: normal;
           line-height: 1.3;
         }
@@ -430,10 +441,10 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
         {/* Stats strip */}
         <div className="tsm-stats-strip">
           {[
-            { label: "Total Sites",  value: totalSites,          accent: false },
-            { label: "Recruiting",   value: recruitingCount,     accent: true  },
+            { label: "Total Sites",  value: totalSites,           accent: false },
+            { label: "Recruiting",   value: recruitingCount,      accent: true  },
             { label: "On Map",       value: mappableSites.length, accent: false },
-            { label: "Countries",    value: countriesCount,      accent: false },
+            { label: "Countries",    value: countriesCount,       accent: false },
           ].map((st, i) => (
             <div key={i} className="tsm-stat">
               <div className={`tsm-stat-val${st.accent ? " accent" : ""}`}>{st.value}</div>
@@ -462,7 +473,7 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
             <>
               <div ref={mapDivRef} style={{ height: 420, width: "100%", background: "#e8edf2" }} />
 
-              {/* Zoom controls — z-index 1000 via class */}
+              {/* Zoom controls */}
               <div className="tsm-map-controls">
                 {[
                   { icon: "+", title: "Zoom in",  fn: zoomIn  },
@@ -487,7 +498,7 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
                 ))}
               </div>
 
-              {/* Legend — z-index 1000 via class */}
+              {/* Legend */}
               <div className="tsm-map-legend">
                 <div className="tsm-legend-title">Status Legend</div>
                 {LEGEND.map((l) => (
@@ -521,7 +532,7 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
           <div className="tsm-sites-grid">
             {sites.map((site, i) => {
               const color = statusColor(site.status);
-              const loc = [site.city, site.state, site.country].filter(Boolean).join(", ");
+              const loc   = [site.city, site.state, site.country].filter(Boolean).join(", ");
               return (
                 <div
                   key={i}
@@ -557,13 +568,15 @@ export default function TrialSiteMap({ sites, trialTitle, nctId, description, on
                       className="tsm-find-btn"
                       onClick={(e) => {
                         e.stopPropagation();
+                        // NEW: condition forwarded alongside lat/lng
                         onFindPhysicians({
-                          lat:      site.lat as number,
-                          lng:      site.lon as number,
-                          facility: site.facility,
-                          city:     site.city,
-                          state:    site.state,
-                          nct_id:   nctId,
+                          lat:       site.lat as number,
+                          lng:       site.lon as number,
+                          facility:  site.facility,
+                          city:      site.city,
+                          state:     site.state,
+                          nct_id:    nctId,
+                          condition: condition ?? null,
                         });
                       }}
                     >
