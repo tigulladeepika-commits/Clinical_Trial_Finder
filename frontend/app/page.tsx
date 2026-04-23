@@ -224,11 +224,13 @@ function HomeInner() {
           box-shadow: 0 1px 4px rgba(0,0,0,0.03);
         }
 
-        /* ── Results layout ── */
+        /* ── Results layout ──
+             Left column reduced from 380px → 300px (saves ~80px / ~1 inch)
+             giving that space back to the detail/map panel.               */
         .results-layout {
           flex: 1;
           display: grid;
-          grid-template-columns: 380px 1fr;
+          grid-template-columns: 300px 1fr;
           min-height: 0;
           animation: appFadeIn 0.3s ease both;
         }

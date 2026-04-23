@@ -14,14 +14,6 @@ type Props = {
 };
 
 // ── Status ordering & color system ──────────────────────────────────────────
-// Universal color conventions:
-//   Recruiting       → green   (active/positive)
-//   Active           → blue    (in progress)
-//   Not Recruiting   → amber   (caution/hold)
-//   Completed        → slate   (neutral/done)
-//   Terminated       → red     (stopped)
-//   Other            → gray
-
 type StatusGroup =
   | "Recruiting"
   | "Active"
@@ -62,7 +54,7 @@ const STATUS_CONFIG: Record<
     bg:     "#fffbeb",
     border: "#fde68a",
     dot:    "#f59e0b",
-    label:  "Not Actively Recruiting",
+    label:  "Not Recruiting",
   },
   Completed: {
     color:  "#334155",
@@ -90,33 +82,29 @@ const STATUS_CONFIG: Record<
 function classifyStatus(status: string | null): StatusGroup {
   const s = (status || "").toLowerCase().trim();
   if (s === "recruiting" || s === "enrolling by invitation") return "Recruiting";
-  if (s.includes("active") && !s.includes("not")) return "Active";
-  if (
-    s === "not yet recruiting" ||
-    s === "suspended" ||
-    s === "available"
-  )
+  if (s.includes("active") && !s.includes("not"))           return "Active";
+  if (s === "not yet recruiting" || s === "suspended" || s === "available")
     return "Not Actively Recruiting";
-  if (s === "completed") return "Completed";
-  if (s === "terminated" || s === "withdrawn") return "Terminated";
+  if (s === "completed")                                     return "Completed";
+  if (s === "terminated" || s === "withdrawn")               return "Terminated";
   return "Other";
 }
 
 function PhaseBadge({ phase }: { phase: string }) {
   return (
     <span style={{
-      display:      "inline-flex",
-      alignItems:   "center",
-      padding:      "2px 8px",
-      borderRadius: 4,
-      fontSize:     10,
-      fontWeight:   700,
-      letterSpacing:"0.5px",
-      textTransform:"uppercase",
-      background:   "#f1f5f9",
-      color:        "#475569",
-      border:       "1px solid #e2e8f0",
-      fontFamily:   "'IBM Plex Mono', monospace",
+      display:       "inline-flex",
+      alignItems:    "center",
+      padding:       "2px 7px",
+      borderRadius:  4,
+      fontSize:      10,
+      fontWeight:    700,
+      letterSpacing: "0.5px",
+      textTransform: "uppercase",
+      background:    "#f1f5f9",
+      color:         "#475569",
+      border:        "1px solid #e2e8f0",
+      fontFamily:    "'IBM Plex Mono', monospace",
     }}>
       {phase}
     </span>
@@ -130,9 +118,9 @@ function StatusDot({ group }: { group: StatusGroup }) {
       display:      "inline-flex",
       alignItems:   "center",
       gap:          5,
-      padding:      "2px 9px 2px 6px",
+      padding:      "2px 8px 2px 5px",
       borderRadius: 20,
-      fontSize:     11,
+      fontSize:     10,
       fontWeight:   600,
       background:   cfg.bg,
       color:        cfg.color,
@@ -146,8 +134,7 @@ function StatusDot({ group }: { group: StatusGroup }) {
         background:   cfg.dot,
         flexShrink:   0,
         display:      "inline-block",
-        // Pulse animation for recruiting
-        animation: group === "Recruiting"
+        animation:    group === "Recruiting"
           ? "trialPulse 2s ease-in-out infinite"
           : "none",
       }} />
@@ -165,20 +152,13 @@ export default function TrialList({
   onLoadMore,
   loading,
 }: Props) {
-  // Group trials by status category
-  const grouped = useMemo(() => {
-    const map = new Map<StatusGroup, Trial[]>();
-    STATUS_GROUP_ORDER.forEach((g) => map.set(g, []));
-
-    for (const trial of trials) {
-      const group = classifyStatus(trial.status);
-      map.get(group)!.push(trial);
-    }
-
-    // Only return groups that have entries
-    return STATUS_GROUP_ORDER
-      .map((g) => ({ group: g, trials: map.get(g)! }))
-      .filter((g) => g.trials.length > 0);
+  // Sort flat list by status order — no grouping headers (change #7)
+  const sorted = useMemo(() => {
+    return [...trials].sort((a, b) => {
+      const orderA = STATUS_GROUP_ORDER.indexOf(classifyStatus(a.status ?? null));
+      const orderB = STATUS_GROUP_ORDER.indexOf(classifyStatus(b.status ?? null));
+      return orderA - orderB;
+    });
   }, [trials]);
 
   return (
@@ -191,19 +171,22 @@ export default function TrialList({
           50%       { opacity: 0.6; transform: scale(1.4); }
         }
         @keyframes trialFadeIn {
-          from { opacity: 0; transform: translateY(6px); }
+          from { opacity: 0; transform: translateY(5px); }
           to   { opacity: 1; transform: translateY(0); }
         }
 
-        .trial-list-wrap {
-          font-family: 'Sora', sans-serif;
-        }
+        .trial-list-wrap { font-family: 'Sora', sans-serif; }
+
         .trial-list-header {
-          padding: 14px 20px 10px;
+          padding: 12px 16px 10px;
           border-bottom: 1px solid #f1f5f9;
           display: flex;
           align-items: center;
           justify-content: space-between;
+          position: sticky;
+          top: 0;
+          background: #fff;
+          z-index: 3;
         }
         .trial-list-count {
           font-size: 12px;
@@ -214,34 +197,14 @@ export default function TrialList({
           color: #0f172a;
           font-weight: 700;
         }
-        .trial-group-label {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 20px 6px;
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-          color: #94a3b8;
-          position: sticky;
-          top: 0;
-          background: #ffffff;
-          z-index: 2;
-          border-bottom: 1px solid #f8fafc;
-        }
-        .trial-group-label-line {
-          flex: 1;
-          height: 1px;
-          background: #f1f5f9;
-        }
+
         .trial-card-item {
-          padding: 14px 20px;
+          padding: 12px 16px;
           border-bottom: 1px solid #f8fafc;
           cursor: pointer;
           transition: background 0.12s, border-left-color 0.12s;
           border-left: 3px solid transparent;
-          animation: trialFadeIn 0.25s ease both;
+          animation: trialFadeIn 0.22s ease both;
           position: relative;
         }
         .trial-card-item:hover {
@@ -262,14 +225,14 @@ export default function TrialList({
           letter-spacing: 0.8px;
           text-transform: uppercase;
           font-family: 'IBM Plex Mono', monospace;
-          margin-bottom: 4px;
+          margin-bottom: 3px;
         }
         .trial-card-title {
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 600;
           color: #0f172a;
           line-height: 1.45;
-          margin-bottom: 8px;
+          margin-bottom: 7px;
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
@@ -278,7 +241,7 @@ export default function TrialList({
         .trial-card-meta {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 5px;
           flex-wrap: wrap;
         }
         .trial-card-sponsor {
@@ -289,15 +252,16 @@ export default function TrialList({
           overflow: hidden;
           text-overflow: ellipsis;
         }
+
         .trial-load-more {
-          margin: 16px 20px 20px;
-          width: calc(100% - 40px);
-          padding: 11px 0;
+          margin: 14px 16px 18px;
+          width: calc(100% - 32px);
+          padding: 10px 0;
           border-radius: 10px;
           border: 1.5px dashed #cbd5e1;
           background: transparent;
           color: #64748b;
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.15s;
@@ -318,80 +282,50 @@ export default function TrialList({
         }
         .trial-end-note {
           text-align: center;
-          padding: 16px 20px;
-          font-size: 12px;
+          padding: 14px 16px;
+          font-size: 11px;
           color: #cbd5e1;
           font-style: italic;
         }
       `}</style>
 
       <div className="trial-list-wrap">
-        {/* Header */}
+
+        {/* Header — count only, no "Grouped by status" label */}
         <div className="trial-list-header">
           <span className="trial-list-count">
             Showing <strong>{trials.length}</strong> of{" "}
             <strong>{totalCount.toLocaleString()}</strong> trials
           </span>
-          <span style={{
-            fontSize: 10,
-            fontWeight: 600,
-            color: "#94a3b8",
-            letterSpacing: "0.5px",
-            textTransform: "uppercase",
-          }}>
-            Grouped by status
-          </span>
         </div>
 
-        {/* Grouped results */}
-        {grouped.map(({ group, trials: groupTrials }) => (
-          <div key={group}>
-            {/* Group label */}
-            <div className="trial-group-label">
-              <span style={{ color: STATUS_CONFIG[group].dot }}>
-                ●
-              </span>
-              {group}
-              <span style={{
-                background: STATUS_CONFIG[group].bg,
-                color:      STATUS_CONFIG[group].color,
-                border:     `1px solid ${STATUS_CONFIG[group].border}`,
-                borderRadius: 20,
-                padding:    "1px 7px",
-                fontSize:   9,
-                fontWeight: 700,
-              }}>
-                {groupTrials.length}
-              </span>
-              <div className="trial-group-label-line" />
-            </div>
-
-            {/* Cards in group */}
-            {groupTrials.map((trial, idx) => (
-              <div
-                key={trial.nctId}
-                className={`trial-card-item${selectedId === trial.nctId ? " active" : ""}`}
-                onClick={() => onSelect(trial)}
-                style={{ animationDelay: `${idx * 0.03}s` }}
-              >
-                <div className="trial-card-nct">{trial.nctId}</div>
-                <div className="trial-card-title">{trial.title}</div>
-                <div className="trial-card-meta">
-                  <StatusDot group={group} />
-                  {(trial.phases?.length ?? 0) > 0 &&
-                    trial.phases!.map((p) => (
-                      <PhaseBadge key={p} phase={p} />
-                    ))}
-                </div>
-                {trial.sponsor && (
-                  <div className="trial-card-sponsor" title={trial.sponsor}>
-                    {trial.sponsor}
-                  </div>
-                )}
+        {/* Flat sorted list */}
+        {sorted.map((trial, idx) => {
+          const group = classifyStatus(trial.status ?? null);
+          return (
+            <div
+              key={trial.nctId}
+              className={`trial-card-item${selectedId === trial.nctId ? " active" : ""}`}
+              onClick={() => onSelect(trial)}
+              style={{ animationDelay: `${idx * 0.025}s` }}
+            >
+              <div className="trial-card-nct">{trial.nctId}</div>
+              <div className="trial-card-title">{trial.title}</div>
+              <div className="trial-card-meta">
+                <StatusDot group={group} />
+                {(trial.phases?.length ?? 0) > 0 &&
+                  trial.phases!.map((p) => (
+                    <PhaseBadge key={p} phase={p} />
+                  ))}
               </div>
-            ))}
-          </div>
-        ))}
+              {trial.sponsor && (
+                <div className="trial-card-sponsor" title={trial.sponsor}>
+                  {trial.sponsor}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {/* Load More */}
         {hasMore && (
@@ -413,17 +347,13 @@ export default function TrialList({
                 Loading…
               </>
             ) : (
-              <>
-                ↓ Load next 10 trials
-              </>
+              <>↓ Load next 10 trials</>
             )}
           </button>
         )}
 
         {!hasMore && trials.length > 0 && (
-          <div className="trial-end-note">
-            All {trials.length} trials shown
-          </div>
+          <div className="trial-end-note">All {trials.length} trials shown</div>
         )}
       </div>
     </>

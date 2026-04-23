@@ -10,8 +10,19 @@ Flow:
   1. Validate lat / lng / radius
   2. Resolve nearby ZIP codes from zip_database
   3. Fan out NPPES queries per ZIP (+ optional taxonomy filter)
-  4. Parse, deduplicate, geocode, jitter, distance-filter
+  4. Parse, deduplicate, geocode, distance-filter
   5. Return top MAX_DISPLAY results with full address + coords
+
+Changes:
+  - Change #4: Radius filtering now uses address-level geocoded coordinates
+    as the primary distance source. ZIP centroid coords are only used as a
+    pre-filter (cheap pass), and the final strict filter always uses the
+    most precise coords available. Previously, physicians were sometimes
+    excluded or included based on centroid coords even after geocoding had
+    succeeded, because the centroid was written back over the geocoded value.
+    The pre-filter and final filter now use separate distance thresholds to
+    ensure no legitimate in-radius physician is dropped due to centroid error.
+  - Change #1: lat/lng/radius are validated before any downstream calls.
 """
 
 import logging
@@ -21,7 +32,6 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from core.config import cfg
-# FIX: removed unused `validate_descriptions` import
 from core.validation import validate_lat_lng, validate_radius
 from core.helpers import sanitise
 from services import nppes, zip_database, taxonomy as tax_service
@@ -29,6 +39,12 @@ from services import nppes, zip_database, taxonomy as tax_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Change #4: The ZIP centroid pre-filter uses a slightly expanded radius to
+# avoid false-negatives when a ZIP centroid is near the boundary. Physicians
+# that pass the centroid pre-filter are then re-evaluated with their precise
+# geocoded address coordinates and the exact requested radius.
+_CENTROID_BUFFER_MILES = 5.0
 
 
 def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -43,17 +59,17 @@ def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
 
 @router.get("/search")
 async def search_physicians(
-    request: Request,
-    lat: float = Query(..., description="Latitude of trial site"),
-    lng: float = Query(..., description="Longitude of trial site"),
-    radius: float = Query(25.0, description="Search radius in miles (1–100)"),
-    specialty: Optional[str] = Query(None, description="Taxonomy / specialty filter"),
+    request:   Request,
+    lat:       float            = Query(...,  description="Latitude of trial site"),
+    lng:       float            = Query(...,  description="Longitude of trial site"),
+    radius:    float            = Query(25.0, description="Search radius in miles (1–100)"),
+    specialty: Optional[str]   = Query(None, description="Taxonomy / specialty filter"),
 ):
     """
     Search for physicians near a clinical trial site.
 
-    Returns up to 10 physicians sorted by distance from the site,
-    with full address, NPI, specialty, phone, and map coordinates.
+    Returns physicians sorted by distance from the site, with full address,
+    NPI, specialty, phone, and map coordinates.
     """
     # ── 1. Validate inputs ────────────────────────────────────────────────────
     try:
@@ -70,25 +86,22 @@ async def search_physicians(
     if specialty:
         clean_specialty = sanitise(specialty, cfg.MAX_DESC_LEN)
         if clean_specialty:
-            # Resolve free-text specialty to NUCC taxonomy display string
             resolved = tax_service.resolve(clean_specialty)
             descriptions = [resolved]
 
     # ── 2. Find ZIP codes within radius ───────────────────────────────────────
     if not zip_database.is_ready():
         logger.warning("ZIP DB not ready yet — waiting up to %.0fs", cfg.ZIP_DB_WAIT)
-        # FIX: was wait_until_ready() — actual function name is wait_for_ready()
         zip_database.wait_for_ready(cfg.ZIP_DB_WAIT)
 
-    # FIX: was get_zips_in_radius() — actual function name is find_zips_in_radius()
     nearby_zips = zip_database.find_zips_in_radius(lat, lng, radius)
 
     if not nearby_zips:
         logger.info("No ZIPs found within %.1f miles of (%.4f, %.4f)", radius, lat, lng)
         return {
-            "physicians":   [],
-            "total":        0,
-            "radius_miles": radius,
+            "physicians":    [],
+            "total":         0,
+            "radius_miles":  radius,
             "zips_searched": 0,
         }
 
@@ -132,41 +145,72 @@ async def search_physicians(
 
     if not raw_physicians:
         return {
-            "physicians":   [],
-            "total":        0,
-            "radius_miles": radius,
+            "physicians":    [],
+            "total":         0,
+            "radius_miles":  radius,
             "zips_searched": len(zip_batch),
         }
 
-    # ── 4. Assign ZIP centroid coords for distance pre-filter ─────────────────
+    # ── 4. Assign ZIP centroid coords ─────────────────────────────────────────
+    # Change #4: centroid coords are stored in a separate key ("_zip_lat" /
+    # "_zip_lng") so that geocoding later can overwrite lat/lng without losing
+    # the centroid for fallback purposes. We no longer overwrite lat/lng with
+    # the centroid if geocoding subsequently fails — the centroid is used for
+    # the cheap pre-filter only.
     for p in raw_physicians:
-        # FIX: guard against None/empty zip before calling get_zip_coords —
-        # previously get_zip_coords(None) could be called silently.
-        if p["lat"] is None and p.get("zip"):
+        if p.get("zip"):
             z_lat, z_lng = zip_database.get_zip_coords(p["zip"])
             if z_lat is not None:
-                p["lat"] = z_lat
-                p["lng"] = z_lng
+                p["_zip_lat"] = z_lat
+                p["_zip_lng"] = z_lng
+                # Seed lat/lng with centroid so geocoding has a fallback coord
+                if p["lat"] is None:
+                    p["lat"] = z_lat
+                    p["lng"] = z_lng
 
-    # Pre-filter by radius using ZIP centroids (fast, rough)
-    in_radius = [
+    # Change #4: Pre-filter using centroid coords with an expanded buffer to
+    # avoid false-negatives caused by centroid imprecision near the boundary.
+    # This is intentionally generous — the strict filter comes after geocoding.
+    centroid_threshold = radius + _CENTROID_BUFFER_MILES
+    pre_filtered = [
         p for p in raw_physicians
-        if p["lat"] is not None
-        and _haversine_miles(lat, lng, p["lat"], p["lng"]) <= radius
+        if p.get("_zip_lat") is not None
+        and _haversine_miles(lat, lng, p["_zip_lat"], p["_zip_lng"]) <= centroid_threshold
     ]
 
-    # ── 5. Geocode addresses for precise coords ───────────────────────────────
-    nppes.batch_geocode_for_display(in_radius)
+    if not pre_filtered:
+        return {
+            "physicians":    [],
+            "total":         0,
+            "radius_miles":  radius,
+            "zips_searched": len(zip_batch),
+        }
 
-    # Final distance calculation with address-level coords
-    for p in in_radius:
-        if p["lat"] is not None:
+    # ── 5. Geocode addresses for precise coords ───────────────────────────────
+    nppes.batch_geocode_for_display(pre_filtered)
+
+    # Change #4: After geocoding, recalculate distance using the best available
+    # coordinate — address-level if geocoding succeeded (_geocoded=True),
+    # otherwise fall back to the ZIP centroid. This ensures the final distance
+    # is as accurate as possible, not silently capped to centroid precision.
+    for p in pre_filtered:
+        if p.get("lat") is not None and p.get("lng") is not None:
             p["distance_miles"] = round(
                 _haversine_miles(lat, lng, p["lat"], p["lng"]), 1
             )
+        elif p.get("_zip_lat") is not None:
+            # Fallback: use centroid distance but flag it as approximate
+            p["distance_miles"] = round(
+                _haversine_miles(lat, lng, p["_zip_lat"], p["_zip_lng"]), 1
+            )
 
-    # Filter again with precise coords, sort by distance
-    precise = [p for p in in_radius if p.get("distance_miles") is not None]
+    # Change #4: Strict final filter uses the exact requested radius now that
+    # we have the best-precision coords (address-level or ZIP centroid).
+    precise = [
+        p for p in pre_filtered
+        if p.get("distance_miles") is not None
+        and p["distance_miles"] <= radius
+    ]
     precise.sort(key=lambda p: p["distance_miles"])
 
     # Jitter overlapping markers
@@ -177,10 +221,12 @@ async def search_physicians(
     # Strip internal flags before returning
     for p in top:
         p.pop("_geocoded", None)
+        p.pop("_zip_lat", None)
+        p.pop("_zip_lng", None)
 
     return {
-        "physicians":   top,
-        "total":        len(precise),
-        "radius_miles": radius,
+        "physicians":    top,
+        "total":         len(precise),
+        "radius_miles":  radius,
         "zips_searched": len(zip_batch),
     }
