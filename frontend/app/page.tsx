@@ -11,10 +11,9 @@ import { usePhysicians }                 from "@/hooks/usePhysicians";
 import type { Trial, TrialSearchFilters, SiteData } from "@/types/trial";
 import type { SelectedSite }             from "@/types/physician";
 
-// Heights as CSS custom properties so they stay in sync everywhere
-const HEADER_H   = 58;   // px  — .site-header
-const SEARCH_H   = 73;   // px  — .search-card  (padding 16*2 + input ~41)
-const PANEL_TOP  = HEADER_H + SEARCH_H; // 131px
+const HEADER_H   = 58;
+const SEARCH_H   = 73;
+const PANEL_TOP  = HEADER_H + SEARCH_H;
 
 function HomeInner() {
   const router       = useRouter();
@@ -37,14 +36,14 @@ function HomeInner() {
 
   const {
     physicians: nearbyPhysicians,
-    total: physicianTotal,
-    loading: physiciansLoading,
-    error: physiciansError,
-    searched: physiciansSearched,
-    hasMore: physiciansHasMore,
-    search: searchPhysicians,
-    loadMore: loadMorePhysicians,
-    reset: resetPhysicians,
+    total:      physicianTotal,
+    loading:    physiciansLoading,
+    error:      physiciansError,
+    searched:   physiciansSearched,
+    hasMore:    physiciansHasMore,
+    search:     searchPhysicians,
+    loadMore:   loadMorePhysicians,
+    reset:      resetPhysicians,
   } = usePhysicians();
 
   const prevConditionRef = useRef(filtersFromUrl.condition);
@@ -106,10 +105,12 @@ function HomeInner() {
     }
   }, [resetPhysicians, selectedTrial]);
 
+  // ── FIX: pass site.condition as the specialty so the backend filters
+  //         physicians by the trial's condition from the very first search.
   const handleFindPhysicians = useCallback((site: SelectedSite) => {
     setSelectedSite(site);
     resetPhysicians();
-    searchPhysicians(site, 25);
+    searchPhysicians(site, 25, site.condition ?? undefined);
   }, [resetPhysicians, searchPhysicians]);
 
   const handlePhysicianSearch = useCallback((radius: number, specialty: string) => {
@@ -168,19 +169,17 @@ function HomeInner() {
         }
         @keyframes spinnerAnim { to { transform: rotate(360deg); } }
 
-        /* ── Shell ── */
         .app-shell {
           display: flex;
           flex-direction: column;
-          height: 100vh;           /* fill exactly the viewport */
-          overflow: hidden;        /* shell itself never scrolls */
+          height: 100vh;
+          overflow: hidden;
           background: var(--gray-50);
         }
 
-        /* ── Header ── */
         .site-header {
           height: var(--header-h);
-          flex-shrink: 0;          /* never squish */
+          flex-shrink: 0;
           background: #fff;
           border-bottom: 1px solid var(--gray-100);
           z-index: 100;
@@ -195,57 +194,42 @@ function HomeInner() {
           align-items: center;
           justify-content: space-between;
         }
-        .logo-group {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
+        .logo-group { display: flex; align-items: center; gap: 10px; }
         .logo-icon {
-          width: 34px;
-          height: 34px;
+          width: 34px; height: 34px;
           background: linear-gradient(135deg, #2563eb, #1d4ed8);
           border-radius: 9px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          display: flex; align-items: center; justify-content: center;
           font-family: 'IBM Plex Mono', monospace;
-          font-size: 12px;
-          font-weight: 700;
-          color: #fff;
+          font-size: 12px; font-weight: 700; color: #fff;
           letter-spacing: -0.5px;
           box-shadow: 0 2px 8px rgba(37,99,235,0.28);
         }
         .logo-text {
           font-family: 'Sora', sans-serif;
-          font-size: 15px;
-          font-weight: 700;
-          color: var(--gray-900);
-          letter-spacing: -0.3px;
+          font-size: 15px; font-weight: 700;
+          color: var(--gray-900); letter-spacing: -0.3px;
         }
         .logo-text span { color: var(--blue-600); }
         .header-tagline {
-          font-size: 12px;
-          color: var(--gray-400);
-          font-weight: 500;
-          font-style: italic;
+          font-size: 12px; color: var(--gray-400);
+          font-weight: 500; font-style: italic;
         }
         @media (max-width: 640px) { .header-tagline { display: none; } }
 
-        /* ── Compact search bar ── */
         .search-card {
           height: var(--search-h);
-          flex-shrink: 0;          /* never squish */
+          flex-shrink: 0;
           background: #fff;
           border-bottom: 1px solid var(--gray-100);
           padding: 16px 28px;
           box-shadow: 0 1px 4px rgba(0,0,0,0.03);
-          overflow: hidden;        /* clip any inner overflow */
+          overflow: hidden;
         }
 
-        /* ── Results layout ── */
         .results-layout {
-          flex: 1;                 /* takes remaining height after header+searchbar */
-          min-height: 0;           /* required for flex children to shrink */
+          flex: 1;
+          min-height: 0;
           display: grid;
           grid-template-columns: 300px 1fr;
           animation: appFadeIn 0.3s ease both;
@@ -257,22 +241,15 @@ function HomeInner() {
           }
         }
 
-        /* ── Trials panel (left) ──
-           Height = fill the results-layout row, scroll internally.
-           No more calc() referencing magic numbers that drift.           */
         .trials-panel {
           border-right: 1px solid var(--gray-100);
-          overflow-y: auto;        /* list scrolls inside the panel */
+          overflow-y: auto;
           background: #fff;
-          /* height is determined by the flex/grid parent — do NOT set it here */
           display: flex;
           flex-direction: column;
         }
-        @media (max-width: 900px) {
-          .trials-panel { max-height: 50vh; }
-        }
+        @media (max-width: 900px) { .trials-panel { max-height: 50vh; } }
 
-        /* ── Detail panel (right) ── */
         .detail-panel {
           overflow-y: auto;
           background: var(--gray-50);
@@ -280,19 +257,13 @@ function HomeInner() {
           flex-direction: column;
         }
 
-        /* ── State boxes ── */
         .state-box {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 12px;
-          padding: 48px 20px;
-          color: var(--gray-400);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          gap: 12px; padding: 48px 20px; color: var(--gray-400);
         }
         .spinner {
-          width: 28px;
-          height: 28px;
+          width: 28px; height: 28px;
           border: 3px solid var(--gray-100);
           border-top-color: var(--blue-500);
           border-radius: 50%;
@@ -301,33 +272,22 @@ function HomeInner() {
         .state-msg { font-size: 14px; color: var(--gray-400); font-weight: 500; }
 
         .error-box {
-          margin: 16px;
-          padding: 14px 16px;
+          margin: 16px; padding: 14px 16px;
           border-radius: 10px;
-          background: #fef2f2;
-          border: 1px solid #fecaca;
-          color: #dc2626;
-          font-size: 13px;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
+          background: #fef2f2; border: 1px solid #fecaca;
+          color: #dc2626; font-size: 13px;
+          display: flex; flex-direction: column; gap: 10px;
         }
         .error-box span {
-          font-weight: 700;
-          font-size: 11px;
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
+          font-weight: 700; font-size: 11px;
+          text-transform: uppercase; letter-spacing: 0.8px;
         }
 
         .no-results {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          padding: 56px 24px;
-          text-align: center;
-          color: var(--gray-400);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          gap: 8px; padding: 56px 24px;
+          text-align: center; color: var(--gray-400);
         }
         .no-results-icon { font-size: 36px; }
         .no-results h3 { font-size: 15px; font-weight: 700; color: var(--gray-600); }
@@ -335,83 +295,52 @@ function HomeInner() {
 
         .btn-primary {
           padding: 9px 20px;
-          background: var(--blue-600);
-          color: #fff;
-          border: none;
-          border-radius: 8px;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: 'Sora', sans-serif;
-          transition: all 0.15s;
+          background: var(--blue-600); color: #fff;
+          border: none; border-radius: 8px;
+          font-size: 13px; font-weight: 600; cursor: pointer;
+          font-family: 'Sora', sans-serif; transition: all 0.15s;
         }
         .btn-primary:hover { background: var(--blue-700); }
 
         .detail-empty {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 14px;
-          height: 100%;
-          min-height: 400px;
-          padding: 40px;
-          text-align: center;
-          color: var(--gray-400);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          gap: 14px; height: 100%; min-height: 400px;
+          padding: 40px; text-align: center; color: var(--gray-400);
         }
         .detail-empty-icon { font-size: 44px; opacity: 0.6; }
         .detail-empty p {
-          font-size: 14px;
-          font-weight: 500;
-          color: var(--gray-500);
-          max-width: 240px;
-          line-height: 1.6;
+          font-size: 14px; font-weight: 500;
+          color: var(--gray-500); max-width: 240px; line-height: 1.6;
         }
 
-        /* ── Trial header inside detail panel ── */
         .trial-detail-header {
           padding: 18px 24px;
           border-bottom: 1px solid var(--gray-100);
-          background: #fff;
-          flex-shrink: 0;
+          background: #fff; flex-shrink: 0;
         }
         .trial-detail-badges {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          margin-bottom: 7px;
-          flex-wrap: wrap;
+          display: flex; align-items: center;
+          gap: 6px; margin-bottom: 7px; flex-wrap: wrap;
         }
         .trial-detail-nct {
-          font-size: 10px;
-          font-weight: 700;
-          color: var(--blue-600);
-          letter-spacing: 0.8px;
+          font-size: 10px; font-weight: 700;
+          color: var(--blue-600); letter-spacing: 0.8px;
           text-transform: uppercase;
           font-family: 'IBM Plex Mono', monospace;
         }
         .trial-detail-title {
-          font-size: 14px;
-          font-weight: 700;
-          color: var(--gray-900);
-          line-height: 1.45;
-          margin-bottom: 5px;
+          font-size: 14px; font-weight: 700;
+          color: var(--gray-900); line-height: 1.45; margin-bottom: 5px;
         }
         .trial-detail-sponsor { font-size: 11px; color: var(--gray-400); }
         .trial-detail-sponsor strong { color: var(--gray-600); font-weight: 600; }
 
-        /* Status & phase badges */
         .badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          padding: 2px 9px;
-          border-radius: 20px;
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 0.3px;
-          text-transform: uppercase;
-          white-space: nowrap;
+          display: inline-flex; align-items: center; gap: 5px;
+          padding: 2px 9px; border-radius: 20px;
+          font-size: 10px; font-weight: 700;
+          letter-spacing: 0.3px; text-transform: uppercase; white-space: nowrap;
         }
         .badge-status-recruiting { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
         .badge-status-active     { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
@@ -436,7 +365,7 @@ function HomeInner() {
           </div>
         </header>
 
-        {/* Hero search — only shown before any results */}
+        {/* Hero search */}
         {!hasResults && (
           <div style={{ overflowY: "auto", flex: 1 }}>
             <SearchForm
@@ -462,7 +391,7 @@ function HomeInner() {
           </div>
         )}
 
-        {/* Results layout — fills remaining height */}
+        {/* Results layout */}
         {hasResults && (
           <div className="results-layout">
 
@@ -519,10 +448,10 @@ function HomeInner() {
                       {selectedTrial.status && (() => {
                         const s = (selectedTrial.status || "").toLowerCase();
                         let cls = "badge badge-status-default";
-                        if (s === "recruiting") cls = "badge badge-status-recruiting";
+                        if (s === "recruiting")       cls = "badge badge-status-recruiting";
                         else if (s.includes("active")) cls = "badge badge-status-active";
-                        else if (s === "completed") cls = "badge badge-status-completed";
-                        else if (s === "terminated") cls = "badge badge-status-terminated";
+                        else if (s === "completed")   cls = "badge badge-status-completed";
+                        else if (s === "terminated")  cls = "badge badge-status-terminated";
                         return <span className={cls}>{selectedTrial.status}</span>;
                       })()}
                       {selectedTrial.phases?.map((p) => (
@@ -572,6 +501,7 @@ function HomeInner() {
                       trialTitle={siteData.title}
                       nctId={selectedTrial.nctId}
                       description={selectedTrial.description || null}
+                      condition={selectedTrial.conditions?.[0] ?? null}
                       onFindPhysicians={handleFindPhysicians}
                     />
                   )}
