@@ -47,23 +47,13 @@ export default function TrialList({
         </div>
 
         {/* x of y trials */}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-          <span style={{
-            fontSize:   22,
-            fontWeight: 700,
-            color:      "#fff",
-            fontFamily: "'DM Mono', monospace",
-            lineHeight: 1,
-          }}>
-            {shown.toLocaleString()}
-          </span>
-          <span style={{
-            fontSize:  13,
-            fontWeight: 400,
-            color:     "rgba(255,255,255,0.5)",
-          }}>
-            of {totalCount.toLocaleString()} trials
-          </span>
+        <div style={{
+          fontSize:   13,
+          fontWeight: 500,
+          color:      "rgba(255,255,255,0.9)",
+          fontFamily: "'DM Mono', monospace",
+        }}>
+          {shown.toLocaleString()} of {totalCount.toLocaleString()} trials
         </div>
       </div>
 
