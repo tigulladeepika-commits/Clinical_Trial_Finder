@@ -25,8 +25,7 @@ import type { SelectedSite }                         from "@/types/physician";
 //  Constants
 // ─────────────────────────────────────────────────────────────────────────────
 const HEADER_H  = 56;
-const SEARCH_H  = 62;
-const PANEL_TOP = HEADER_H + SEARCH_H;
+const SEARCH_H  = 68; // FIX: increased so the compact search bar breathes properly
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Inner component (needs useSearchParams, so it must be inside <Suspense>)
@@ -35,7 +34,6 @@ function HomeInner() {
   const router       = useRouter();
   const searchParams = useSearchParams();
 
-  // Derive filter values from URL params
   const filtersFromUrl: TrialSearchFilters = {
     condition: searchParams.get("condition") ?? "",
     city:      searchParams.get("city")      ?? "",
@@ -52,8 +50,6 @@ function HomeInner() {
   const [sitesError,    setSitesError]    = useState<string | null>(null);
   const [selectedSite,  setSelectedSite]  = useState<SelectedSite | null>(null);
 
-  // ── Physicians hook ──────────────────────────────────────────────────────
-  // FIX: hook exposes `search` not `searchPhysicians`
   const {
     physicians:  nearbyPhysicians,
     total:       physicianTotal,
@@ -66,7 +62,6 @@ function HomeInner() {
     reset:       resetPhysicians,
   } = usePhysicians();
 
-  // ── Reset panel state when condition changes ─────────────────────────────
   const prevConditionRef = useRef(filtersFromUrl.condition);
 
   useEffect(() => {
@@ -80,7 +75,6 @@ function HomeInner() {
     }
   }, [filtersFromUrl.condition, resetPhysicians]);
 
-  // ── Trials hook ──────────────────────────────────────────────────────────
   const {
     trials,
     loading,
@@ -116,7 +110,6 @@ function HomeInner() {
   }, [resetPhysicians, router]);
 
   const handleSelectTrial = useCallback(async (trial: Trial) => {
-    // Toggle off if already selected
     if (selectedTrial?.nctId === trial.nctId) {
       setSelectedTrial(null);
       setSiteData(null);
@@ -142,7 +135,6 @@ function HomeInner() {
     }
   }, [resetPhysicians, selectedTrial]);
 
-  // FIX: pass site.condition as specialty so backend can filter by trial condition
   const handleFindPhysicians = useCallback((site: SelectedSite) => {
     setSelectedSite(site);
     resetPhysicians();
@@ -159,7 +151,6 @@ function HomeInner() {
     resetPhysicians();
   }, [resetPhysicians]);
 
-  // Key to force SearchForm to remount when URL filters change
   const searchFormKey = [
     filtersFromUrl.condition,
     filtersFromUrl.city,
@@ -173,21 +164,30 @@ function HomeInner() {
     <>
       <style>{`
         .app-shell {
-          display: flex; flex-direction: column;
-          height: 100vh; overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+          overflow: hidden;
           background: #f6f7fb;
         }
 
         /* ── Header ── */
         .site-header {
-          height: ${HEADER_H}px; flex-shrink: 0;
-          background: #fff; border-bottom: 1px solid #e4e8f0;
-          z-index: 100; box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+          height: ${HEADER_H}px;
+          flex-shrink: 0;
+          background: #fff;
+          border-bottom: 1px solid #e4e8f0;
+          z-index: 100;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.04);
         }
         .header-inner {
-          max-width: 1800px; margin: 0 auto;
-          padding: 0 24px; height: 100%;
-          display: flex; align-items: center; justify-content: space-between;
+          max-width: 1800px;
+          margin: 0 auto;
+          padding: 0 24px;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
         }
         .logo-group { display: flex; align-items: center; gap: 10px; }
         .logo-mark {
@@ -204,14 +204,22 @@ function HomeInner() {
           letter-spacing: -0.3px;
         }
         .logo-text span { color: #2563eb; }
-        .header-tagline { font-size: 12px; color: #94a3b8; font-weight: 500; font-style: italic; }
+        .header-tagline {
+          font-size: 12px; color: #94a3b8;
+          font-weight: 500; font-style: italic;
+        }
         @media (max-width: 640px) { .header-tagline { display: none; } }
 
-        /* ── Search card ── */
+        /* ── Compact search bar (results view) ── */
+        /* FIX: fixed height, no wrapping, proper vertical alignment */
         .search-card {
-          height: ${SEARCH_H}px; flex-shrink: 0;
-          background: #fff; border-bottom: 1px solid #e4e8f0;
-          padding: 13px 24px;
+          height: ${SEARCH_H}px;
+          flex-shrink: 0;
+          background: #fff;
+          border-bottom: 1px solid #e4e8f0;
+          padding: 0 24px;
+          display: flex;
+          align-items: center;
         }
 
         /* ── Hero ── */
@@ -255,44 +263,110 @@ function HomeInner() {
         .hero-stat-lbl { font-size: 11px; color: #8b95a1; margin-top: 2px; }
 
         /* ── Results layout ── */
+        /* FIX: strict non-overlapping two-column grid.
+           Left panel is fixed 320px, right panel fills the remainder.
+           min-width:0 on both prevents children from blowing out their column. */
         .results-layout {
-          flex: 1; min-height: 0;
-          display: grid; grid-template-columns: 320px 1fr;
+          flex: 1;
+          min-height: 0;
+          display: grid;
+          grid-template-columns: 320px minmax(0, 1fr);
           animation: fadeUp 0.28s ease both;
+          overflow: hidden;
         }
         @media (max-width: 860px) {
-          .results-layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-          .trials-panel   { max-height: 45vh; }
+          .results-layout {
+            grid-template-columns: 1fr;
+            grid-template-rows: auto 1fr;
+          }
+          .trials-panel { max-height: 45vh; }
         }
         @keyframes fadeUp {
           from { opacity: 0; transform: translateY(5px); }
           to   { opacity: 1; transform: translateY(0); }
         }
 
+        /* FIX: left panel — fixed width, scrolls internally, never bleeds right */
         .trials-panel {
           border-right: 1px solid #e4e8f0;
-          overflow-y: auto; background: #fff;
-          display: flex; flex-direction: column;
+          overflow-y: auto;
+          background: #fff;
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
         }
+
+        /* FIX: right panel — flex column so header+KPIs sit on top, map fills rest */
         .detail-panel {
-          overflow-y: auto; background: #f6f7fb;
-          display: flex; flex-direction: column;
+          display: flex;
+          flex-direction: column;
+          background: #f6f7fb;
+          min-width: 0;
+          overflow: hidden;
         }
 
         /* ── Trial detail header ── */
+        /* FIX: flex-shrink:0 so it never gets squashed; title wraps within box */
         .trial-detail-header {
-          padding: 16px 20px; border-bottom: 1px solid #e4e8f0;
-          background: #fff; flex-shrink: 0;
+          padding: 14px 20px;
+          border-bottom: 1px solid #e4e8f0;
+          background: #fff;
+          flex-shrink: 0;
         }
-        .tdh-badges { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+        .tdh-badges {
+          display: flex; align-items: center; gap: 6px;
+          margin-bottom: 6px; flex-wrap: wrap;
+        }
         .tdh-nct {
           font-size: 10px; font-weight: 700; color: #2563eb;
           letter-spacing: 0.8px; text-transform: uppercase;
           font-family: 'DM Mono', monospace;
         }
-        .tdh-title   { font-size: 14px; font-weight: 600; color: #0d1117; line-height: 1.45; margin-bottom: 4px; }
+        /* FIX: 2-line clamp so very long titles don't overflow the panel */
+        .tdh-title {
+          font-size: 14px; font-weight: 600; color: #0d1117;
+          line-height: 1.45; margin-bottom: 4px;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
         .tdh-sponsor { font-size: 11px; color: #8b95a1; }
         .tdh-sponsor strong { color: #4b5563; font-weight: 500; }
+
+        /* ── KPI row ── */
+        /* FIX: constrained in its own flex-shrink:0 row, evenly distributed,
+           never overlaps the map below it */
+        .kpi-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          border-bottom: 1px solid #e4e8f0;
+          background: #fff;
+          flex-shrink: 0;
+        }
+        .kpi-cell {
+          padding: 12px 8px;
+          text-align: center;
+          border-right: 1px solid #e4e8f0;
+        }
+        .kpi-cell:last-child { border-right: none; }
+        .kpi-num {
+          font-size: 22px; font-weight: 700; color: #0d1117;
+          line-height: 1; font-family: 'DM Mono', monospace;
+        }
+        .kpi-num.green { color: #16a34a; }
+        .kpi-label {
+          font-size: 9px; font-weight: 600; letter-spacing: 0.07em;
+          text-transform: uppercase; color: #8b95a1; margin-top: 4px;
+        }
+
+        /* ── Map / content area ── */
+        /* FIX: takes all remaining height after header+KPIs, scrolls internally */
+        .detail-content {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+        }
 
         /* ── Badge ── */
         .badge {
@@ -309,24 +383,65 @@ function HomeInner() {
         .b-default    { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
         .b-phase      { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-family: 'DM Mono', monospace; }
 
+        /* FIX: NA badge — intentional neutral pill instead of raw "NA" text */
+        .b-na {
+          background: #f1f5f9;
+          color: #64748b;
+          border: 1px solid #e2e8f0;
+          font-size: 10px;
+          font-weight: 500;
+          padding: 2px 7px;
+          border-radius: 20px;
+          letter-spacing: 0.3px;
+          white-space: nowrap;
+          font-family: inherit;
+        }
+
         /* ── States ── */
-        .state-box   { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 20px; color: #8b95a1; }
-        .spinner     { width: 26px; height: 26px; border: 2.5px solid #e4e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spinAnim 0.7s linear infinite; }
+        .state-box {
+          display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 10px; padding: 48px 20px; color: #8b95a1;
+        }
+        .spinner {
+          width: 26px; height: 26px;
+          border: 2.5px solid #e4e8f0; border-top-color: #2563eb;
+          border-radius: 50%; animation: spinAnim 0.7s linear infinite;
+        }
         @keyframes spinAnim { to { transform: rotate(360deg); } }
-        .state-msg   { font-size: 13px; font-weight: 500; }
+        .state-msg { font-size: 13px; font-weight: 500; }
 
-        .error-box   { margin: 14px; padding: 12px 14px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
-        .err-label   { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
+        .error-box {
+          margin: 14px; padding: 12px 14px; border-radius: 10px;
+          background: #fef2f2; border: 1px solid #fecaca;
+          color: #dc2626; font-size: 13px;
+          display: flex; flex-direction: column; gap: 8px;
+        }
+        .err-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
 
-        .no-results  { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 56px 24px; text-align: center; color: #8b95a1; }
+        .no-results {
+          display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 8px;
+          padding: 56px 24px; text-align: center; color: #8b95a1;
+        }
         .no-results h3 { font-size: 14px; font-weight: 600; color: #4b5563; margin-top: 4px; }
         .no-results p  { font-size: 12px; }
 
-        .detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; height: 100%; min-height: 400px; padding: 40px; text-align: center; color: #8b95a1; }
+        .detail-empty {
+          display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 14px;
+          height: 100%; padding: 40px; text-align: center; color: #8b95a1;
+        }
         .detail-empty-icon { font-size: 42px; opacity: 0.5; }
-        .detail-empty p { font-size: 14px; font-weight: 500; color: #4b5563; max-width: 220px; line-height: 1.6; }
+        .detail-empty p {
+          font-size: 14px; font-weight: 500; color: #4b5563;
+          max-width: 220px; line-height: 1.6;
+        }
 
-        .btn-primary { padding: 9px 20px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
+        .btn-primary {
+          padding: 9px 20px; background: #2563eb; color: #fff;
+          border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+          cursor: pointer; font-family: inherit; transition: background 0.15s;
+        }
         .btn-primary:hover { background: #1d4ed8; }
       `}</style>
 
@@ -383,6 +498,7 @@ function HomeInner() {
         )}
 
         {/* ── Compact search bar (results active) ── */}
+        {/* FIX: full-height flex container so SearchForm children align center */}
         {hasResults && (
           <div className="search-card">
             <SearchForm
@@ -399,7 +515,7 @@ function HomeInner() {
         {hasResults && (
           <div className="results-layout">
 
-            {/* LEFT: Trial list */}
+            {/* LEFT: Trial list — fixed 320px, never overlaps right */}
             <div className="trials-panel">
               {loading && (
                 <div className="state-box">
@@ -434,7 +550,7 @@ function HomeInner() {
               )}
             </div>
 
-            {/* RIGHT: Detail panel */}
+            {/* RIGHT: Detail panel — flex column, content stacks top-to-bottom */}
             <div className="detail-panel">
 
               {/* Empty state */}
@@ -447,25 +563,32 @@ function HomeInner() {
 
               {selectedTrial && (
                 <>
-                  {/* Trial detail header (always visible) */}
+                  {/* FIX: Trial header — constrained box, title clamped, never overflows */}
                   <div className="trial-detail-header">
                     <div className="tdh-badges">
                       <span className="tdh-nct">{selectedTrial.nctId}</span>
+
                       {selectedTrial.status && (() => {
                         const s = selectedTrial.status.toLowerCase();
                         let cls = "badge b-default";
-                        if (s === "recruiting")          cls = "badge b-recruiting";
-                        else if (s.includes("active"))   cls = "badge b-active";
-                        else if (s === "completed")      cls = "badge b-completed";
-                        else if (s === "terminated")     cls = "badge b-terminated";
+                        if (s === "recruiting")                                   cls = "badge b-recruiting";
+                        else if (s.includes("active"))                            cls = "badge b-active";
+                        else if (s === "completed")                               cls = "badge b-completed";
+                        else if (s === "terminated")                              cls = "badge b-terminated";
                         else if (s.includes("not yet") || s.includes("invitation")) cls = "badge b-warning";
                         return <span className={cls}>{selectedTrial.status}</span>;
                       })()}
-                      {selectedTrial.phases?.map((p) => (
-                        <span key={p} className="badge b-phase">{p}</span>
-                      ))}
+
+                      {/* FIX: render phases; replace raw "N/A" string with styled pill */}
+                      {selectedTrial.phases?.map((p) =>
+                        p === "N/A" || p === "NA"
+                          ? <span key={p} className="b-na">Not applicable</span>
+                          : <span key={p} className="badge b-phase">{p}</span>
+                      )}
                     </div>
+
                     <div className="tdh-title">{selectedTrial.title}</div>
+
                     {selectedTrial.sponsor && (
                       <div className="tdh-sponsor">
                         Sponsor: <strong>{selectedTrial.sponsor}</strong>
@@ -473,51 +596,83 @@ function HomeInner() {
                     )}
                   </div>
 
-                  {/* Sites loading */}
-                  {sitesLoading && (
-                    <div className="state-box">
-                      <div className="spinner" />
-                      <p className="state-msg">Loading site locations…</p>
+                  {/* FIX: KPI row sits directly below the header, above map/content */}
+                  {siteData && !sitesLoading && (
+                    <div className="kpi-row">
+                      <div className="kpi-cell">
+                        <div className="kpi-num">{siteData.sites.length}</div>
+                        <div className="kpi-label">Total Sites</div>
+                      </div>
+                      <div className="kpi-cell">
+                        <div className="kpi-num green">
+                          {siteData.sites.filter(s => s.status?.toLowerCase() === "recruiting").length}
+                        </div>
+                        <div className="kpi-label">Recruiting</div>
+                      </div>
+                      <div className="kpi-cell">
+                        <div className="kpi-num">
+                          {siteData.sites.filter(s => s.lat != null && s.lon != null).length}
+                        </div>
+                        <div className="kpi-label">On Map</div>
+                      </div>
+                      <div className="kpi-cell">
+                        <div className="kpi-num">
+                          {new Set(siteData.sites.map(s => s.country).filter(Boolean)).size || 1}
+                        </div>
+                        <div className="kpi-label">Countries</div>
+                      </div>
                     </div>
                   )}
 
-                  {/* Sites error */}
-                  {sitesError && !sitesLoading && (
-                    <div className="error-box">
-                      <span className="err-label">Error</span>
-                      <p>{sitesError}</p>
-                    </div>
-                  )}
+                  {/* FIX: scrollable content area — map is pushed below header+KPIs */}
+                  <div className="detail-content">
 
-                  {/* Physician panel (site selected) */}
-                  {siteData && !sitesLoading && selectedSite && (
-                    <PhysicianPanel
-                      site={selectedSite}
-                      physicians={nearbyPhysicians}
-                      total={physicianTotal}
-                      loading={physiciansLoading}
-                      error={physiciansError}
-                      searched={physiciansSearched}
-                      hasMore={physiciansHasMore}
-                      onSearch={handlePhysicianSearch}
-                      onLoadMore={loadMorePhysicians}
-                      onBack={handleBackToSites}
-                    />
-                  )}
+                    {/* Sites loading */}
+                    {sitesLoading && (
+                      <div className="state-box">
+                        <div className="spinner" />
+                        <p className="state-msg">Loading site locations…</p>
+                      </div>
+                    )}
 
-                  {/* Site map (no site selected yet) */}
-                  {siteData && !sitesLoading && !selectedSite && (
-                    <TrialSiteMap
-                      sites={siteData.sites}
-                      trialTitle={siteData.title}
-                      nctId={selectedTrial.nctId}
-                      description={selectedTrial.description ?? null}
-                      condition={selectedTrial.conditions?.[0] ?? null}
-                      inclusionCriteria={selectedTrial.inclusionCriteria}
-                      exclusionCriteria={selectedTrial.exclusionCriteria}
-                      onFindPhysicians={handleFindPhysicians}
-                    />
-                  )}
+                    {/* Sites error */}
+                    {sitesError && !sitesLoading && (
+                      <div className="error-box">
+                        <span className="err-label">Error</span>
+                        <p>{sitesError}</p>
+                      </div>
+                    )}
+
+                    {/* Physician panel (site selected) */}
+                    {siteData && !sitesLoading && selectedSite && (
+                      <PhysicianPanel
+                        site={selectedSite}
+                        physicians={nearbyPhysicians}
+                        total={physicianTotal}
+                        loading={physiciansLoading}
+                        error={physiciansError}
+                        searched={physiciansSearched}
+                        hasMore={physiciansHasMore}
+                        onSearch={handlePhysicianSearch}
+                        onLoadMore={loadMorePhysicians}
+                        onBack={handleBackToSites}
+                      />
+                    )}
+
+                    {/* Site map (no site selected yet) */}
+                    {siteData && !sitesLoading && !selectedSite && (
+                      <TrialSiteMap
+                        sites={siteData.sites}
+                        trialTitle={siteData.title}
+                        nctId={selectedTrial.nctId}
+                        description={selectedTrial.description ?? null}
+                        condition={selectedTrial.conditions?.[0] ?? null}
+                        inclusionCriteria={selectedTrial.inclusionCriteria}
+                        exclusionCriteria={selectedTrial.exclusionCriteria}
+                        onFindPhysicians={handleFindPhysicians}
+                      />
+                    )}
+                  </div>
                 </>
               )}
             </div>

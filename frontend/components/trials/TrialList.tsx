@@ -24,7 +24,8 @@ export default function TrialList({
   loading,
 }: Props) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
+
       {/* Header */}
       <div
         style={{
@@ -33,17 +34,31 @@ export default function TrialList({
           flexShrink:   0,
         }}
       >
-        <div style={{ fontSize: 11, fontWeight: 600, color: "#8b95a1", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+        <div style={{
+          fontSize:      11,
+          fontWeight:    600,
+          color:         "#8b95a1",
+          textTransform: "uppercase",
+          letterSpacing: "0.5px",
+        }}>
           Clinical Trials
         </div>
-        <div style={{ fontSize: 20, fontWeight: 600, color: "#0d1117", marginTop: 2, fontFamily: "'DM Mono', monospace" }}>
+        <div style={{
+          fontSize:   20,
+          fontWeight: 600,
+          color:      "#0d1117",
+          marginTop:  2,
+          fontFamily: "'DM Mono', monospace",
+        }}>
           {totalCount.toLocaleString()}
-          <span style={{ fontSize: 13, fontWeight: 400, color: "#8b95a1", marginLeft: 6 }}>results</span>
+          <span style={{ fontSize: 13, fontWeight: 400, color: "#8b95a1", marginLeft: 6 }}>
+            results
+          </span>
         </div>
       </div>
 
       {/* List */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: "auto", minWidth: 0 }}>
         {trials.map((trial) => {
           const isActive = selectedId === trial.nctId;
           return (
@@ -55,12 +70,13 @@ export default function TrialList({
               onKeyDown={(e) => e.key === "Enter" && onSelect(trial)}
               style={{
                 padding:      "12px 16px",
-                borderBottom: "1px solid #e4e8f0",
+                borderBottom: "1px solid #f0f2f7",
                 cursor:       "pointer",
                 background:   isActive ? "#eff6ff" : "#fff",
                 borderLeft:   isActive ? "3px solid #2563eb" : "3px solid transparent",
                 transition:   "background 0.12s",
                 outline:      "none",
+                minWidth:     0,
               }}
               onMouseEnter={(e) => {
                 if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#f6f7fb";
@@ -69,8 +85,15 @@ export default function TrialList({
                 if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#fff";
               }}
             >
-              {/* Badges row */}
-              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5, flexWrap: "wrap" }}>
+              {/* NCT ID + badges row */}
+              <div style={{
+                display:    "flex",
+                alignItems: "center",
+                gap:        5,
+                marginBottom: 5,
+                flexWrap:   "wrap",
+                minWidth:   0,
+              }}>
                 <span style={{
                   fontSize:      10,
                   fontWeight:    700,
@@ -78,53 +101,102 @@ export default function TrialList({
                   letterSpacing: "0.6px",
                   textTransform: "uppercase",
                   fontFamily:    "'DM Mono', monospace",
+                  flexShrink:    0,
                 }}>
                   {trial.nctId}
                 </span>
+
                 <StatusBadge status={trial.status} />
-                {trial.phases.map((p) => (
-                  <span
-                    key={p}
-                    style={{
-                      display:       "inline-flex",
-                      padding:       "2px 8px",
-                      borderRadius:  20,
-                      fontSize:      10,
-                      fontWeight:    700,
-                      background:    "#f1f5f9",
-                      color:         "#475569",
-                      border:        "1px solid #e2e8f0",
-                      fontFamily:    "'DM Mono', monospace",
-                      letterSpacing: "0.2px",
-                    }}
-                  >
-                    {p}
-                  </span>
-                ))}
+
+                {/* FIX: phase badges — "N/A" or "NA" rendered as styled pill, not raw text */}
+                {trial.phases.map((p) =>
+                  p === "N/A" || p === "NA" ? (
+                    <span
+                      key={p}
+                      style={{
+                        display:       "inline-flex",
+                        padding:       "2px 7px",
+                        borderRadius:  20,
+                        fontSize:      10,
+                        fontWeight:    500,
+                        background:    "#f1f5f9",
+                        color:         "#64748b",
+                        border:        "1px solid #e2e8f0",
+                        letterSpacing: "0.2px",
+                        flexShrink:    0,
+                      }}
+                    >
+                      Not applicable
+                    </span>
+                  ) : (
+                    <span
+                      key={p}
+                      style={{
+                        display:       "inline-flex",
+                        padding:       "2px 8px",
+                        borderRadius:  20,
+                        fontSize:      10,
+                        fontWeight:    700,
+                        background:    "#f1f5f9",
+                        color:         "#475569",
+                        border:        "1px solid #e2e8f0",
+                        fontFamily:    "'DM Mono', monospace",
+                        letterSpacing: "0.2px",
+                        flexShrink:    0,
+                      }}
+                    >
+                      {p}
+                    </span>
+                  )
+                )}
               </div>
 
-              {/* Title */}
+              {/* FIX: title clamped to 2 lines — no text spills outside the card */}
               <div style={{
-                fontSize:         12,
-                fontWeight:       500,
-                color:            "#0d1117",
-                lineHeight:       1.45,
-                marginBottom:     4,
-                display:          "-webkit-box",
-                WebkitLineClamp:  2,
-                WebkitBoxOrient:  "vertical",
-                overflow:         "hidden",
+                fontSize:              13,
+                fontWeight:            500,
+                color:                 "#0d1117",
+                lineHeight:            1.45,
+                marginBottom:          5,
+                display:               "-webkit-box",
+                WebkitLineClamp:       2,
+                WebkitBoxOrient:       "vertical" as React.CSSProperties["WebkitBoxOrient"],
+                overflow:              "hidden",
+                wordBreak:             "break-word",
               }}>
                 {trial.title}
               </div>
 
-              {/* Sponsor + location count */}
-              <div style={{ fontSize: 11, color: "#8b95a1" }}>
+              {/* FIX: sponsor truncated with ellipsis so it never wraps to a second line */}
+              <div style={{
+                fontSize:     11,
+                color:        "#8b95a1",
+                display:      "flex",
+                alignItems:   "center",
+                gap:          4,
+                minWidth:     0,
+              }}>
                 {trial.sponsor && (
-                  <strong style={{ color: "#4b5563", fontWeight: 500 }}>{trial.sponsor}</strong>
+                  <strong style={{
+                    color:        "#4b5563",
+                    fontWeight:   500,
+                    overflow:     "hidden",
+                    whiteSpace:   "nowrap",
+                    textOverflow: "ellipsis",
+                    flexShrink:   1,
+                    minWidth:     0,
+                  }}>
+                    {trial.sponsor}
+                  </strong>
                 )}
-                {trial.sponsor && " · "}
-                {trial.locations.length} site{trial.locations.length !== 1 ? "s" : ""}
+                {trial.sponsor && (
+                  <span style={{ flexShrink: 0 }}>
+                    · {trial.locations.length} site{trial.locations.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {!trial.sponsor && (
+                  <span>{trial.locations.length} site{trial.locations.length !== 1 ? "s" : ""}</span>
+                )}
               </div>
             </div>
           );
@@ -152,15 +224,15 @@ export default function TrialList({
             }}
             onMouseEnter={(e) => {
               const btn = e.currentTarget;
-              btn.style.background    = "#f6f7fb";
-              btn.style.borderColor   = "#2563eb";
-              btn.style.color         = "#2563eb";
+              btn.style.background  = "#f6f7fb";
+              btn.style.borderColor = "#2563eb";
+              btn.style.color       = "#2563eb";
             }}
             onMouseLeave={(e) => {
               const btn = e.currentTarget;
-              btn.style.background    = "transparent";
-              btn.style.borderColor   = "#cdd3e0";
-              btn.style.color         = "#4b5563";
+              btn.style.background  = "transparent";
+              btn.style.borderColor = "#cdd3e0";
+              btn.style.color       = "#4b5563";
             }}
           >
             {loading ? "Loading…" : "Load more trials"}

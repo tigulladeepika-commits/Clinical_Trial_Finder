@@ -61,7 +61,6 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
   const [status,    setStatus]    = useState(initialValues.status);
   const [phase,     setPhase]     = useState(initialValues.phase);
 
-  // Sync if initialValues change (e.g. URL-driven navigation)
   useEffect(() => {
     setCondition(initialValues.condition);
     setCity(initialValues.city);
@@ -88,24 +87,28 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
     [handleSubmit],
   );
 
-  const inputStyle: React.CSSProperties = {
-    height:          36,
-    padding:         "0 12px",
-    border:          "1px solid #e4e8f0",
-    borderRadius:    8,
-    fontSize:        13,
-    color:           "#0d1117",
-    background:      "#f6f7fb",
-    outline:         "none",
-    fontFamily:      "inherit",
-    width:           "100%",
-    transition:      "border-color 0.15s",
+  // ── Shared styles ──────────────────────────────────────────────────────────
+
+  const inputBase: React.CSSProperties = {
+    height:       36,
+    padding:      "0 12px",
+    border:       "1px solid #e4e8f0",
+    borderRadius: 8,
+    fontSize:     13,
+    color:        "#0d1117",
+    background:   "#f6f7fb",
+    outline:      "none",
+    fontFamily:   "inherit",
+    width:        "100%",
+    transition:   "border-color 0.15s, box-shadow 0.15s",
+    boxSizing:    "border-box",
   };
 
-  const selectStyle: React.CSSProperties = {
-    ...inputStyle,
-    cursor: "pointer",
+  const selectBase: React.CSSProperties = {
+    ...inputBase,
+    cursor:       "pointer",
     paddingRight: 8,
+    appearance:   "none" as React.CSSProperties["appearance"],
   };
 
   const labelStyle: React.CSSProperties = {
@@ -114,31 +117,64 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
     color:         "#8b95a1",
     textTransform: "uppercase",
     letterSpacing: "0.5px",
-    marginBottom:  3,
+    marginBottom:  4,
     display:       "block",
+    whiteSpace:    "nowrap",
   };
 
+  // FIX: button height exactly matches input height (36px compact, 42px hero)
+  const btnDisabled = loading || !condition.trim();
+
+  // ── Compact mode (results bar) ─────────────────────────────────────────────
+  // FIX: single row, no wrapping, condition gets 2× flex weight so it stays wide,
+  //      all inputs share the same 36px height, button matches exactly.
   if (compact) {
     return (
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display:    "flex",
+          gap:        8,
+          alignItems: "center",
+          width:      "100%",
+          flexWrap:   "nowrap",   // FIX: never wrap — bar stays one line
+          minWidth:   0,
+        }}
+      >
+        {/* Condition — widest field */}
         <input
-          style={{ ...inputStyle, flex: "2 1 180px", minWidth: 160 }}
+          style={{ ...inputBase, flex: "2 1 0", minWidth: 140 }}
           placeholder="Condition, disease, or keyword"
           value={condition}
           onChange={(e) => setCondition(e.target.value)}
           onKeyDown={handleKeyDown}
           aria-label="Condition"
         />
+
+        {/* City */}
         <input
-          style={{ ...inputStyle, flex: "1 1 100px", minWidth: 90 }}
+          style={{ ...inputBase, flex: "1 1 0", minWidth: 80 }}
           placeholder="City"
           value={city}
           onChange={(e) => setCity(e.target.value)}
           onKeyDown={handleKeyDown}
           aria-label="City"
         />
+
+        {/* State */}
         <select
-          style={{ ...selectStyle, flex: "1 1 120px", minWidth: 110 }}
+          style={{ ...selectBase, flex: "1 1 0", minWidth: 90 }}
+          value={state}
+          onChange={(e) => setState_(e.target.value)}
+          aria-label="State"
+        >
+          {US_STATES.map((s) => (
+            <option key={s.code} value={s.code}>{s.code || "State"}</option>
+          ))}
+        </select>
+
+        {/* Status */}
+        <select
+          style={{ ...selectBase, flex: "1 1 0", minWidth: 100 }}
           value={status}
           onChange={(e) => setStatus(e.target.value)}
           aria-label="Status"
@@ -147,8 +183,10 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
             <option key={s} value={s}>{s || "Any Status"}</option>
           ))}
         </select>
+
+        {/* Phase */}
         <select
-          style={{ ...selectStyle, flex: "0 0 110px" }}
+          style={{ ...selectBase, flex: "0 0 100px" }}
           value={phase}
           onChange={(e) => setPhase(e.target.value)}
           aria-label="Phase"
@@ -157,39 +195,51 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
             <option key={p} value={p}>{p || "Any Phase"}</option>
           ))}
         </select>
+
+        {/* FIX: button height = 36px (same as inputs), no taller */}
         <button
           onClick={handleSubmit}
-          disabled={loading || !condition.trim()}
+          disabled={btnDisabled}
           style={{
-            height:          36,
-            padding:         "0 20px",
-            background:      loading || !condition.trim() ? "#cdd3e0" : "#2563eb",
-            color:           "#fff",
-            border:          "none",
-            borderRadius:    8,
-            fontSize:        13,
-            fontWeight:      600,
-            cursor:          loading || !condition.trim() ? "not-allowed" : "pointer",
-            whiteSpace:      "nowrap",
-            fontFamily:      "inherit",
-            transition:      "background 0.15s",
-            flexShrink:      0,
+            height:       36,
+            padding:      "0 20px",
+            background:   btnDisabled ? "#cdd3e0" : "#2563eb",
+            color:        "#fff",
+            border:       "none",
+            borderRadius: 8,
+            fontSize:     13,
+            fontWeight:   600,
+            cursor:       btnDisabled ? "not-allowed" : "pointer",
+            whiteSpace:   "nowrap",
+            fontFamily:   "inherit",
+            transition:   "background 0.15s",
+            flexShrink:   0,
+            display:      "flex",
+            alignItems:   "center",
+            gap:          6,
           }}
         >
+          {/* Search icon */}
+          {!loading && (
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+              <circle cx="6" cy="6" r="4.3" stroke="currentColor" strokeWidth="1.8"/>
+              <path d="M9.5 9.5L12 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+          )}
           {loading ? "Searching…" : "Search"}
         </button>
       </div>
     );
   }
 
-  // Hero (full-size) form
+  // ── Hero (full-size) form ─────────────────────────────────────────────────
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <div style={{ flex: "2 1 200px", minWidth: 180 }}>
           <label style={labelStyle}>Condition / Keyword *</label>
           <input
-            style={inputStyle}
+            style={inputBase}
             placeholder="e.g. melanoma, NSCLC, diabetes"
             value={condition}
             onChange={(e) => setCondition(e.target.value)}
@@ -200,7 +250,7 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
         <div style={{ flex: "1 1 110px", minWidth: 100 }}>
           <label style={labelStyle}>City</label>
           <input
-            style={inputStyle}
+            style={inputBase}
             placeholder="Any city"
             value={city}
             onChange={(e) => setCity(e.target.value)}
@@ -210,7 +260,7 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
         <div style={{ flex: "1 1 130px", minWidth: 120 }}>
           <label style={labelStyle}>State</label>
           <select
-            style={selectStyle}
+            style={selectBase}
             value={state}
             onChange={(e) => setState_(e.target.value)}
           >
@@ -224,7 +274,7 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ flex: "1 1 160px", minWidth: 140 }}>
           <label style={labelStyle}>Recruitment Status</label>
-          <select style={selectStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select style={selectBase} value={status} onChange={(e) => setStatus(e.target.value)}>
             {STATUSES.map((s) => (
               <option key={s} value={s}>{s || "Any Status"}</option>
             ))}
@@ -232,30 +282,38 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
         </div>
         <div style={{ flex: "0 0 120px" }}>
           <label style={labelStyle}>Phase</label>
-          <select style={selectStyle} value={phase} onChange={(e) => setPhase(e.target.value)}>
+          <select style={selectBase} value={phase} onChange={(e) => setPhase(e.target.value)}>
             {PHASES.map((p) => (
               <option key={p} value={p}>{p || "Any Phase"}</option>
             ))}
           </select>
         </div>
+        {/* FIX: hero button is 42px — slightly taller for prominence, but proportional */}
         <button
           onClick={handleSubmit}
-          disabled={loading || !condition.trim()}
+          disabled={btnDisabled}
           style={{
             height:       42,
             padding:      "0 28px",
-            background:   loading || !condition.trim() ? "#cdd3e0" : "#2563eb",
+            background:   btnDisabled ? "#cdd3e0" : "#2563eb",
             color:        "#fff",
             border:       "none",
             borderRadius: 8,
             fontSize:     14,
             fontWeight:   600,
-            cursor:       loading || !condition.trim() ? "not-allowed" : "pointer",
+            cursor:       btnDisabled ? "not-allowed" : "pointer",
             fontFamily:   "inherit",
             transition:   "background 0.15s",
             flexShrink:   0,
+            display:      "flex",
+            alignItems:   "center",
+            gap:          7,
           }}
         >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+            <circle cx="6" cy="6" r="4.3" stroke="currentColor" strokeWidth="1.8"/>
+            <path d="M9.5 9.5L12 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
           {loading ? "Searching…" : "Search Trials"}
         </button>
       </div>
