@@ -110,7 +110,7 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
       <div className="lcm-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
         <div className="lcm-box">
           <div className="lcm-hdr">
-            <div className="lcm-title">Contact Physician</div>
+            <div className="lcm-title">Add as Lead</div>
             <div className="lcm-sub">
               Express interest in {nctId}{siteName ? ` · ${siteName}` : ""}
             </div>

@@ -23,41 +23,51 @@ export default function TrialList({
   onLoadMore,
   loading,
 }: Props) {
+  const shown = trials.length;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
 
-      {/* Header */}
-      <div
-        style={{
-          padding:      "14px 16px 10px",
-          borderBottom: "1px solid #e4e8f0",
-          flexShrink:   0,
-        }}
-      >
+      {/* ── Coloured header ── */}
+      <div style={{
+        padding:      "12px 16px",
+        borderBottom: "1px solid #1e40af",
+        flexShrink:   0,
+        background:   "linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)",
+      }}>
         <div style={{
-          fontSize:      11,
-          fontWeight:    600,
-          color:         "#8b95a1",
+          fontSize:      10,
+          fontWeight:    700,
+          color:         "rgba(255,255,255,0.55)",
           textTransform: "uppercase",
-          letterSpacing: "0.5px",
+          letterSpacing: "0.8px",
+          marginBottom:  4,
         }}>
           Clinical Trials
         </div>
-        <div style={{
-          fontSize:   20,
-          fontWeight: 600,
-          color:      "#0d1117",
-          marginTop:  2,
-          fontFamily: "'DM Mono', monospace",
-        }}>
-          {totalCount.toLocaleString()}
-          <span style={{ fontSize: 13, fontWeight: 400, color: "#8b95a1", marginLeft: 6 }}>
-            results
+
+        {/* x of y trials */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+          <span style={{
+            fontSize:   22,
+            fontWeight: 700,
+            color:      "#fff",
+            fontFamily: "'DM Mono', monospace",
+            lineHeight: 1,
+          }}>
+            {shown.toLocaleString()}
+          </span>
+          <span style={{
+            fontSize:  13,
+            fontWeight: 400,
+            color:     "rgba(255,255,255,0.5)",
+          }}>
+            of {totalCount.toLocaleString()} trials
           </span>
         </div>
       </div>
 
-      {/* List */}
+      {/* ── List ── */}
       <div style={{ flex: 1, overflowY: "auto", minWidth: 0 }}>
         {trials.map((trial) => {
           const isActive = selectedId === trial.nctId;
@@ -85,14 +95,14 @@ export default function TrialList({
                 if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#fff";
               }}
             >
-              {/* NCT ID + badges row */}
+              {/* NCT ID + badges */}
               <div style={{
-                display:    "flex",
-                alignItems: "center",
-                gap:        5,
+                display:      "flex",
+                alignItems:   "center",
+                gap:          5,
                 marginBottom: 5,
-                flexWrap:   "wrap",
-                minWidth:   0,
+                flexWrap:     "wrap",
+                minWidth:     0,
               }}>
                 <span style={{
                   fontSize:      10,
@@ -108,73 +118,64 @@ export default function TrialList({
 
                 <StatusBadge status={trial.status} />
 
-                {/* FIX: phase badges — "N/A" or "NA" rendered as styled pill, not raw text */}
                 {trial.phases.map((p) =>
                   p === "N/A" || p === "NA" ? (
-                    <span
-                      key={p}
-                      style={{
-                        display:       "inline-flex",
-                        padding:       "2px 7px",
-                        borderRadius:  20,
-                        fontSize:      10,
-                        fontWeight:    500,
-                        background:    "#f1f5f9",
-                        color:         "#64748b",
-                        border:        "1px solid #e2e8f0",
-                        letterSpacing: "0.2px",
-                        flexShrink:    0,
-                      }}
-                    >
+                    <span key={p} style={{
+                      display:      "inline-flex",
+                      padding:      "2px 7px",
+                      borderRadius: 20,
+                      fontSize:     10,
+                      fontWeight:   500,
+                      background:   "#f1f5f9",
+                      color:        "#64748b",
+                      border:       "1px solid #e2e8f0",
+                      flexShrink:   0,
+                    }}>
                       Not applicable
                     </span>
                   ) : (
-                    <span
-                      key={p}
-                      style={{
-                        display:       "inline-flex",
-                        padding:       "2px 8px",
-                        borderRadius:  20,
-                        fontSize:      10,
-                        fontWeight:    700,
-                        background:    "#f1f5f9",
-                        color:         "#475569",
-                        border:        "1px solid #e2e8f0",
-                        fontFamily:    "'DM Mono', monospace",
-                        letterSpacing: "0.2px",
-                        flexShrink:    0,
-                      }}
-                    >
+                    <span key={p} style={{
+                      display:      "inline-flex",
+                      padding:      "2px 8px",
+                      borderRadius: 20,
+                      fontSize:     10,
+                      fontWeight:   700,
+                      background:   "#f1f5f9",
+                      color:        "#475569",
+                      border:       "1px solid #e2e8f0",
+                      fontFamily:   "'DM Mono', monospace",
+                      flexShrink:   0,
+                    }}>
                       {p}
                     </span>
                   )
                 )}
               </div>
 
-              {/* FIX: title clamped to 2 lines — no text spills outside the card */}
+              {/* Title — 2-line clamp */}
               <div style={{
-                fontSize:              13,
-                fontWeight:            500,
-                color:                 "#0d1117",
-                lineHeight:            1.45,
-                marginBottom:          5,
-                display:               "-webkit-box",
-                WebkitLineClamp:       2,
-                WebkitBoxOrient:       "vertical" as React.CSSProperties["WebkitBoxOrient"],
-                overflow:              "hidden",
-                wordBreak:             "break-word",
+                fontSize:        13,
+                fontWeight:      500,
+                color:           "#0d1117",
+                lineHeight:      1.45,
+                marginBottom:    5,
+                display:         "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical" as React.CSSProperties["WebkitBoxOrient"],
+                overflow:        "hidden",
+                wordBreak:       "break-word",
               }}>
                 {trial.title}
               </div>
 
-              {/* FIX: sponsor truncated with ellipsis so it never wraps to a second line */}
+              {/* Sponsor · sites */}
               <div style={{
-                fontSize:     11,
-                color:        "#8b95a1",
-                display:      "flex",
-                alignItems:   "center",
-                gap:          4,
-                minWidth:     0,
+                fontSize:   11,
+                color:      "#8b95a1",
+                display:    "flex",
+                alignItems: "center",
+                gap:        4,
+                minWidth:   0,
               }}>
                 {trial.sponsor && (
                   <strong style={{
@@ -189,14 +190,10 @@ export default function TrialList({
                     {trial.sponsor}
                   </strong>
                 )}
-                {trial.sponsor && (
-                  <span style={{ flexShrink: 0 }}>
-                    · {trial.locations.length} site{trial.locations.length !== 1 ? "s" : ""}
-                  </span>
-                )}
-                {!trial.sponsor && (
-                  <span>{trial.locations.length} site{trial.locations.length !== 1 ? "s" : ""}</span>
-                )}
+                <span style={{ flexShrink: 0 }}>
+                  {trial.sponsor ? "· " : ""}
+                  {trial.locations.length} site{trial.locations.length !== 1 ? "s" : ""}
+                </span>
               </div>
             </div>
           );

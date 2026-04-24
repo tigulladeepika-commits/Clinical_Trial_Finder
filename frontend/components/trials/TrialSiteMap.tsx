@@ -71,15 +71,7 @@ export default function TrialSiteMap({
 
   const [showCriteria, setShowCriteria] = useState(false);
 
-  const mappableSites   = sites.filter((s) => s.lat != null && s.lon != null);
-  const totalSites      = sites.length;
-  const recruitingCount = sites.filter((s) => {
-    const st = (s.status || "").toUpperCase().trim();
-    return st === "RECRUITING" || st === "ENROLLING_BY_INVITATION";
-  }).length;
-  const countriesCount = [
-    ...new Set(sites.map((s) => s.country).filter(Boolean)),
-  ].length;
+  const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
 
   // ── MapQuest init ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -303,13 +295,6 @@ export default function TrialSiteMap({
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
 
-        .tsm-stats-strip { display:flex; border-bottom:1px solid #f1f5f9; }
-        .tsm-stat        { flex:1; padding:14px 0; text-align:center; }
-        .tsm-stat + .tsm-stat { border-left:1px solid #f1f5f9; }
-        .tsm-stat-val    { font-size:22px; font-weight:700; line-height:1; color:#0f172a; font-family:'IBM Plex Mono',monospace; }
-        .tsm-stat-val.accent { color:#16a34a; }
-        .tsm-stat-lbl    { font-size:10px; color:#94a3b8; margin-top:4px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
-
         .tsm-map-controls {
           position:absolute; top:12px; right:12px; z-index:1000;
           display:flex; flex-direction:column; gap:6px; pointer-events:auto;
@@ -362,21 +347,6 @@ export default function TrialSiteMap({
       `}</style>
 
       <div style={{ fontFamily: "'Sora', sans-serif" }}>
-
-        {/* ── Stats strip ── */}
-        <div className="tsm-stats-strip">
-          {[
-            { label: "Total Sites",  value: totalSites,           accent: false },
-            { label: "Recruiting",   value: recruitingCount,      accent: true  },
-            { label: "On Map",       value: mappableSites.length, accent: false },
-            { label: "Countries",    value: countriesCount,       accent: false },
-          ].map((st, i) => (
-            <div key={i} className="tsm-stat">
-              <div className={`tsm-stat-val${st.accent ? " accent" : ""}`}>{st.value}</div>
-              <div className="tsm-stat-lbl">{st.label}</div>
-            </div>
-          ))}
-        </div>
 
         {/* ── MapQuest map ── */}
         <div style={{ position: "relative" }}>

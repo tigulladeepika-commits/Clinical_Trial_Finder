@@ -20,31 +20,31 @@ const PHASES = ["", "Phase 1", "Phase 2", "Phase 3", "Phase 4", "N/A"] as const;
 
 const US_STATES = [
   { code: "",   label: "Any State" },
-  { code: "AL", label: "Alabama" },      { code: "AK", label: "Alaska" },
-  { code: "AZ", label: "Arizona" },      { code: "AR", label: "Arkansas" },
-  { code: "CA", label: "California" },   { code: "CO", label: "Colorado" },
-  { code: "CT", label: "Connecticut" },  { code: "DE", label: "Delaware" },
-  { code: "FL", label: "Florida" },      { code: "GA", label: "Georgia" },
-  { code: "HI", label: "Hawaii" },       { code: "ID", label: "Idaho" },
-  { code: "IL", label: "Illinois" },     { code: "IN", label: "Indiana" },
-  { code: "IA", label: "Iowa" },         { code: "KS", label: "Kansas" },
-  { code: "KY", label: "Kentucky" },     { code: "LA", label: "Louisiana" },
-  { code: "ME", label: "Maine" },        { code: "MD", label: "Maryland" },
-  { code: "MA", label: "Massachusetts"},{ code: "MI", label: "Michigan" },
-  { code: "MN", label: "Minnesota" },    { code: "MS", label: "Mississippi" },
-  { code: "MO", label: "Missouri" },     { code: "MT", label: "Montana" },
-  { code: "NE", label: "Nebraska" },     { code: "NV", label: "Nevada" },
-  { code: "NH", label: "New Hampshire"},{ code: "NJ", label: "New Jersey" },
-  { code: "NM", label: "New Mexico" },   { code: "NY", label: "New York" },
-  { code: "NC", label: "North Carolina"},{ code:"ND", label: "North Dakota" },
-  { code: "OH", label: "Ohio" },         { code: "OK", label: "Oklahoma" },
-  { code: "OR", label: "Oregon" },       { code: "PA", label: "Pennsylvania" },
-  { code: "RI", label: "Rhode Island" }, { code: "SC", label: "South Carolina" },
-  { code: "SD", label: "South Dakota" }, { code: "TN", label: "Tennessee" },
-  { code: "TX", label: "Texas" },        { code: "UT", label: "Utah" },
-  { code: "VT", label: "Vermont" },      { code: "VA", label: "Virginia" },
-  { code: "WA", label: "Washington" },   { code: "WV", label: "West Virginia" },
-  { code: "WI", label: "Wisconsin" },    { code: "WY", label: "Wyoming" },
+  { code: "AL", label: "Alabama" },       { code: "AK", label: "Alaska" },
+  { code: "AZ", label: "Arizona" },       { code: "AR", label: "Arkansas" },
+  { code: "CA", label: "California" },    { code: "CO", label: "Colorado" },
+  { code: "CT", label: "Connecticut" },   { code: "DE", label: "Delaware" },
+  { code: "FL", label: "Florida" },       { code: "GA", label: "Georgia" },
+  { code: "HI", label: "Hawaii" },        { code: "ID", label: "Idaho" },
+  { code: "IL", label: "Illinois" },      { code: "IN", label: "Indiana" },
+  { code: "IA", label: "Iowa" },          { code: "KS", label: "Kansas" },
+  { code: "KY", label: "Kentucky" },      { code: "LA", label: "Louisiana" },
+  { code: "ME", label: "Maine" },         { code: "MD", label: "Maryland" },
+  { code: "MA", label: "Massachusetts" }, { code: "MI", label: "Michigan" },
+  { code: "MN", label: "Minnesota" },     { code: "MS", label: "Mississippi" },
+  { code: "MO", label: "Missouri" },      { code: "MT", label: "Montana" },
+  { code: "NE", label: "Nebraska" },      { code: "NV", label: "Nevada" },
+  { code: "NH", label: "New Hampshire" }, { code: "NJ", label: "New Jersey" },
+  { code: "NM", label: "New Mexico" },    { code: "NY", label: "New York" },
+  { code: "NC", label: "North Carolina" },{ code: "ND", label: "North Dakota" },
+  { code: "OH", label: "Ohio" },          { code: "OK", label: "Oklahoma" },
+  { code: "OR", label: "Oregon" },        { code: "PA", label: "Pennsylvania" },
+  { code: "RI", label: "Rhode Island" },  { code: "SC", label: "South Carolina" },
+  { code: "SD", label: "South Dakota" },  { code: "TN", label: "Tennessee" },
+  { code: "TX", label: "Texas" },         { code: "UT", label: "Utah" },
+  { code: "VT", label: "Vermont" },       { code: "VA", label: "Virginia" },
+  { code: "WA", label: "Washington" },    { code: "WV", label: "West Virginia" },
+  { code: "WI", label: "Wisconsin" },     { code: "WY", label: "Wyoming" },
 ];
 
 interface Props {
@@ -54,7 +54,12 @@ interface Props {
   initialValues: TrialSearchFilters;
 }
 
-export default function SearchForm({ onSearch, loading = false, compact = false, initialValues }: Props) {
+export default function SearchForm({
+  onSearch,
+  loading = false,
+  compact = false,
+  initialValues,
+}: Props) {
   const [condition, setCondition] = useState(initialValues.condition);
   const [city,      setCity]      = useState(initialValues.city);
   const [state,     setState_]    = useState(initialValues.state);
@@ -81,15 +86,14 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
   }, [condition, city, state, status, phase, onSearch]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") handleSubmit();
-    },
+    (e: React.KeyboardEvent) => { if (e.key === "Enter") handleSubmit(); },
     [handleSubmit],
   );
 
-  // ── Shared styles ──────────────────────────────────────────────────────────
+  const btnDisabled = loading || !condition.trim();
 
-  const inputBase: React.CSSProperties = {
+  // ── Shared field style ──────────────────────────────────────────────────────
+  const field: React.CSSProperties = {
     height:       36,
     padding:      "0 12px",
     border:       "1px solid #e4e8f0",
@@ -104,46 +108,37 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
     boxSizing:    "border-box",
   };
 
-  const selectBase: React.CSSProperties = {
-    ...inputBase,
-    cursor:       "pointer",
+  const select: React.CSSProperties = {
+    ...field,
+    cursor:      "pointer",
     paddingRight: 8,
-    appearance:   "none" as React.CSSProperties["appearance"],
+    appearance:  "none" as React.CSSProperties["appearance"],
   };
 
-  const labelStyle: React.CSSProperties = {
-    fontSize:      11,
-    fontWeight:    600,
-    color:         "#8b95a1",
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-    marginBottom:  4,
-    display:       "block",
-    whiteSpace:    "nowrap",
-  };
+  // ── Search button ───────────────────────────────────────────────────────────
+  const SearchIcon = () => (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+      <circle cx="6" cy="6" r="4.3" stroke="currentColor" strokeWidth="1.8"/>
+      <path d="M9.5 9.5L12 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  );
 
-  // FIX: button height exactly matches input height (36px compact, 42px hero)
-  const btnDisabled = loading || !condition.trim();
-
-  // ── Compact mode (results bar) ─────────────────────────────────────────────
-  // FIX: single row, no wrapping, condition gets 2× flex weight so it stays wide,
-  //      all inputs share the same 36px height, button matches exactly.
+  // ── COMPACT (results bar) ───────────────────────────────────────────────────
+  // Condition · City · Status · Search — minimal, single row, no labels
   if (compact) {
     return (
-      <div
-        style={{
-          display:    "flex",
-          gap:        8,
-          alignItems: "center",
-          width:      "100%",
-          flexWrap:   "nowrap",   // FIX: never wrap — bar stays one line
-          minWidth:   0,
-        }}
-      >
-        {/* Condition — widest field */}
+      <div style={{
+        display:    "flex",
+        gap:        8,
+        alignItems: "center",
+        width:      "100%",
+        flexWrap:   "nowrap",
+        minWidth:   0,
+      }}>
+        {/* Condition — widest */}
         <input
-          style={{ ...inputBase, flex: "2 1 0", minWidth: 140 }}
-          placeholder="Condition, disease, or keyword"
+          style={{ ...field, flex: "2 1 0", minWidth: 140 }}
+          placeholder="Condition or keyword"
           value={condition}
           onChange={(e) => setCondition(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -152,7 +147,7 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
 
         {/* City */}
         <input
-          style={{ ...inputBase, flex: "1 1 0", minWidth: 80 }}
+          style={{ ...field, flex: "1 1 0", minWidth: 80 }}
           placeholder="City"
           value={city}
           onChange={(e) => setCity(e.target.value)}
@@ -160,21 +155,9 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
           aria-label="City"
         />
 
-        {/* State */}
-        <select
-          style={{ ...selectBase, flex: "1 1 0", minWidth: 90 }}
-          value={state}
-          onChange={(e) => setState_(e.target.value)}
-          aria-label="State"
-        >
-          {US_STATES.map((s) => (
-            <option key={s.code} value={s.code}>{s.code || "State"}</option>
-          ))}
-        </select>
-
         {/* Status */}
         <select
-          style={{ ...selectBase, flex: "1 1 0", minWidth: 100 }}
+          style={{ ...select, flex: "1 1 0", minWidth: 110 }}
           value={status}
           onChange={(e) => setStatus(e.target.value)}
           aria-label="Status"
@@ -184,25 +167,13 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
           ))}
         </select>
 
-        {/* Phase */}
-        <select
-          style={{ ...selectBase, flex: "0 0 100px" }}
-          value={phase}
-          onChange={(e) => setPhase(e.target.value)}
-          aria-label="Phase"
-        >
-          {PHASES.map((p) => (
-            <option key={p} value={p}>{p || "Any Phase"}</option>
-          ))}
-        </select>
-
-        {/* FIX: button height = 36px (same as inputs), no taller */}
+        {/* Search button */}
         <button
           onClick={handleSubmit}
           disabled={btnDisabled}
           style={{
             height:       36,
-            padding:      "0 20px",
+            padding:      "0 18px",
             background:   btnDisabled ? "#cdd3e0" : "#2563eb",
             color:        "#fff",
             border:       "none",
@@ -219,51 +190,53 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
             gap:          6,
           }}
         >
-          {/* Search icon */}
-          {!loading && (
-            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-              <circle cx="6" cy="6" r="4.3" stroke="currentColor" strokeWidth="1.8"/>
-              <path d="M9.5 9.5L12 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-          )}
+          <SearchIcon />
           {loading ? "Searching…" : "Search"}
         </button>
       </div>
     );
   }
 
-  // ── Hero (full-size) form ─────────────────────────────────────────────────
+  // ── HERO (full form) ────────────────────────────────────────────────────────
+  const label: React.CSSProperties = {
+    fontSize:      11,
+    fontWeight:    600,
+    color:         "#8b95a1",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+    marginBottom:  5,
+    display:       "block",
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      {/* Row 1: condition (wide) + city + state */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ flex: "2 1 200px", minWidth: 180 }}>
-          <label style={labelStyle}>Condition / Keyword *</label>
+        <div style={{ flex: "3 1 200px", minWidth: 180 }}>
+          <label style={label}>Condition / Keyword *</label>
           <input
-            style={inputBase}
-            placeholder="e.g. melanoma, NSCLC, diabetes"
+            style={field}
+            placeholder="e.g. melanoma, diabetes, NSCLC"
             value={condition}
             onChange={(e) => setCondition(e.target.value)}
             onKeyDown={handleKeyDown}
             autoFocus
           />
         </div>
-        <div style={{ flex: "1 1 110px", minWidth: 100 }}>
-          <label style={labelStyle}>City</label>
+        <div style={{ flex: "1 1 100px", minWidth: 90 }}>
+          <label style={label}>City</label>
           <input
-            style={inputBase}
+            style={field}
             placeholder="Any city"
             value={city}
             onChange={(e) => setCity(e.target.value)}
             onKeyDown={handleKeyDown}
           />
         </div>
-        <div style={{ flex: "1 1 130px", minWidth: 120 }}>
-          <label style={labelStyle}>State</label>
-          <select
-            style={selectBase}
-            value={state}
-            onChange={(e) => setState_(e.target.value)}
-          >
+        <div style={{ flex: "1 1 120px", minWidth: 110 }}>
+          <label style={label}>State</label>
+          <select style={select} value={state} onChange={(e) => setState_(e.target.value)}>
             {US_STATES.map((s) => (
               <option key={s.code} value={s.code}>{s.label}</option>
             ))}
@@ -271,29 +244,29 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
         </div>
       </div>
 
+      {/* Row 2: status + phase + button */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div style={{ flex: "1 1 160px", minWidth: 140 }}>
-          <label style={labelStyle}>Recruitment Status</label>
-          <select style={selectBase} value={status} onChange={(e) => setStatus(e.target.value)}>
+        <div style={{ flex: "1 1 150px", minWidth: 130 }}>
+          <label style={label}>Status</label>
+          <select style={select} value={status} onChange={(e) => setStatus(e.target.value)}>
             {STATUSES.map((s) => (
               <option key={s} value={s}>{s || "Any Status"}</option>
             ))}
           </select>
         </div>
-        <div style={{ flex: "0 0 120px" }}>
-          <label style={labelStyle}>Phase</label>
-          <select style={selectBase} value={phase} onChange={(e) => setPhase(e.target.value)}>
+        <div style={{ flex: "0 0 110px" }}>
+          <label style={label}>Phase</label>
+          <select style={select} value={phase} onChange={(e) => setPhase(e.target.value)}>
             {PHASES.map((p) => (
               <option key={p} value={p}>{p || "Any Phase"}</option>
             ))}
           </select>
         </div>
-        {/* FIX: hero button is 42px — slightly taller for prominence, but proportional */}
         <button
           onClick={handleSubmit}
           disabled={btnDisabled}
           style={{
-            height:       42,
+            height:       40,
             padding:      "0 28px",
             background:   btnDisabled ? "#cdd3e0" : "#2563eb",
             color:        "#fff",
@@ -309,11 +282,10 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
             alignItems:   "center",
             gap:          7,
           }}
+          onMouseEnter={(e) => { if (!btnDisabled) e.currentTarget.style.background = "#1d4ed8"; }}
+          onMouseLeave={(e) => { if (!btnDisabled) e.currentTarget.style.background = "#2563eb"; }}
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-            <circle cx="6" cy="6" r="4.3" stroke="currentColor" strokeWidth="1.8"/>
-            <path d="M9.5 9.5L12 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-          </svg>
+          <SearchIcon />
           {loading ? "Searching…" : "Search Trials"}
         </button>
       </div>
