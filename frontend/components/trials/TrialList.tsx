@@ -1,9 +1,10 @@
+// components/trials/TrialList.tsx
 "use client";
 
-import { useMemo } from "react";
+import StatusBadge from "@/components/shared/StatusBadge";
 import type { Trial } from "@/types/trial";
 
-type Props = {
+interface Props {
   trials:     Trial[];
   totalCount: number;
   selectedId: string | null;
@@ -11,136 +12,6 @@ type Props = {
   hasMore:    boolean;
   onLoadMore: () => void;
   loading:    boolean;
-};
-
-// ── Status ordering & color system ──────────────────────────────────────────
-type StatusGroup =
-  | "Recruiting"
-  | "Active"
-  | "Not Actively Recruiting"
-  | "Completed"
-  | "Terminated"
-  | "Other";
-
-const STATUS_GROUP_ORDER: StatusGroup[] = [
-  "Recruiting",
-  "Active",
-  "Not Actively Recruiting",
-  "Completed",
-  "Terminated",
-  "Other",
-];
-
-const STATUS_CONFIG: Record<
-  StatusGroup,
-  { color: string; bg: string; border: string; dot: string; label: string }
-> = {
-  Recruiting: {
-    color:  "#15803d",
-    bg:     "#f0fdf4",
-    border: "#bbf7d0",
-    dot:    "#22c55e",
-    label:  "Recruiting",
-  },
-  Active: {
-    color:  "#1d4ed8",
-    bg:     "#eff6ff",
-    border: "#bfdbfe",
-    dot:    "#3b82f6",
-    label:  "Active",
-  },
-  "Not Actively Recruiting": {
-    color:  "#92400e",
-    bg:     "#fffbeb",
-    border: "#fde68a",
-    dot:    "#f59e0b",
-    label:  "Not Recruiting",
-  },
-  Completed: {
-    color:  "#334155",
-    bg:     "#f8fafc",
-    border: "#e2e8f0",
-    dot:    "#64748b",
-    label:  "Completed",
-  },
-  Terminated: {
-    color:  "#b91c1c",
-    bg:     "#fef2f2",
-    border: "#fecaca",
-    dot:    "#ef4444",
-    label:  "Terminated",
-  },
-  Other: {
-    color:  "#4b5563",
-    bg:     "#f9fafb",
-    border: "#e5e7eb",
-    dot:    "#9ca3af",
-    label:  "Other",
-  },
-};
-
-function classifyStatus(status: string | null): StatusGroup {
-  const s = (status || "").toLowerCase().trim();
-  if (s === "recruiting" || s === "enrolling by invitation") return "Recruiting";
-  if (s.includes("active") && !s.includes("not"))           return "Active";
-  if (s === "not yet recruiting" || s === "suspended" || s === "available")
-    return "Not Actively Recruiting";
-  if (s === "completed")                                     return "Completed";
-  if (s === "terminated" || s === "withdrawn")               return "Terminated";
-  return "Other";
-}
-
-function PhaseBadge({ phase }: { phase: string }) {
-  return (
-    <span style={{
-      display:       "inline-flex",
-      alignItems:    "center",
-      padding:       "2px 7px",
-      borderRadius:  4,
-      fontSize:      10,
-      fontWeight:    700,
-      letterSpacing: "0.5px",
-      textTransform: "uppercase",
-      background:    "#f1f5f9",
-      color:         "#475569",
-      border:        "1px solid #e2e8f0",
-      fontFamily:    "'IBM Plex Mono', monospace",
-    }}>
-      {phase}
-    </span>
-  );
-}
-
-function StatusDot({ group }: { group: StatusGroup }) {
-  const cfg = STATUS_CONFIG[group];
-  return (
-    <span style={{
-      display:      "inline-flex",
-      alignItems:   "center",
-      gap:          5,
-      padding:      "2px 8px 2px 5px",
-      borderRadius: 20,
-      fontSize:     10,
-      fontWeight:   600,
-      background:   cfg.bg,
-      color:        cfg.color,
-      border:       `1px solid ${cfg.border}`,
-      whiteSpace:   "nowrap",
-    }}>
-      <span style={{
-        width:        6,
-        height:       6,
-        borderRadius: "50%",
-        background:   cfg.dot,
-        flexShrink:   0,
-        display:      "inline-block",
-        animation:    group === "Recruiting"
-          ? "trialPulse 2s ease-in-out infinite"
-          : "none",
-      }} />
-      {cfg.label}
-    </span>
-  );
 }
 
 export default function TrialList({
@@ -152,218 +23,150 @@ export default function TrialList({
   onLoadMore,
   loading,
 }: Props) {
-  const sorted = useMemo(() => {
-    return [...trials].sort((a, b) => {
-      const orderA = STATUS_GROUP_ORDER.indexOf(classifyStatus(a.status ?? null));
-      const orderB = STATUS_GROUP_ORDER.indexOf(classifyStatus(b.status ?? null));
-      return orderA - orderB;
-    });
-  }, [trials]);
-
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Sora:wght@400;500;600;700&display=swap');
-
-        @keyframes trialPulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.6; transform: scale(1.4); }
-        }
-        @keyframes trialFadeIn {
-          from { opacity: 0; transform: translateY(5px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Wrapper fills its flex parent — parent scrolls, not this div */
-        .trial-list-wrap {
-          font-family: 'Sora', sans-serif;
-          display: flex;
-          flex-direction: column;
-          /* Do NOT set height/min-height here; the parent .trials-panel owns height */
-        }
-
-        .trial-list-header {
-          padding: 12px 16px 10px;
-          border-bottom: 1px solid #f1f5f9;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          /* sticky within the scrolling .trials-panel */
-          position: sticky;
-          top: 0;
-          background: #fff;
-          z-index: 3;
-          flex-shrink: 0;
-        }
-        .trial-list-count {
-          font-size: 12px;
-          color: #64748b;
-          font-weight: 500;
-        }
-        .trial-list-count strong {
-          color: #0f172a;
-          font-weight: 700;
-        }
-
-        .trial-card-item {
-          padding: 12px 16px;
-          border-bottom: 1px solid #f8fafc;
-          cursor: pointer;
-          transition: background 0.12s, border-left-color 0.12s;
-          border-left: 3px solid transparent;
-          animation: trialFadeIn 0.22s ease both;
-          position: relative;
-          flex-shrink: 0;
-        }
-        .trial-card-item:hover {
-          background: #f8fafc;
-          border-left-color: #94a3b8;
-        }
-        .trial-card-item.active {
-          background: #eff6ff;
-          border-left-color: #2563eb;
-        }
-        .trial-card-item.active .trial-card-nct {
-          color: #2563eb;
-        }
-        .trial-card-nct {
-          font-size: 10px;
-          font-weight: 700;
-          color: #94a3b8;
-          letter-spacing: 0.8px;
-          text-transform: uppercase;
-          font-family: 'IBM Plex Mono', monospace;
-          margin-bottom: 3px;
-        }
-        .trial-card-title {
-          font-size: 12px;
-          font-weight: 600;
-          color: #0f172a;
-          line-height: 1.45;
-          margin-bottom: 7px;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-        .trial-card-meta {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          flex-wrap: wrap;
-        }
-        .trial-card-sponsor {
-          font-size: 11px;
-          color: #94a3b8;
-          margin-top: 4px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        /* Load-more button — tight bottom margin, no extra padding below */
-        .trial-load-more {
-          margin: 12px 16px;        /* equal top/bottom — was 14px top 18px bottom */
-          width: calc(100% - 32px);
-          padding: 10px 0;
-          border-radius: 10px;
-          border: 1.5px dashed #cbd5e1;
-          background: transparent;
-          color: #64748b;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s;
-          font-family: 'Sora', sans-serif;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          flex-shrink: 0;
-        }
-        .trial-load-more:hover:not(:disabled) {
-          border-color: #2563eb;
-          color: #2563eb;
-          background: #eff6ff;
-        }
-        .trial-load-more:disabled {
-          opacity: 0.55;
-          cursor: not-allowed;
-        }
-
-        /* End note — snug, no extra whitespace */
-        .trial-end-note {
-          text-align: center;
-          padding: 12px 16px;
-          font-size: 11px;
-          color: #cbd5e1;
-          font-style: italic;
-          flex-shrink: 0;
-        }
-      `}</style>
-
-      {/* No extra wrapper div — the fragment keeps DOM flat */}
-      <div className="trial-list-header">
-        <span className="trial-list-count">
-          Showing <strong>{trials.length}</strong> of{" "}
-          <strong>{totalCount.toLocaleString()}</strong> trials
-        </span>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Header */}
+      <div
+        style={{
+          padding:      "14px 16px 10px",
+          borderBottom: "1px solid #e4e8f0",
+          flexShrink:   0,
+        }}
+      >
+        <div style={{ fontSize: 11, fontWeight: 600, color: "#8b95a1", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          Clinical Trials
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 600, color: "#0d1117", marginTop: 2, fontFamily: "'DM Mono', monospace" }}>
+          {totalCount.toLocaleString()}
+          <span style={{ fontSize: 13, fontWeight: 400, color: "#8b95a1", marginLeft: 6 }}>results</span>
+        </div>
       </div>
 
-      {sorted.map((trial, idx) => {
-        const group = classifyStatus(trial.status ?? null);
-        return (
-          <div
-            key={trial.nctId}
-            className={`trial-card-item${selectedId === trial.nctId ? " active" : ""}`}
-            onClick={() => onSelect(trial)}
-            style={{ animationDelay: `${idx * 0.025}s` }}
-          >
-            <div className="trial-card-nct">{trial.nctId}</div>
-            <div className="trial-card-title">{trial.title}</div>
-            <div className="trial-card-meta">
-              <StatusDot group={group} />
-              {(trial.phases?.length ?? 0) > 0 &&
-                trial.phases!.map((p) => (
-                  <PhaseBadge key={p} phase={p} />
+      {/* List */}
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {trials.map((trial) => {
+          const isActive = selectedId === trial.nctId;
+          return (
+            <div
+              key={trial.nctId}
+              onClick={() => onSelect(trial)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === "Enter" && onSelect(trial)}
+              style={{
+                padding:      "12px 16px",
+                borderBottom: "1px solid #e4e8f0",
+                cursor:       "pointer",
+                background:   isActive ? "#eff6ff" : "#fff",
+                borderLeft:   isActive ? "3px solid #2563eb" : "3px solid transparent",
+                transition:   "background 0.12s",
+                outline:      "none",
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#f6f7fb";
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#fff";
+              }}
+            >
+              {/* Badges row */}
+              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5, flexWrap: "wrap" }}>
+                <span style={{
+                  fontSize:      10,
+                  fontWeight:    700,
+                  color:         isActive ? "#2563eb" : "#8b95a1",
+                  letterSpacing: "0.6px",
+                  textTransform: "uppercase",
+                  fontFamily:    "'DM Mono', monospace",
+                }}>
+                  {trial.nctId}
+                </span>
+                <StatusBadge status={trial.status} />
+                {trial.phases.map((p) => (
+                  <span
+                    key={p}
+                    style={{
+                      display:       "inline-flex",
+                      padding:       "2px 8px",
+                      borderRadius:  20,
+                      fontSize:      10,
+                      fontWeight:    700,
+                      background:    "#f1f5f9",
+                      color:         "#475569",
+                      border:        "1px solid #e2e8f0",
+                      fontFamily:    "'DM Mono', monospace",
+                      letterSpacing: "0.2px",
+                    }}
+                  >
+                    {p}
+                  </span>
                 ))}
-            </div>
-            {trial.sponsor && (
-              <div className="trial-card-sponsor" title={trial.sponsor}>
-                {trial.sponsor}
               </div>
-            )}
-          </div>
-        );
-      })}
 
-      {hasMore && (
-        <button
-          className="trial-load-more"
-          onClick={onLoadMore}
-          disabled={loading}
-        >
-          {loading ? (
-            <>
-              <span style={{
-                width: 12, height: 12,
-                border: "2px solid #cbd5e1",
-                borderTopColor: "#2563eb",
-                borderRadius: "50%",
-                display: "inline-block",
-                animation: "trialPulse 0.8s linear infinite",
-              }} />
-              Loading…
-            </>
-          ) : (
-            <>↓ Load next 10 trials</>
-          )}
-        </button>
-      )}
+              {/* Title */}
+              <div style={{
+                fontSize:         12,
+                fontWeight:       500,
+                color:            "#0d1117",
+                lineHeight:       1.45,
+                marginBottom:     4,
+                display:          "-webkit-box",
+                WebkitLineClamp:  2,
+                WebkitBoxOrient:  "vertical",
+                overflow:         "hidden",
+              }}>
+                {trial.title}
+              </div>
 
-      {!hasMore && trials.length > 0 && (
-        <div className="trial-end-note">All {trials.length} trials shown</div>
-      )}
-    </>
+              {/* Sponsor + location count */}
+              <div style={{ fontSize: 11, color: "#8b95a1" }}>
+                {trial.sponsor && (
+                  <strong style={{ color: "#4b5563", fontWeight: 500 }}>{trial.sponsor}</strong>
+                )}
+                {trial.sponsor && " · "}
+                {trial.locations.length} site{trial.locations.length !== 1 ? "s" : ""}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Load more */}
+        {hasMore && (
+          <button
+            onClick={onLoadMore}
+            disabled={loading}
+            style={{
+              display:      "block",
+              width:        "calc(100% - 32px)",
+              margin:       "12px 16px",
+              padding:      10,
+              border:       "1px dashed #cdd3e0",
+              borderRadius: 8,
+              background:   "transparent",
+              fontSize:     13,
+              fontWeight:   500,
+              color:        "#4b5563",
+              cursor:       loading ? "not-allowed" : "pointer",
+              fontFamily:   "inherit",
+              transition:   "all 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              const btn = e.currentTarget;
+              btn.style.background    = "#f6f7fb";
+              btn.style.borderColor   = "#2563eb";
+              btn.style.color         = "#2563eb";
+            }}
+            onMouseLeave={(e) => {
+              const btn = e.currentTarget;
+              btn.style.background    = "transparent";
+              btn.style.borderColor   = "#cdd3e0";
+              btn.style.color         = "#4b5563";
+            }}
+          >
+            {loading ? "Loading…" : "Load more trials"}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

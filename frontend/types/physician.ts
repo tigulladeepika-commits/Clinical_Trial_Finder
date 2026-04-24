@@ -1,14 +1,14 @@
 // types/physician.ts
 
 export interface Physician {
-  npi:              string;
-  name:             string;
-  taxonomy_desc?:   string | null;
-  address?:         string | null;
-  phone?:           string | null;
-  lat?:             number | null;
-  lng?:             number | null;
-  distance_miles?:  number | null;
+  npi:             string;
+  name:            string;
+  taxonomy_desc?:  string | null;
+  address?:        string | null;
+  phone?:          string | null;
+  lat?:            number | null;
+  lng?:            number | null;
+  distance_miles?: number | null;
 }
 
 export interface SelectedSite {

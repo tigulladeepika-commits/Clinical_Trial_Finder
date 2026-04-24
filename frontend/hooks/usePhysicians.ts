@@ -1,15 +1,13 @@
 // hooks/usePhysicians.ts
 // Manages all state for physician search triggered by a selected trial site.
-// Keeps the fetch logic out of components entirely.
 //
-// Changes:
-//  - (change #9) Added pagination: all physicians are fetched at once from the
-//    backend but only PAGE_SIZE are shown at a time. Each "Load More" click
-//    reveals the next PAGE_SIZE results without a new network request.
-//  - (change #6) Exposes `hasMore` and `loadMore` so the Load More button in
-//    the UI knows when to show the LeadCaptureModal before revealing new cards.
-//  - (fix) AbortController signal is properly forwarded to fetchPhysicians so
+// Fixes applied:
+//  - AbortController signal is properly forwarded to fetchPhysicians so
 //    in-flight requests are actually cancelled on new searches.
+//  - loadMore reveals next PAGE_SIZE results from the already-fetched
+//    full dataset — no extra network request needed.
+//  - `search` is exposed as `search` (not `searchPhysicians`) to keep
+//    the hook's public API consistent with how page.tsx calls it.
 
 "use client";
 
@@ -21,28 +19,28 @@ import type {
   SelectedSite,
 } from "@/types/physician";
 
-/** Number of physician cards shown per page (change #9). */
+/** Number of physician cards visible per page. */
 export const PAGE_SIZE = 10;
 
-export type PhysicianSearchState = {
-  /** All physicians returned by the backend (full dataset). */
-  allPhysicians:    Physician[];
-  /** Slice currently visible in the UI (first `page * PAGE_SIZE` items). */
-  physicians:       Physician[];
-  total:            number;
-  loading:          boolean;
-  error:            string | null;
-  /** true once at least one search has completed */
-  searched:         boolean;
-  radiusMiles:      number;
-  zipsSearched:     number;
-  /** Current page index (1-based). Starts at 1 after first search. */
-  page:             number;
-  /** true when there are more physicians to reveal via Load More (change #9). */
-  hasMore:          boolean;
-};
+export interface PhysicianState {
+  /** Full dataset returned by the backend. */
+  allPhysicians: Physician[];
+  /** Visible slice (first `page × PAGE_SIZE` items). */
+  physicians:    Physician[];
+  total:         number;
+  loading:       boolean;
+  error:         string | null;
+  /** true once at least one search has completed (success or error). */
+  searched:      boolean;
+  radiusMiles:   number;
+  zipsSearched:  number;
+  /** 1-based page index. */
+  page:          number;
+  /** true when there are more physicians to reveal. */
+  hasMore:       boolean;
+}
 
-const INITIAL_STATE: PhysicianSearchState = {
+const INITIAL: PhysicianState = {
   allPhysicians: [],
   physicians:    [],
   total:         0,
@@ -56,18 +54,16 @@ const INITIAL_STATE: PhysicianSearchState = {
 };
 
 export function usePhysicians() {
-  const [state, setState] = useState<PhysicianSearchState>(INITIAL_STATE);
+  const [state, setState] = useState<PhysicianState>(INITIAL);
   const abortRef = useRef<AbortController | null>(null);
 
-  // ── search ────────────────────────────────────────────────────────────────
+  // ── search ──────────────────────────────────────────────────────────────
   const search = useCallback(async (
     site:       SelectedSite,
     radius:     number = 25,
     specialty?: string,
   ) => {
-    // Cancel any in-flight request — both state update AND the outbound HTTP
-    // request. Previously the AbortController was created but its signal was
-    // never forwarded to fetchPhysicians, so in-flight requests kept running.
+    // Cancel in-flight request AND the outbound HTTP call.
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -79,15 +75,14 @@ export function usePhysicians() {
         lat:    site.lat,
         lng:    site.lng,
         radius,
-        ...(specialty ? { specialty } : {}),
+        ...(specialty?.trim() ? { specialty: specialty.trim() } : {}),
       };
 
-      // Backend returns the full dataset (change #9 — no server-side page limit).
-      // Pass the AbortSignal so the fetch is cancelled when the user navigates
-      // away or triggers a new search before this one completes.
+      // FIX: pass controller.signal so the fetch is actually cancelled.
       const result = await fetchPhysicians(params, controller.signal);
 
-      // Show only the first page of results immediately (change #9).
+      if (controller.signal.aborted) return;
+
       const firstPage = result.physicians.slice(0, PAGE_SIZE);
 
       setState({
@@ -103,8 +98,9 @@ export function usePhysicians() {
         hasMore:       result.physicians.length > PAGE_SIZE,
       });
     } catch (err: unknown) {
-      // Ignore abort errors — they are intentional cancellations.
+      // AbortError is intentional — silently swallow it.
       if ((err as Error).name === "AbortError") return;
+
       setState((prev) => ({
         ...prev,
         loading:  false,
@@ -114,18 +110,18 @@ export function usePhysicians() {
     }
   }, []);
 
-  // ── loadMore ──────────────────────────────────────────────────────────────
+  // ── loadMore ─────────────────────────────────────────────────────────────
   /**
-   * Reveals the next PAGE_SIZE physicians from the already-fetched full
-   * dataset. No new network request is made (change #9).
-   *
-   * The UI component is responsible for showing the LeadCaptureModal before
-   * calling loadMore when triggerSource === "load_more" (change #6).
+   * Reveal the next PAGE_SIZE physicians from the already-fetched dataset.
+   * No network request is made.
    */
   const loadMore = useCallback(() => {
     setState((prev) => {
+      if (!prev.hasMore) return prev;
+
       const nextPage  = prev.page + 1;
       const nextSlice = prev.allPhysicians.slice(0, nextPage * PAGE_SIZE);
+
       return {
         ...prev,
         physicians: nextSlice,
@@ -135,10 +131,10 @@ export function usePhysicians() {
     });
   }, []);
 
-  // ── reset ─────────────────────────────────────────────────────────────────
+  // ── reset ────────────────────────────────────────────────────────────────
   const reset = useCallback(() => {
     abortRef.current?.abort();
-    setState(INITIAL_STATE);
+    setState(INITIAL);
   }, []);
 
   return { ...state, search, loadMore, reset };

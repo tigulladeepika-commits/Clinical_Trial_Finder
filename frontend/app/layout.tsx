@@ -1,6 +1,7 @@
+// app/layout.tsx
 import "./globals.css";
 import type { Metadata } from "next";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
   title:       "Clinical Trial Navigator",

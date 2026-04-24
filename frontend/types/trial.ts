@@ -46,8 +46,8 @@ export interface TrialFetchParams {
   state?:     string | null;
   status?:    string;
   phase?:     string;
-  page_size?: number;   // FIX: was "limit"
-  page?:      number;   // FIX: was "offset"
+  page_size?: number;
+  page?:      number;
 }
 
 export interface TrialFetchResponse {

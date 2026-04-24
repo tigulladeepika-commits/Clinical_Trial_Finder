@@ -1,186 +1,133 @@
 // components/physicians/PhysicianCard.tsx
-// Updated: improved design with universal color conventions, better layout.
-
 "use client";
 
-import React, { useState } from "react";
-import LeadCaptureModal    from "@/components/shared/LeadCaptureModal";
-import type { Physician }  from "@/types/physician";
+import type { Physician } from "@/types/physician";
 
-type Props = {
-  physician:  Physician;
-  index:      number;
-  nctId:      string;
-  siteName:   string | null;
-  isSelected: boolean;
-  onSelect:   (p: Physician) => void;
-};
+interface Props {
+  physician: Physician;
+  onContact: (physician: Physician) => void;
+}
 
-export default function PhysicianCard({
-  physician, index, nctId, siteName, isSelected, onSelect,
-}: Props) {
-  const [showLead, setShowLead] = useState(false);
+function initials(name: string): string {
+  return name
+    .replace(/^Dr\.\s*/i, "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0].toUpperCase())
+    .join("");
+}
 
+export default function PhysicianCard({ physician, onContact }: Props) {
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
-        .phys-card {
-          background: #fff;
-          border: 1px solid #f1f5f9;
-          border-radius: 12px;
-          padding: 14px 16px;
-          cursor: pointer;
-          transition: all 0.15s;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          font-family: 'Sora', sans-serif;
-          border-left: 3px solid transparent;
-        }
-        .phys-card:hover {
-          border-color: #bfdbfe;
-          border-left-color: #2563eb;
-          background: #f0f9ff;
-          transform: translateY(-1px);
-          box-shadow: 0 2px 8px rgba(37,99,235,0.08);
-        }
-        .phys-card.selected {
-          background: #eff6ff;
-          border-color: #bfdbfe;
-          border-left-color: #2563eb;
-          box-shadow: 0 2px 10px rgba(37,99,235,0.12);
-        }
-        .phys-capture-btn {
-          padding: 5px 13px;
-          border-radius: 7px;
-          border: 1px solid #bfdbfe;
-          background: #eff6ff;
-          color: #2563eb;
-          font-size: 11px;
-          font-weight: 700;
-          cursor: pointer;
-          white-space: nowrap;
-          transition: all 0.12s;
-          font-family: 'Sora', sans-serif;
-        }
-        .phys-capture-btn:hover {
-          background: #2563eb;
-          color: #fff;
-          border-color: #2563eb;
-        }
-      `}</style>
-
-      <div
-        className={`phys-card${isSelected ? " selected" : ""}`}
-        onClick={() => onSelect(physician)}
-      >
-        {/* Row 1: index + name + distance */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-          {/* Number badge */}
-          <div style={{
-            width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
-            background: isSelected ? "#2563eb" : "#f1f5f9",
-            color:      isSelected ? "#fff" : "#64748b",
-            fontSize: 11, fontWeight: 700,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontFamily: "'IBM Plex Mono', monospace",
-            transition: "all 0.15s",
-          }}>{index + 1}</div>
-
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontSize: 14, fontWeight: 700, color: "#0f172a",
-              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-            }}>
-              {physician.name}
-            </div>
-            {physician.taxonomy_desc && (
-              <div style={{ fontSize: 11, color: "#2563eb", marginTop: 1, fontWeight: 600 }}>
-                {physician.taxonomy_desc}
-              </div>
-            )}
+    <div
+      style={{
+        background:   "#fff",
+        border:       "1px solid #e4e8f0",
+        borderRadius: 10,
+        padding:      "12px 14px",
+        transition:   "box-shadow 0.15s",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
+      }}
+    >
+      {/* Top row: avatar + name + distance */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
+        <div
+          style={{
+            width:           36,
+            height:          36,
+            borderRadius:    "50%",
+            background:      "linear-gradient(135deg, #eff6ff, #bfdbfe)",
+            display:         "flex",
+            alignItems:      "center",
+            justifyContent:  "center",
+            fontSize:        12,
+            fontWeight:      700,
+            color:           "#2563eb",
+            flexShrink:      0,
+            fontFamily:      "'DM Mono', monospace",
+          }}
+        >
+          {initials(physician.name)}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#0d1117", lineHeight: 1.3 }}>
+            {physician.name}
           </div>
-
-          {physician.distance_miles != null && (
-            <div style={{
-              display: "flex", flexDirection: "column", alignItems: "flex-end",
-              flexShrink: 0,
-            }}>
-              <span style={{
-                fontSize: 13, fontWeight: 700, color: "#0f172a",
-                fontFamily: "'IBM Plex Mono', monospace",
-              }}>
-                {physician.distance_miles}
-              </span>
-              <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, letterSpacing: "0.3px" }}>
-                MI
-              </span>
+          {physician.taxonomy_desc && (
+            <div style={{ fontSize: 11, color: "#8b95a1", marginTop: 1 }}>
+              {physician.taxonomy_desc}
             </div>
           )}
         </div>
-
-        {/* Row 2: address */}
-        {physician.address && (
-          <div style={{
-            fontSize: 12, color: "#64748b",
-            paddingLeft: 36, lineHeight: 1.45,
-            display: "flex", alignItems: "flex-start", gap: 4,
-          }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1.5 }}>
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-            </svg>
-            {physician.address}
+        {physician.distance_miles != null && (
+          <div
+            style={{
+              fontSize:    11,
+              fontWeight:  600,
+              color:       "#2563eb",
+              fontFamily:  "'DM Mono', monospace",
+              flexShrink:  0,
+            }}
+          >
+            {physician.distance_miles.toFixed(1)} mi
           </div>
         )}
-
-        {/* Row 3: phone + NPI + capture button */}
-        <div style={{
-          display: "flex", alignItems: "center",
-          gap: 8, paddingLeft: 36, flexWrap: "wrap",
-        }}>
-          {physician.phone && (
-            <a
-              href={`tel:${physician.phone}`}
-              style={{
-                fontSize: 12, color: "#2563eb",
-                textDecoration: "none", fontWeight: 600,
-                display: "flex", alignItems: "center", gap: 3,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.5 2 2 0 0 1 3.6 1.3h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2z"/>
-              </svg>
-              {physician.phone}
-            </a>
-          )}
-          <span style={{
-            fontSize: 10, color: "#94a3b8",
-            fontFamily: "'IBM Plex Mono', monospace",
-          }}>
-            NPI {physician.npi}
-          </span>
-
-          <div style={{ flex: 1 }} />
-
-          <button
-            className="phys-capture-btn"
-            onClick={(e) => { e.stopPropagation(); setShowLead(true); }}
-          >
-            + Capture Lead
-          </button>
-        </div>
       </div>
 
-      {showLead && (
-        <LeadCaptureModal
-          physician={physician}
-          nctId={nctId}
-          siteName={siteName}
-          onClose={() => setShowLead(false)}
-        />
-      )}
-    </>
+      {/* Meta row */}
+      <div
+        style={{
+          display:      "flex",
+          alignItems:   "center",
+          gap:          10,
+          flexWrap:     "wrap",
+          fontSize:     11,
+          color:        "#8b95a1",
+          borderTop:    "1px solid #e4e8f0",
+          paddingTop:   8,
+          marginTop:    2,
+        }}
+      >
+        {physician.address && (
+          <span>📍 {physician.address.split(",").slice(0, 2).join(",")}</span>
+        )}
+        {physician.phone && (
+          <span>📞 {physician.phone}</span>
+        )}
+        <span style={{ marginLeft: "auto", fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#cdd3e0" }}>
+          NPI: {physician.npi}
+        </span>
+      </div>
+
+      {/* Contact button */}
+      <button
+        onClick={() => onContact(physician)}
+        style={{
+          marginTop:    10,
+          padding:      "7px 14px",
+          background:   "#2563eb",
+          color:        "#fff",
+          border:       "none",
+          borderRadius: 8,
+          fontSize:     11,
+          fontWeight:   700,
+          cursor:       "pointer",
+          fontFamily:   "inherit",
+          letterSpacing:"0.3px",
+          textTransform:"uppercase",
+          transition:   "background 0.15s",
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#1d4ed8"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#2563eb"; }}
+      >
+        Contact Physician
+      </button>
+    </div>
   );
 }

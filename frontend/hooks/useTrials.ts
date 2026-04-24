@@ -22,72 +22,73 @@ export function useTrials(
   const [hasMore,    setHasMore]    = useState(false);
 
   const LIMIT = 10;
-  const offsetRef = useRef(0);
-  const abortRef = useRef<AbortController | null>(null);
-  const requestKey = JSON.stringify([
-    condition ?? "",
-    city ?? "",
-    state ?? "",
-    status ?? "",
-    phase ?? "",
-  ]);
+  const offsetRef    = useRef(0);
+  const abortRef     = useRef<AbortController | null>(null);
+
+  // FIX: compute the key outside the callback so it is a stable string —
+  // not a function call — when captured by the useEffect dependency array.
+  const requestKey = `${condition ?? ""}|${city ?? ""}|${state ?? ""}|${status ?? ""}|${phase ?? ""}`;
   const requestKeyRef = useRef(requestKey);
 
-  const load = useCallback(async (reset: boolean) => {
-    if (!condition) {
-      return;
-    }
+  const load = useCallback(
+    async (reset: boolean, key: string) => {
+      if (!condition) return;
 
-    const currentRequestKey = requestKey;
-    requestKeyRef.current = currentRequestKey;
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+      // Cancel any in-flight request before starting a new one.
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    const currentOffset = reset ? 0 : offsetRef.current;
+      const currentOffset = reset ? 0 : offsetRef.current;
 
-    setLoading(true);
-    setError(null);
+      setLoading(true);
+      setError(null);
 
-    try {
-      const data = await fetchTrials({
-        condition,
-        city,
-        state,
-        status,
-        phase,
-        page_size: LIMIT,
-        page: Math.floor(currentOffset / LIMIT) + 1,
-      }, controller.signal);
+      try {
+        const data = await fetchTrials(
+          {
+            condition,
+            city,
+            state,
+            status,
+            phase,
+            page_size: LIMIT,
+            page:      Math.floor(currentOffset / LIMIT) + 1,
+          },
+          controller.signal,
+        );
 
-      if (controller.signal.aborted || requestKeyRef.current !== currentRequestKey) {
-        return;
+        // Discard result if a newer request has already started.
+        if (controller.signal.aborted || requestKeyRef.current !== key) return;
+
+        const loadedCount = currentOffset + data.trials.length;
+        offsetRef.current = loadedCount;
+
+        setTrials((prev) => (reset ? data.trials : [...prev, ...data.trials]));
+        setTotalCount(data.total);
+        setHasMore(loadedCount < data.total);
+      } catch (err: unknown) {
+        if ((err as Error).name === "AbortError") return;
+        if (requestKeyRef.current !== key) return;
+        setError((err as Error).message || "Failed to fetch trials");
+      } finally {
+        // Only clear loading if this request is still the current one.
+        if (!controller.signal.aborted && requestKeyRef.current === key) {
+          setLoading(false);
+        }
       }
+    },
+    // FIX: `load` only depends on the filter values, not on requestKey (which
+    // would change on every render and create an infinite loop).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [condition, city, state, status, phase],
+  );
 
-      const loadedCount = currentOffset + data.trials.length;
-      offsetRef.current = loadedCount;
-
-      setTrials((prev) => (reset ? data.trials : [...prev, ...data.trials]));
-      setTotalCount(data.total);
-      setHasMore(loadedCount < data.total);
-    } catch (err: unknown) {
-      if ((err as Error).name === "AbortError") {
-        return;
-      }
-      if (requestKeyRef.current !== currentRequestKey) {
-        return;
-      }
-      setError((err as Error).message || "Failed to fetch trials");
-    } finally {
-      if (!controller.signal.aborted && requestKeyRef.current === currentRequestKey) {
-        setLoading(false);
-      }
-    }
-  }, [condition, city, state, status, phase, requestKey]);
-
+  // Reset + re-fetch whenever any filter changes.
   useEffect(() => {
     requestKeyRef.current = requestKey;
-    offsetRef.current = 0;
+    offsetRef.current     = 0;
+
     setTrials([]);
     setError(null);
     setTotalCount(0);
@@ -99,25 +100,21 @@ export function useTrials(
       return;
     }
 
-    void load(true);
-  }, [condition, load, requestKey]);
+    void load(true, requestKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey]);
 
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
+  // Cancel any in-flight request on unmount.
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const refetch = useCallback(() => {
     offsetRef.current = 0;
-    void load(true);
+    void load(true, requestKeyRef.current);
   }, [load]);
 
   const loadMore = useCallback(() => {
-    if (loading || !hasMore || !condition) {
-      return;
-    }
-    void load(false);
+    if (loading || !hasMore || !condition) return;
+    void load(false, requestKeyRef.current);
   }, [condition, hasMore, load, loading]);
 
   return { trials, loading, error, totalCount, hasMore, refetch, loadMore };
