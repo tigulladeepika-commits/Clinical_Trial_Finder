@@ -258,7 +258,7 @@ export default function SearchForm({
               letterSpacing: "0.8px",
               marginBottom:  6,
             }}>
-              Clinical Trials · ClinicalTrials.gov
+            · ClinicalTrials.gov
             </div>
             <h2 style={{
               fontSize:   26,
