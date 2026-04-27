@@ -58,10 +58,13 @@ export function usePhysicians() {
   const abortRef = useRef<AbortController | null>(null);
 
   // ── search ──────────────────────────────────────────────────────────────
+  // CRITICAL FIX: Handle both mapped specialty (from condition) and user-entered specialty
+  // If user enters something different from the initial condition, it's treated as user_specialty
   const search = useCallback(async (
-    site:       SelectedSite,
-    radius:     number = 25,
-    specialty?: string,
+    site:           SelectedSite,
+    radius:         number = 25,
+    specialty?:     string,  // Mapped specialties from condition (e.g., "Medical Oncology, Surgical Oncology")
+    userSpecialty?: string,  // User-entered override specialty
   ) => {
     // Cancel in-flight request AND the outbound HTTP call.
     abortRef.current?.abort();
@@ -75,7 +78,8 @@ export function usePhysicians() {
         lat:    site.lat,
         lng:    site.lng,
         radius,
-        ...(specialty?.trim() ? { specialty: specialty.trim() } : {}),
+        ...(specialty?.trim()      ? { specialty: specialty.trim() } : {}),
+        ...(userSpecialty?.trim()  ? { user_specialty: userSpecialty.trim() } : {}),
       };
 
       // FIX: pass controller.signal so the fetch is actually cancelled.

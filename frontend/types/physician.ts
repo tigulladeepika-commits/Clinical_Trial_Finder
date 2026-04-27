@@ -22,10 +22,11 @@ export interface SelectedSite {
 }
 
 export interface PhysicianSearchParams {
-  lat:        number;
-  lng:        number;
-  radius:     number;
-  specialty?: string;
+  lat:             number;
+  lng:             number;
+  radius:          number;
+  specialty?:      string;  // Can be comma-separated for multiple mapped specialties
+  user_specialty?: string;  // User-entered specialty (explicit override)
 }
 
 export interface PhysicianFetchResponse {

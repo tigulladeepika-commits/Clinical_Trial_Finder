@@ -64,6 +64,34 @@ export async function fetchPhysicians(
 }
 
 /**
+ * CRITICAL FIX: Fetch mapped specialties for a medical condition.
+ * 
+ * When a trial condition is "High Grade Sarcoma", this returns
+ * ["Medical Oncology", "Surgical Oncology"] so the physician
+ * search can find specialists in those broader categories.
+ */
+export async function getConditionSpecialties(
+  condition: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  if (!condition || !condition.trim()) {
+    return [];
+  }
+  
+  try {
+    const encoded = encodeURIComponent(condition.trim());
+    const response = await apiFetch<{
+      specialties: string[];
+    }>(`/api/trials/condition/${encoded}/specialties`, undefined, signal);
+    
+    return response.specialties || [];
+  } catch (err) {
+    console.warn(`Could not fetch specialties for condition "${condition}":`, err);
+    return [];
+  }
+}
+
+/**
  * Convenience helper used by page.tsx to fire a physician search
  * directly from a Trial object.  Returns null when the trial has no
  * geocoded location data (avoids a pointless 400 from the backend).

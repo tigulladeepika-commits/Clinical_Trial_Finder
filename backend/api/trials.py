@@ -25,12 +25,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
 
+from core.config import cfg
 from services.clinicaltrials_api import (
     fetch_trials_with_filters,
     fetch_study_detail,
     validate_city,
     validate_state,
 )
+from services import taxonomy as tax_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -201,3 +203,84 @@ async def get_trial(nct_id: str, response: Response = None) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Trial {nct_id} not found")
 
     return data
+
+
+@router.get("/condition/{condition}/specialties")
+async def get_condition_specialties(condition: str, response: Response = None) -> dict[str, Any]:
+    """
+    CRITICAL FIX: Map a medical condition to relevant medical specialties for physician search.
+    
+    This endpoint enables intelligent physician discovery: when a user clicks
+    "Find Physicians" for a trial with condition "High Grade Sarcoma", this
+    endpoint returns ["Medical Oncology", "Surgical Oncology", ...] so the
+    physician search can find specialists in those fields rather than limiting
+    to an exact specialty match.
+    
+    HTTP Caching (Issue #7): Cache for 24 hours since condition→specialty
+    mappings are static and change infrequently.
+    
+    Example:
+      GET /api/trials/condition/high%20grade%20sarcoma/specialties
+      → {
+          "condition": "high grade sarcoma",
+          "specialties": ["Medical Oncology", "Surgical Oncology"]
+        }
+    """
+    if response:
+        response.headers["Cache-Control"] = "public, max-age=86400"  # 24 hours
+    
+    if not condition or not condition.strip():
+        raise HTTPException(status_code=422, detail="Condition cannot be empty")
+    
+    clean_condition = condition.strip().lower()
+    
+    # Access the CONDITION_MAP directly from taxonomy service
+    specialties = tax_service.CONDITION_MAP.get(clean_condition, [])
+    
+    return {
+        "condition": clean_condition,
+        "specialties": specialties,
+        "count": len(specialties),
+    }
+
+
+@router.get("/cities-by-state", response_model=dict[str, list[str]])
+async def get_cities_by_state(response: Response = None) -> dict[str, list[str]]:
+    """
+    CRITICAL FIX: Return a mapping of US states → valid cities for validation.
+    
+    Frontend uses this to validate that users cannot search with a city that
+    doesn't belong to the selected state (e.g., prevents "Boston" + "California").
+    
+    HTTP Caching (Issue #8): Cache for 30 days since city lists change rarely.
+    Built from ZIP database which is updated infrequently.
+    """
+    if response:
+        response.headers["Cache-Control"] = "public, max-age=2592000"  # 30 days
+    
+    try:
+        from services import zip_database
+        if not zip_database.is_ready():
+            zip_database.wait_for_ready(cfg.ZIP_DB_WAIT)
+        
+        # Extract unique cities per state from ZIP database
+        cities_by_state: dict[str, set[str]] = {}
+        
+        for entry in zip_database._zip_data:  # Access internal data
+            state = entry.get("state")
+            city = entry.get("city")
+            
+            if state and city:
+                if state not in cities_by_state:
+                    cities_by_state[state] = set()
+                cities_by_state[state].add(city)
+        
+        # Convert sets to sorted lists for JSON serialization
+        return {
+            state: sorted(list(cities))
+            for state, cities in cities_by_state.items()
+        }
+    except Exception as exc:
+        logger.exception("Error building cities-by-state: %s", exc)
+        # Return empty on error; frontend will gracefully degrade
+        return {}

@@ -16,6 +16,8 @@ import PhysicianPanel from "@/components/physicians/PhysicianPanel";
 
 import { useTrials, fetchTrialSites } from "@/hooks/useTrials";
 import { usePhysicians }              from "@/hooks/usePhysicians";
+import { getConditionSpecialties }    from "@/lib/api";
+import { initializeCityStateValidation } from "@/lib/validation";
 
 import type { Trial, TrialSearchFilters, SiteData } from "@/types/trial";
 import type { SelectedSite }                         from "@/types/physician";
@@ -48,6 +50,7 @@ function HomeInner() {
   const [sitesLoading,  setSitesLoading]  = useState(false);
   const [sitesError,    setSitesError]    = useState<string | null>(null);
   const [selectedSite,  setSelectedSite]  = useState<SelectedSite | null>(null);
+  const [initialSpecialties, setInitialSpecialties] = useState<string | null>(null); // Mapped specialties from condition
   
   // CRITICAL FIX for issue #5: Track AbortController for trial sites fetches
   // so quickly clicking different trials cancels the in-flight request.
@@ -83,6 +86,13 @@ function HomeInner() {
     return () => {
       sitesFetchAbortRef.current?.abort();
     };
+  }, []);
+
+  // CRITICAL FIX: Initialize city/state validation data on mount
+  // This loads the cities-by-state mapping from the backend (30-day cached)
+  // and caches it locally for O(1) validation during trial searches
+  useEffect(() => {
+    initializeCityStateValidation();
   }, []);
 
   const {
@@ -158,16 +168,38 @@ function HomeInner() {
     }
   }, [resetPhysicians, selectedTrial]);
 
-  const handleFindPhysicians = useCallback((site: SelectedSite) => {
+  const handleFindPhysicians = useCallback(async (site: SelectedSite) => {
     setSelectedSite(site);
     resetPhysicians();
-    searchPhysicians(site, 25, site.condition ?? undefined);
+    
+    // CRITICAL FIX: Fetch mapped specialties for the condition
+    // e.g., "High Grade Sarcoma" → ["Medical Oncology", "Surgical Oncology"]
+    let specialtyList: string[] = [];
+    if (site.condition) {
+      try {
+        specialtyList = await getConditionSpecialties(site.condition);
+      } catch (err) {
+        console.warn("Could not fetch condition specialties:", err);
+      }
+    }
+    
+    // Combine mapped specialties into a comma-separated string for the API
+    const mappedSpecialty = specialtyList.length > 0 ? specialtyList.join(", ") : undefined;
+    setInitialSpecialties(mappedSpecialty || null);
+    
+    // Pass mapped specialties, defaulting to 25 mile radius
+    searchPhysicians(site, 25, mappedSpecialty);
   }, [resetPhysicians, searchPhysicians]);
 
   const handlePhysicianSearch = useCallback((radius: number, specialty: string) => {
     if (!selectedSite) return;
-    searchPhysicians(selectedSite, radius, specialty || undefined);
-  }, [searchPhysicians, selectedSite]);
+    
+    // CRITICAL FIX: If user-entered specialty differs from initial condition,
+    // pass it as user_specialty (not specialty). This allows the backend to
+    // search both mapped specialties AND user-entered specialty with OR logic.
+    const userEntered = specialty?.trim() && specialty !== selectedSite.condition?.trim() ? specialty.trim() : undefined;
+    searchPhysicians(selectedSite, radius, initialSpecialties || undefined, userEntered);
+  }, [searchPhysicians, selectedSite, initialSpecialties]);
 
   const handleBackToSites = useCallback(() => {
     setSelectedSite(null);
@@ -251,17 +283,9 @@ function HomeInner() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #f6f7fb;
+          background: #dbeafe;   /* light blue — matches the form's outer band */
         }
-        .hero-form-only {
-          width: 100%;
-          max-width: calc(100% - 64px); /* ~2 inch side margins */
-          margin: 0 auto;
-          padding: 32px;
-          background: #fff;
-          border-radius: 16px;
-          box-shadow: 0 4px 24px rgba(0,0,0,0.07);
-        }
+
 
         /* ── Results layout ── */
         .results-layout {

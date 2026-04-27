@@ -3,6 +3,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { TrialSearchFilters }           from "@/types/trial";
+import { validateCityState, formatValidationError } from "@/lib/validation";
 
 const STATUSES = [
   "",
@@ -65,6 +66,9 @@ export default function SearchForm({
   const [state,     setState_]    = useState(initialValues.state);
   const [status,    setStatus]    = useState(initialValues.status);
   const [phase,     setPhase]     = useState(initialValues.phase);
+  
+  // CRITICAL FIX: Add validation error state for city/state combo
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     setCondition(initialValues.condition);
@@ -82,6 +86,17 @@ export default function SearchForm({
 
   const handleSubmit = useCallback(() => {
     if (!condition.trim()) return;
+    
+    // CRITICAL FIX: Validate city/state combination before searching
+    const validation = validateCityState(city, state);
+    if (!validation.isValid) {
+      setValidationError(validation.error || "Invalid city/state combination");
+      // Show error for 5 seconds
+      setTimeout(() => setValidationError(null), 5000);
+      return;
+    }
+    
+    setValidationError(null);
     onSearch({ condition, city, state, status, phase });
   }, [condition, city, state, status, phase, onSearch]);
 
@@ -92,30 +107,6 @@ export default function SearchForm({
 
   const btnDisabled = loading || !condition.trim();
 
-  // ── Shared field style ──────────────────────────────────────────────────────
-  const field: React.CSSProperties = {
-    height:       36,
-    padding:      "0 12px",
-    border:       "1px solid #e4e8f0",
-    borderRadius: 8,
-    fontSize:     13,
-    color:        "#0d1117",
-    background:   "#f6f7fb",
-    outline:      "none",
-    fontFamily:   "inherit",
-    width:        "100%",
-    transition:   "border-color 0.15s, box-shadow 0.15s",
-    boxSizing:    "border-box",
-  };
-
-  const select: React.CSSProperties = {
-    ...field,
-    cursor:      "pointer",
-    paddingRight: 8,
-    appearance:  "none" as React.CSSProperties["appearance"],
-  };
-
-  // ── Search button ───────────────────────────────────────────────────────────
   const SearchIcon = () => (
     <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
       <circle cx="6" cy="6" r="4.3" stroke="currentColor" strokeWidth="1.8"/>
@@ -123,19 +114,21 @@ export default function SearchForm({
     </svg>
   );
 
-  // ── COMPACT (results bar) ───────────────────────────────────────────────────
-  // Condition · City · Status · Search — minimal, single row, no labels
+  // ── COMPACT ─────────────────────────────────────────────────────────────────
   if (compact) {
+    const field: React.CSSProperties = {
+      height: 36, padding: "0 12px",
+      border: "1px solid #e4e8f0", borderRadius: 8,
+      fontSize: 13, color: "#0d1117", background: "#f6f7fb",
+      outline: "none", fontFamily: "inherit", width: "100%",
+      transition: "border-color 0.15s", boxSizing: "border-box",
+    };
+    const select: React.CSSProperties = {
+      ...field, cursor: "pointer", paddingRight: 8,
+      appearance: "none" as React.CSSProperties["appearance"],
+    };
     return (
-      <div style={{
-        display:    "flex",
-        gap:        8,
-        alignItems: "center",
-        width:      "100%",
-        flexWrap:   "nowrap",
-        minWidth:   0,
-      }}>
-        {/* Condition — widest */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%", flexWrap: "nowrap", minWidth: 0 }}>
         <input
           style={{ ...field, flex: "2 1 0", minWidth: 140 }}
           placeholder="Condition or keyword"
@@ -144,8 +137,6 @@ export default function SearchForm({
           onKeyDown={handleKeyDown}
           aria-label="Condition"
         />
-
-        {/* City */}
         <input
           style={{ ...field, flex: "1 1 0", minWidth: 80 }}
           placeholder="City"
@@ -154,40 +145,26 @@ export default function SearchForm({
           onKeyDown={handleKeyDown}
           aria-label="City"
         />
-
-        {/* Status */}
         <select
           style={{ ...select, flex: "1 1 0", minWidth: 110 }}
           value={status}
           onChange={(e) => setStatus(e.target.value)}
           aria-label="Status"
         >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>{s || "Any Status"}</option>
-          ))}
+          {STATUSES.map((s) => <option key={s} value={s}>{s || "Any Status"}</option>)}
         </select>
-
-        {/* Search button */}
         <button
           onClick={handleSubmit}
           disabled={btnDisabled}
           style={{
-            height:       36,
-            padding:      "0 18px",
-            background:   btnDisabled ? "#cdd3e0" : "#2563eb",
-            color:        "#fff",
-            border:       "none",
-            borderRadius: 8,
-            fontSize:     13,
-            fontWeight:   600,
-            cursor:       btnDisabled ? "not-allowed" : "pointer",
-            whiteSpace:   "nowrap",
-            fontFamily:   "inherit",
-            transition:   "background 0.15s",
-            flexShrink:   0,
-            display:      "flex",
-            alignItems:   "center",
-            gap:          6,
+            height: 36, padding: "0 18px",
+            background: btnDisabled ? "#cdd3e0" : "#2563eb",
+            color: "#fff", border: "none", borderRadius: 8,
+            fontSize: 13, fontWeight: 600,
+            cursor: btnDisabled ? "not-allowed" : "pointer",
+            whiteSpace: "nowrap", fontFamily: "inherit",
+            transition: "background 0.15s", flexShrink: 0,
+            display: "flex", alignItems: "center", gap: 6,
           }}
         >
           <SearchIcon />
@@ -199,185 +176,162 @@ export default function SearchForm({
 
   // ── HERO (full form) ────────────────────────────────────────────────────────
   const label: React.CSSProperties = {
-    fontSize:      10,
-    fontWeight:    700,
-    color:         "#6b7280",
-    textTransform: "uppercase",
-    letterSpacing: "0.6px",
-    marginBottom:  6,
-    display:       "block",
+    fontSize: 10, fontWeight: 700, color: "#6b7280",
+    textTransform: "uppercase", letterSpacing: "0.6px",
+    marginBottom: 6, display: "block",
   };
 
   const heroField: React.CSSProperties = {
-    height:       44,
-    padding:      "0 14px",
-    border:       "1px solid #e4e8f0",
-    borderRadius: 8,
-    fontSize:     14,
-    color:        "#0d1117",
-    background:   "#fff",
-    outline:      "none",
-    fontFamily:   "inherit",
-    width:        "100%",
-    transition:   "border-color 0.15s, box-shadow 0.15s",
-    boxSizing:    "border-box",
+    height: 48, padding: "0 16px",
+    border: "1.5px solid #e4e8f0", borderRadius: 10,
+    fontSize: 15, color: "#0d1117", background: "#fff",
+    outline: "none", fontFamily: "inherit", width: "100%",
+    transition: "border-color 0.15s, box-shadow 0.15s",
+    boxSizing: "border-box",
   };
 
   const heroSelect: React.CSSProperties = {
     ...heroField,
-    cursor:     "pointer",
+    cursor: "pointer",
     appearance: "none" as React.CSSProperties["appearance"],
   };
 
   return (
-    /* Outer full-width band with ~1 inch padding */
+    /* Light-blue full-width band — this IS the ~1-inch margin area */
     <div style={{
-      width:      "100%",
-      padding:    "32px 96px",   /* ~1 inch side margins */
-      boxSizing:  "border-box",
-      background: "#eef4fb",     /* light blue-tinted wash matching screenshot */
+      width: "100%",
+      padding: "0 96px",       /* ~1 inch side gaps, filled with light blue */
+      boxSizing: "border-box",
+      background: "#dbeafe",   /* light blue band */
+      display: "flex",
+      alignItems: "stretch",
     }}>
-      {/* Card */}
+      {/* Outer border ring — first border of the "double border" */}
       <div style={{
-        background:   "#fff",
-        border:       "1px solid #dce6f5",
-        borderRadius: 16,
-        padding:      "28px 32px",
-        boxShadow:    "0 2px 16px rgba(37,99,235,0.06)",
-        borderLeft:   "4px solid #2563eb",
+        flex: 1,
+        border: "2px solid #93c5fd",
+        borderRadius: 20,
+        padding: 4,             /* gap between the two borders */
+        background: "#bfdbfe",  /* color of the gap between borders */
+        boxSizing: "border-box",
+        margin: "28px 0",       /* vertical breathing room */
       }}>
+        {/* Inner white card — second border */}
+        <div style={{
+          background: "#fff",
+          border: "1.5px solid #dce6f5",
+          borderRadius: 16,
+          padding: "28px 32px 24px",
+          boxShadow: "0 4px 24px rgba(37,99,235,0.07)",
+          boxSizing: "border-box",
+        }}>
 
-        {/* Header row */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
-          <div>
-            <div style={{
-              fontSize:      11,
-              fontWeight:    700,
-              color:         "#2563eb",
-              textTransform: "uppercase",
-              letterSpacing: "0.8px",
-              marginBottom:  6,
-            }}>
-            · ClinicalTrials.gov
+          {/* Header row */}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
+            <div>
+              <div style={{
+                fontSize: 11, fontWeight: 700, color: "#2563eb",
+                textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 6,
+              }}>
+                · ClinicalTrials.gov
+              </div>
+              <h2 style={{ fontSize: 28, fontWeight: 700, color: "#0d1117", margin: 0, lineHeight: 1.2 }}>
+                Find a <em style={{ color: "#2563eb", fontStyle: "italic" }}>clinical trial</em> near you
+              </h2>
             </div>
-            <h2 style={{
-              fontSize:   26,
-              fontWeight: 700,
-              color:      "#0d1117",
-              margin:     0,
-              lineHeight: 1.2,
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "6px 14px", borderRadius: 20,
+              border: "1px solid #bbf7d0", background: "#f0fdf4",
+              fontSize: 11, fontWeight: 700, color: "#15803d",
+              whiteSpace: "nowrap", flexShrink: 0, marginLeft: 16,
             }}>
-              Find a <em style={{ color: "#2563eb", fontStyle: "italic" }}>clinical trial</em> near you
-            </h2>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#16a34a", display: "inline-block" }} />
+              LIVE · 400,000+ TRIALS
+            </div>
           </div>
 
-          {/* Live badge */}
-          <div style={{
-            display:      "inline-flex",
-            alignItems:   "center",
-            gap:          6,
-            padding:      "6px 14px",
-            borderRadius: 20,
-            border:       "1px solid #bbf7d0",
-            background:   "#f0fdf4",
-            fontSize:     11,
-            fontWeight:   700,
-            color:        "#15803d",
-            whiteSpace:   "nowrap",
-            flexShrink:   0,
-            marginLeft:   16,
-          }}>
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#16a34a", display: "inline-block" }} />
-            LIVE · 400,000+ TRIALS
+          {/* Condition — full width */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={label}>
+              <span style={{ marginRight: 4 }}>📍</span>Condition / Disease *
+            </label>
+            <input
+              style={{ ...heroField, fontSize: 16 }}
+              placeholder="e.g. Breast Cancer, Diabetes, Alzheimer…"
+              value={condition}
+              onChange={(e) => setCondition(e.target.value)}
+              onKeyDown={handleKeyDown}
+              autoFocus
+            />
+            {!condition.trim() && (
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 5, fontStyle: "italic" }}>
+                Enter a condition, disease, or keyword to search trials
+              </div>
+            )}
           </div>
-        </div>
 
-        {/* Row 1: Condition — full width */}
-        <div style={{ marginBottom: 12 }}>
-          <label style={label}>
-            <span style={{ marginRight: 4 }}>📍</span>Condition / Disease *
-          </label>
-          <input
-            style={{ ...heroField, fontSize: 15 }}
-            placeholder="e.g. Breast Cancer, Diabetes, Alzheimer…"
-            value={condition}
-            onChange={(e) => setCondition(e.target.value)}
-            onKeyDown={handleKeyDown}
-            autoFocus
-          />
-          {!condition.trim() && (
-            <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 5, fontStyle: "italic" }}>
-              Enter a condition, disease, or keyword to search trials
+          {/* CRITICAL FIX: Display city/state validation error */}
+          {validationError && (
+            <div style={{
+              marginBottom: 14, padding: "12px 14px",
+              background: "#fee2e2", border: "1px solid #fca5a5",
+              borderRadius: 8, fontSize: 13, color: "#991b1b",
+              fontWeight: 500, display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <span style={{ fontSize: 16 }}>⚠️</span>
+              {validationError}
             </div>
           )}
-        </div>
 
-        {/* Row 2: City · State · Phase · Status — equal columns */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
-          <div>
-            <label style={label}>City</label>
-            <input
-              style={heroField}
-              placeholder="e.g. Boston"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
+          {/* City · State · Phase · Status */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+            <div>
+              <label style={label}>City</label>
+              <input style={heroField} placeholder="e.g. Boston" value={city}
+                onChange={(e) => setCity(e.target.value)} onKeyDown={handleKeyDown} />
+            </div>
+            <div>
+              <label style={label}>State</label>
+              <select style={heroSelect} value={state} onChange={(e) => setState_(e.target.value)}>
+                {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={label}>Phase</label>
+              <select style={heroSelect} value={phase} onChange={(e) => setPhase(e.target.value)}>
+                {PHASES.map((p) => <option key={p} value={p}>{p || "Any Phase"}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={label}>Status</label>
+              <select style={heroSelect} value={status} onChange={(e) => setStatus(e.target.value)}>
+                {STATUSES.map((s) => <option key={s} value={s}>{s || "Any Status"}</option>)}
+              </select>
+            </div>
           </div>
-          <div>
-            <label style={label}>State</label>
-            <select style={heroSelect} value={state} onChange={(e) => setState_(e.target.value)}>
-              {US_STATES.map((s) => (
-                <option key={s.code} value={s.code}>{s.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={label}>Phase</label>
-            <select style={heroSelect} value={phase} onChange={(e) => setPhase(e.target.value)}>
-              {PHASES.map((p) => (
-                <option key={p} value={p}>{p || "Any Phase"}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={label}>Status</label>
-            <select style={heroSelect} value={status} onChange={(e) => setStatus(e.target.value)}>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{s || "Any Status"}</option>
-              ))}
-            </select>
-          </div>
-        </div>
 
-        {/* Full-width search button */}
-        <button
-          onClick={handleSubmit}
-          disabled={btnDisabled}
-          style={{
-            display:      "flex",
-            alignItems:   "center",
-            justifyContent: "center",
-            gap:          8,
-            width:        "100%",
-            height:       48,
-            background:   btnDisabled ? "#cdd3e0" : "#4f7be8",
-            color:        "#fff",
-            border:       "none",
-            borderRadius: 10,
-            fontSize:     15,
-            fontWeight:   700,
-            cursor:       btnDisabled ? "not-allowed" : "pointer",
-            fontFamily:   "inherit",
-            transition:   "background 0.15s",
-            letterSpacing: "0.2px",
-          }}
-          onMouseEnter={(e) => { if (!btnDisabled) e.currentTarget.style.background = "#2563eb"; }}
-          onMouseLeave={(e) => { if (!btnDisabled) e.currentTarget.style.background = "#4f7be8"; }}
-        >
-          <SearchIcon />
-          {loading ? "Searching…" : "Search Trials"}
-        </button>
+          {/* Search button */}
+          <button
+            onClick={handleSubmit}
+            disabled={btnDisabled}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              width: "100%", height: 52,
+              background: btnDisabled ? "#cdd3e0" : "#2563eb",
+              color: "#fff", border: "none", borderRadius: 10,
+              fontSize: 16, fontWeight: 700,
+              cursor: btnDisabled ? "not-allowed" : "pointer",
+              fontFamily: "inherit", transition: "background 0.15s",
+              letterSpacing: "0.2px",
+            }}
+            onMouseEnter={(e) => { if (!btnDisabled) e.currentTarget.style.background = "#1d4ed8"; }}
+            onMouseLeave={(e) => { if (!btnDisabled) e.currentTarget.style.background = "#2563eb"; }}
+          >
+            <SearchIcon />
+            {loading ? "Searching…" : "Search Trials"}
+          </button>
+        </div>
       </div>
     </div>
   );

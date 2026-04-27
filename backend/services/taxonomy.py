@@ -264,6 +264,15 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "kidney cancer":          ["Urology", "Medical Oncology"],
     "skin cancer":            ["Dermatology", "Medical Oncology"],
     "head and neck cancer":   ["Otolaryngology", "Medical Oncology"],
+    # CRITICAL FIX: Sarcoma → Oncology mapping for physician search
+    # When user searches for conditions like "high grade sarcoma" or "soft tissue sarcoma",
+    # the system maps to Medical Oncology to find specialists
+    "sarcoma":                ["Medical Oncology", "Orthopedic Surgery"],
+    "soft tissue sarcoma":    ["Medical Oncology", "Surgical Oncology"],
+    "bone sarcoma":           ["Medical Oncology", "Orthopedic Surgery"],
+    "ewing sarcoma":          ["Medical Oncology", "Orthopedic Surgery"],
+    "rhabdomyosarcoma":       ["Medical Oncology", "Pediatric Hematology-Oncology"],
+    "high grade sarcoma":     ["Medical Oncology", "Surgical Oncology"],
     "chemotherapy":           ["Medical Oncology"],
     "radiation":              ["Radiation Oncology"],
     "biopsy":                 ["Medical Oncology"],
