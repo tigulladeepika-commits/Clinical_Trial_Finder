@@ -1,6 +1,7 @@
 // components/trials/TrialList.tsx
 "use client";
 
+import { memo } from "react";
 import StatusBadge from "@/components/shared/StatusBadge";
 import type { Trial } from "@/types/trial";
 
@@ -14,7 +15,11 @@ interface Props {
   loading:    boolean;
 }
 
-export default function TrialList({
+// CRITICAL FIX for issue #3: Wrap with memo to prevent rerenders
+// when parent state changes (e.g., right panel site/physician updates).
+// TrialList only depends on its props, so memoization prevents unnecessary
+// list redraws after several load-more clicks (when list is no longer virtualized).
+function TrialList({
   trials,
   totalCount,
   selectedId,
@@ -229,3 +234,5 @@ export default function TrialList({
     </div>
   );
 }
+
+export default memo(TrialList);

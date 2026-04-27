@@ -44,8 +44,8 @@ export async function fetchTrials(
   return apiFetch<TrialFetchResponse>(`/api/trials/?${qs}`, undefined, signal);
 }
 
-export async function fetchTrialSites(nctId: string): Promise<SiteData> {
-  return apiFetch<SiteData>(`/api/trials/${nctId}/sites`);
+export async function fetchTrialSites(nctId: string, signal?: AbortSignal): Promise<SiteData> {
+  return apiFetch<SiteData>(`/api/trials/${nctId}/sites`, undefined, signal);
 }
 
 // ── Physicians ────────────────────────────────────────────────────────────────

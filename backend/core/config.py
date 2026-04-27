@@ -37,7 +37,11 @@ class Config:
 
     # ── Physician search limits ───────────────────────────────────────────────
     MAX_DISPLAY:     int   = 10      # physicians returned per search
-    MAX_ZIP_QUERIES: int   = 20      # ZIP codes queried per physician search
+    # CRITICAL FIX: Reduced from 20 to 12. Each ZIP requires retries + geocoding,
+    # so 20 ZIPs × 3 specialties × retries was creating 100+ API calls per search.
+    # With 12 ZIPs and early stopping logic, we still get good coverage in typical
+    # radii (25 miles) while cutting API load by 40%.
+    MAX_ZIP_QUERIES: int   = 12      # ZIP codes queried per physician search
     MAX_TAX_QUERIES: int   = 3       # taxonomy descriptions fanned out per ZIP
     # FIX: MAX_DESC_COUNT now used as a cap on the descriptions list built in
     # physicians.py, preventing runaway fan-out when a specialty resolves to

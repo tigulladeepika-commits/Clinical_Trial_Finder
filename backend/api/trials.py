@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
 
 from services.clinicaltrials_api import (
@@ -72,7 +72,15 @@ async def search_trials(
     us_only:   bool       = Query(False, description="Restrict to US locations"),
     page:      int        = Query(1,  ge=1,  description="1-based page number"),
     page_size: int        = Query(10, ge=1, le=500, description="Results per page — set high to retrieve full dataset"),
+    response:  Response   = None,  # FastAPI injects Response object
 ) -> TrialSearchResponse:
+    # ── HTTP Caching (Issue #6): Cache search results for 5 minutes.
+    # This allows browsers to serve cached results when users re-search the same
+    # filters, reducing server load. The "private" directive ensures the cache
+    # is not shared across users (respects privacy for any user-specific data).
+    if response:
+        response.headers["Cache-Control"] = "private, max-age=300"  # 5 minutes
+    
     # ── Change #1: Validate city and state before touching the service ────────
     city_ok,  city_reason  = validate_city(city)
     state_ok, state_reason = validate_state(state)
@@ -126,11 +134,17 @@ async def search_trials(
 
 
 @router.get("/{nct_id}/sites", response_model=TrialSitesResponse)
-async def get_trial_sites(nct_id: str) -> TrialSitesResponse:
+async def get_trial_sites(nct_id: str, response: Response = None) -> TrialSitesResponse:
     """
     Return the title and all site locations for a single trial.
     The frontend uses this to populate the map and site list.
+    
+    HTTP Caching (Issue #6): Cache for 24 hours since trial sites don't change
+    frequently. Users who click back or re-select the same trial get instant results.
     """
+    if response:
+        response.headers["Cache-Control"] = "public, max-age=86400"  # 24 hours
+    
     try:
         data = fetch_study_detail(nct_id)
     except Exception as exc:
@@ -167,7 +181,16 @@ async def get_trial_sites(nct_id: str) -> TrialSitesResponse:
 
 
 @router.get("/{nct_id}")
-async def get_trial(nct_id: str) -> dict[str, Any]:
+async def get_trial(nct_id: str, response: Response = None) -> dict[str, Any]:
+    """
+    Return full trial details (all protocol sections).
+    
+    HTTP Caching (Issue #6): Cache for 24 hours since trial data is static.
+    Users viewing the same trial multiple times or bookmarking will benefit from cache.
+    """
+    if response:
+        response.headers["Cache-Control"] = "public, max-age=86400"  # 24 hours
+    
     try:
         data = fetch_study_detail(nct_id)
     except Exception as exc:

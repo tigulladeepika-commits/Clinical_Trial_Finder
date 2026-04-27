@@ -48,6 +48,10 @@ function HomeInner() {
   const [sitesLoading,  setSitesLoading]  = useState(false);
   const [sitesError,    setSitesError]    = useState<string | null>(null);
   const [selectedSite,  setSelectedSite]  = useState<SelectedSite | null>(null);
+  
+  // CRITICAL FIX for issue #5: Track AbortController for trial sites fetches
+  // so quickly clicking different trials cancels the in-flight request.
+  const sitesFetchAbortRef = useRef<AbortController | null>(null);
 
   const {
     physicians:  nearbyPhysicians,
@@ -73,6 +77,13 @@ function HomeInner() {
       prevConditionRef.current = filtersFromUrl.condition;
     }
   }, [filtersFromUrl.condition, resetPhysicians]);
+
+  // CRITICAL FIX for issue #5: Cancel any in-flight sites fetch on unmount
+  useEffect(() => {
+    return () => {
+      sitesFetchAbortRef.current?.abort();
+    };
+  }, []);
 
   const {
     trials,
@@ -117,6 +128,11 @@ function HomeInner() {
       return;
     }
 
+    // Cancel any in-flight sites fetch before starting a new one
+    sitesFetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    sitesFetchAbortRef.current = controller;
+
     setSelectedTrial(trial);
     setSiteData(null);
     setSitesError(null);
@@ -125,12 +141,20 @@ function HomeInner() {
     setSitesLoading(true);
 
     try {
-      const data = await fetchTrialSites(trial.nctId);
-      setSiteData(data);
-    } catch {
-      setSitesError("Could not load site locations. Please try again.");
+      const data = await fetchTrialSites(trial.nctId, controller.signal);
+      // Only set data if this request wasn't aborted
+      if (!controller.signal.aborted) {
+        setSiteData(data);
+      }
+    } catch (err) {
+      // Ignore abort errors; only show real errors
+      if (!controller.signal.aborted) {
+        setSitesError("Could not load site locations. Please try again.");
+      }
     } finally {
-      setSitesLoading(false);
+      if (!controller.signal.aborted) {
+        setSitesLoading(false);
+      }
     }
   }, [resetPhysicians, selectedTrial]);
 

@@ -1,7 +1,8 @@
 // components/trials/TrialSiteMap.tsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
+import { FixedSizeList as List } from "react-window";
 import StatusBadge                      from "@/components/shared/StatusBadge";
 import type { TrialSite }               from "@/types/trial";
 import type { SelectedSite }            from "@/types/physician";
@@ -486,89 +487,141 @@ export default function TrialSiteMap({
             No site data available for this trial.
           </p>
         ) : (
-          <div className="tsm-sites-grid">
-            {sites.map((site, i) => {
-              const hasCoords = site.lat != null && site.lon != null;
-              return (
-                <div
-                  key={i}
-                  className="tsm-site-card"
-                  role={hasCoords ? "button" : undefined}
-                  tabIndex={hasCoords ? 0 : undefined}
-                  onClick={() => {
-                    if (!hasCoords) return;
-                    // Pan map to site on card click
-                    if (mapInstanceRef.current) {
-                      mapInstanceRef.current.setView([site.lat, site.lon], 11);
-                      mapDivRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && hasCoords) {
-                      if (mapInstanceRef.current) {
-                        mapInstanceRef.current.setView([site.lat, site.lon], 11);
-                        mapDivRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }
-                    }
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-                    <div className="tsm-site-facility">{site.facility || "Unnamed Site"}</div>
-                    <StatusBadge status={site.status} />
-                  </div>
-
-                  <div className="tsm-site-location">
-                    {[site.city, site.state, site.country].filter(Boolean).join(", ") || "Location unknown"}
-                  </div>
-
-                  {hasCoords ? (
-                    <>
-                      <div className="site-cta">→ Find nearby physicians</div>
-                      {/* Explicit CTA button — always visible, stops card pan on click */}
-                      <button
-                        style={{
-                          display: "block", width: "100%", marginTop: 8,
-                          padding: "6px 0", borderRadius: 7,
-                          border: "1px solid #bfdbfe", background: "#eff6ff",
-                          color: "#2563eb", fontSize: 11, fontWeight: 700,
-                          cursor: "pointer", fontFamily: "inherit",
-                          transition: "all 0.12s", textAlign: "center",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background   = "#2563eb";
-                          e.currentTarget.style.color        = "white";
-                          e.currentTarget.style.borderColor  = "#2563eb";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background   = "#eff6ff";
-                          e.currentTarget.style.color        = "#2563eb";
-                          e.currentTarget.style.borderColor  = "#bfdbfe";
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onFindPhysicians({
-                            lat:       site.lat as number,
-                            lng:       site.lon as number,
-                            facility:  site.facility,
-                            city:      site.city,
-                            state:     site.state,
-                            nct_id:    nctId,
-                            condition: condition ?? null,
-                          });
-                        }}
-                      >
-                        🩺 Find physicians nearby
-                      </button>
-                    </>
-                  ) : (
-                    <div style={{ fontSize: 11, color: "#cdd3e0" }}>No coordinates available</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          // CRITICAL FIX: Virtualize the sites list to only render visible items.
+          // For trials with 50+ sites, this reduces DOM nodes from 50+ to ~5-10 visible,
+          // dramatically improving scroll performance and initial render time.
+          <VirtualizedSitesList
+            sites={sites}
+            mapInstanceRef={mapInstanceRef}
+            mapDivRef={mapDivRef}
+            nctId={nctId}
+            condition={condition}
+            onFindPhysicians={onFindPhysicians}
+          />
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * VirtualizedSitesList: Renders trial sites in a virtualized grid.
+ * Only renders visible items + buffer, reducing DOM nodes from 50+ to ~5-10.
+ * CRITICAL FIX for issue #2: eliminates performance cliff when trials have many sites.
+ */
+interface VirtualizedSitesListProps {
+  sites:             TrialSite[];
+  mapInstanceRef:    React.MutableRefObject<any>;
+  mapDivRef:         React.MutableRefObject<HTMLDivElement | null>;
+  nctId:             string;
+  condition:         string | null;
+  onFindPhysicians:  (site: SelectedSite) => void;
+}
+
+function VirtualizedSitesList({
+  sites,
+  mapInstanceRef,
+  mapDivRef,
+  nctId,
+  condition,
+  onFindPhysicians,
+}: VirtualizedSitesListProps) {
+  const COLS = 1; // Single column for vertical scroll (simpler than 2D grid)
+  const ITEM_HEIGHT = 160; // Approximate height per card
+  
+  // Memoize the row renderer to prevent recreation on every render
+  const Row = useMemo(
+    () => ({ index, style }: { index: number; style: React.CSSProperties }) => {
+      const site = sites[index];
+      const hasCoords = site.lat != null && site.lon != null;
+
+      return (
+        <div style={style} className="virtualized-site-wrapper">
+          <div
+            className="tsm-site-card"
+            role={hasCoords ? "button" : undefined}
+            tabIndex={hasCoords ? 0 : undefined}
+            onClick={() => {
+              if (!hasCoords) return;
+              if (mapInstanceRef.current) {
+                mapInstanceRef.current.setView([site.lat, site.lon], 11);
+                mapDivRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && hasCoords && mapInstanceRef.current) {
+                mapInstanceRef.current.setView([site.lat, site.lon], 11);
+                mapDivRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+              <div className="tsm-site-facility">{site.facility || "Unnamed Site"}</div>
+              <StatusBadge status={site.status} />
+            </div>
+
+            <div className="tsm-site-location">
+              {[site.city, site.state, site.country].filter(Boolean).join(", ") || "Location unknown"}
+            </div>
+
+            {hasCoords ? (
+              <>
+                <div className="site-cta">→ Find nearby physicians</div>
+                <button
+                  style={{
+                    display: "block", width: "100%", marginTop: 8,
+                    padding: "6px 0", borderRadius: 7,
+                    border: "1px solid #bfdbfe", background: "#eff6ff",
+                    color: "#2563eb", fontSize: 11, fontWeight: 700,
+                    cursor: "pointer", fontFamily: "inherit",
+                    transition: "all 0.12s", textAlign: "center",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background   = "#2563eb";
+                    e.currentTarget.style.color        = "white";
+                    e.currentTarget.style.borderColor  = "#2563eb";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background   = "#eff6ff";
+                    e.currentTarget.style.color        = "#2563eb";
+                    e.currentTarget.style.borderColor  = "#bfdbfe";
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFindPhysicians({
+                      lat:       site.lat as number,
+                      lng:       site.lon as number,
+                      facility:  site.facility,
+                      city:      site.city,
+                      state:     site.state,
+                      nct_id:    nctId,
+                      condition: condition ?? null,
+                    });
+                  }}
+                >
+                  🩺 Find physicians nearby
+                </button>
+              </>
+            ) : (
+              <div style={{ fontSize: 11, color: "#cdd3e0" }}>No coordinates available</div>
+            )}
+          </div>
+        </div>
+      );
+    },
+    [sites, mapInstanceRef, mapDivRef, nctId, condition, onFindPhysicians]
+  );
+
+  return (
+    <div style={{ padding: "16px 20px" }}>
+      <List
+        height={Math.min(600, sites.length * ITEM_HEIGHT)} // Max 600px, scales down for small lists
+        itemCount={sites.length}
+        itemSize={ITEM_HEIGHT}
+        width="100%"
+      >
+        {Row}
+      </List>
+    </div>
   );
 }

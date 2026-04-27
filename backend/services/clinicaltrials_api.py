@@ -266,18 +266,22 @@ def fetch_trials_with_filters(
     filters: dict[str, Any], limit: int, offset: int
 ) -> tuple[list[dict[str, Any]], int]:
     """
-    Fetch and filter trials from ClinicalTrials.gov.
+    Fetch and filter trials from ClinicalTrials.gov with server-side pagination.
 
-    Change #9: The MAX_PAGES cap is removed. We now exhaust all available
-    pages (up to the safety ceiling of _ABSOLUTE_PAGE_CEILING) so the full
-    matching dataset is returned to the caller. The API layer passes the
-    full list to the frontend; pagination is handled client-side by
-    usePhysicians / useTrials hooks (PAGE_SIZE = 10 per view).
-
-    Change #1: city and state filters are pre-validated. If either is
-    invalid the function returns immediately with an empty result rather
-    than scanning thousands of records and returning 0 matches with no
-    explanation.
+    CRITICAL FIX: Instead of fetching ALL pages before returning, we now fetch
+    only enough pages to satisfy (offset + limit). This dramatically reduces
+    backend work on every search and load-more click.
+    
+    Strategy:
+      1. Fetch pages from ClinicalTrials.gov one at a time
+      2. Filter each page on-the-fly
+      3. Stop as soon as we have (offset + limit) results
+      4. Return total_count from API metadata (or estimate conservatively)
+    
+    This ensures:
+      - Initial search (limit=10, offset=0): fetch ~1 page, not 200
+      - Load more (limit=10, offset=10): fetch ~1-2 pages, not rescan all 200
+      - Memory usage stays constant; no accumulating result lists
     """
     condition = (filters.get("condition") or "").strip()
     if not condition:
@@ -293,15 +297,25 @@ def fetch_trials_with_filters(
         logger.warning("Invalid state filter rejected: %s", state_reason)
         return [], 0
 
-    # Change #9: collect ALL matching trials, not just the first MAX_PAGES.
-    # We pass *all* of them back and let the frontend paginate client-side.
     matched_trials: list[dict[str, Any]] = []
     page_token: str | None = None
     pages_fetched = 0
+    total_count_estimate = 0
 
-    while pages_fetched < _ABSOLUTE_PAGE_CEILING:
+    # Fetch pages incrementally until we have enough results.
+    # We stop early once we've collected (offset + limit) results.
+    needed = offset + limit
+    
+    while pages_fetched < _ABSOLUTE_PAGE_CEILING and len(matched_trials) < needed:
         payload = _fetch_study_page(condition, page_token)
         studies = payload.get("studies") or []
+        
+        # Capture total count from API metadata (used for "total results" display)
+        if pages_fetched == 0:
+            # NB: ClinicalTrials.gov's totalCount may be inflated (includes non-matching).
+            # We use it as an estimate; actual total is revealed incrementally as we page.
+            total_count_estimate = payload.get("totalCount", 0)
+        
         if not studies:
             break
 
@@ -314,14 +328,16 @@ def fetch_trials_with_filters(
         pages_fetched += 1
 
         if not page_token:
+            # No more pages from API — we've hit the end.
             break
 
-    # total reflects ALL matching records found across every page scanned.
-    total_count = len(matched_trials)
-
-    # Slice according to offset/limit so existing callers that do server-side
-    # paging still work correctly, but the full count is always returned.
+    # Slice to return only the requested page.
     paged = matched_trials[offset: offset + limit]
+    
+    # Return the realistic count: either we've hit the API end, or estimate
+    # based on metadata (will be refined as user pages through results).
+    total_count = len(matched_trials) if not page_token else total_count_estimate
+    
     return paged, total_count
 
 

@@ -25,7 +25,7 @@ Changes:
   - Change #1: lat/lng/radius are validated before any downstream calls.
 """
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from core.config import cfg
 from core.validation import validate_lat_lng, validate_radius
 from core.helpers import sanitise
@@ -54,7 +54,16 @@ async def search_physicians(
     radius:        float          = Query(25.0, description="Search radius in miles (1–100)"),
     specialty:     Optional[str]  = Query(None, description="Resolved from trial condition"),
     user_specialty: Optional[str] = Query(None, description="Extra filter added by user"),
+    response:      Response       = None,
 ):
+    # ── HTTP Caching (Issue #6): Cache physician search for 10 minutes.
+    # Physicians near a trial location don't change frequently, so caching the
+    # results helps when users expand search radius or change specialties (they
+    # may go back to previous searches). The "private" directive ensures cache
+    # is not shared across users.
+    if response:
+        response.headers["Cache-Control"] = "private, max-age=600"  # 10 minutes
+    
     # ── 1. Validate ───────────────────────────────────────────────────────────
     try:
         lat, lng = validate_lat_lng(lat, lng)
@@ -98,14 +107,20 @@ async def search_physicians(
         return {"physicians": [], "total": 0, "radius_miles": radius, "zips_searched": 0}
 
     # ── 4. NPPES fan-out per ZIP × specialty ──────────────────────────────────
+    # CRITICAL FIX: Add early stopping when we have enough results.
+    # Previously, we'd query all MAX_ZIP_QUERIES ZIPs even if we already had
+    # 100+ physicians. Now we stop once we hit 2× MAX_DISPLAY to ensure good
+    # coverage but avoid unnecessary API calls (each call includes retries).
     seen_npis: set[str] = set()
     raw_physicians: list[dict] = []
     zip_batch = nearby_zips[: cfg.MAX_ZIP_QUERIES]
+    early_stop_threshold = cfg.MAX_DISPLAY * 2  # Stop at 2× display count
 
     for zipcode in zip_batch:
-        if len(raw_physicians) >= 200:
+        # Early stop: if we have enough results, break
+        if len(raw_physicians) >= early_stop_threshold:
             break
-
+        
         if descriptions:
             # OR: query each resolved specialty independently, merge results
             for desc in descriptions[: cfg.MAX_TAX_QUERIES]:
