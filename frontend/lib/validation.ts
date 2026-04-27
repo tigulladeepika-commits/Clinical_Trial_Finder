@@ -40,7 +40,7 @@ let CITIES_BY_STATE: Record<string, Set<string>> = {};
  */
 export async function initializeCityStateValidation(): Promise<void> {
   try {
-    const response = await fetch("/api/cities-by-state");
+    const response = await fetch("/api/trials/cities-by-state");
     if (!response.ok) {
       console.warn("Could not load city/state validation data");
       return;
