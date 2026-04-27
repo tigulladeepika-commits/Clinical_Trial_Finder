@@ -1,4 +1,3 @@
-// app/page.tsx
 "use client";
 
 import {
@@ -25,7 +24,7 @@ import type { SelectedSite }                         from "@/types/physician";
 //  Constants
 // ─────────────────────────────────────────────────────────────────────────────
 const HEADER_H  = 56;
-const SEARCH_H  = 68; // FIX: increased so the compact search bar breathes properly
+const SEARCH_H  = 68;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Inner component (needs useSearchParams, so it must be inside <Suspense>)
@@ -211,7 +210,6 @@ function HomeInner() {
         @media (max-width: 640px) { .header-tagline { display: none; } }
 
         /* ── Compact search bar (results view) ── */
-        /* FIX: fixed height, no wrapping, proper vertical alignment */
         .search-card {
           height: ${SEARCH_H}px;
           flex-shrink: 0;
@@ -222,50 +220,26 @@ function HomeInner() {
           align-items: center;
         }
 
-        /* ── Hero ── */
-        .hero-wrap { flex: 1; overflow-y: auto; }
-        .hero-inner {
-          max-width: 700px; margin: 0 auto;
-          padding: 64px 24px 40px;
-          display: flex; flex-direction: column; align-items: center; text-align: center;
+        /* ── Hero (landing) — full viewport, form centered and large ── */
+        .hero-wrap {
+          flex: 1;
+          overflow-y: auto;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #f6f7fb;
         }
-        .hero-badge {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 4px 12px;
-          background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 20px;
-          font-size: 11px; font-weight: 700; color: #2563eb;
-          letter-spacing: 0.4px; text-transform: uppercase;
-          margin-bottom: 20px;
+        .hero-form-only {
+          width: 100%;
+          max-width: calc(100% - 64px); /* ~2 inch side margins */
+          margin: 0 auto;
+          padding: 32px;
+          background: #fff;
+          border-radius: 16px;
+          box-shadow: 0 4px 24px rgba(0,0,0,0.07);
         }
-        .hero-title {
-          font-size: 34px; font-weight: 700; color: #0d1117;
-          letter-spacing: -1px; line-height: 1.18; margin-bottom: 14px;
-        }
-        .hero-title em { color: #2563eb; font-style: normal; }
-        .hero-sub {
-          font-size: 15px; color: #4b5563; line-height: 1.65;
-          margin-bottom: 36px; max-width: 520px;
-        }
-        .hero-form-card {
-          width: 100%; background: #fff;
-          border: 1px solid #e4e8f0; border-radius: 14px;
-          padding: 22px; box-shadow: 0 2px 12px rgba(0,0,0,0.07);
-          text-align: left;
-        }
-        .hero-stats {
-          display: flex; justify-content: center; gap: 32px; margin-top: 32px;
-        }
-        .hero-stat { text-align: center; }
-        .hero-stat-num {
-          font-size: 22px; font-weight: 700; color: #0d1117;
-          font-family: 'DM Mono', monospace;
-        }
-        .hero-stat-lbl { font-size: 11px; color: #8b95a1; margin-top: 2px; }
 
         /* ── Results layout ── */
-        /* FIX: strict non-overlapping two-column grid.
-           Left panel is fixed 320px, right panel fills the remainder.
-           min-width:0 on both prevents children from blowing out their column. */
         .results-layout {
           flex: 1;
           min-height: 0;
@@ -286,7 +260,6 @@ function HomeInner() {
           to   { opacity: 1; transform: translateY(0); }
         }
 
-        /* FIX: left panel — fixed width, scrolls internally, never bleeds right */
         .trials-panel {
           border-right: 1px solid #e4e8f0;
           overflow-y: auto;
@@ -296,7 +269,6 @@ function HomeInner() {
           min-width: 0;
         }
 
-        /* FIX: right panel — flex column so header+KPIs sit on top, map fills rest */
         .detail-panel {
           display: flex;
           flex-direction: column;
@@ -306,7 +278,6 @@ function HomeInner() {
         }
 
         /* ── Trial detail header ── */
-        /* FIX: flex-shrink:0 so it never gets squashed; title wraps within box */
         .trial-detail-header {
           padding: 14px 20px;
           border-bottom: 1px solid #e4e8f0;
@@ -322,7 +293,6 @@ function HomeInner() {
           letter-spacing: 0.8px; text-transform: uppercase;
           font-family: 'DM Mono', monospace;
         }
-        /* FIX: 2-line clamp so very long titles don't overflow the panel */
         .tdh-title {
           font-size: 14px; font-weight: 600; color: #0d1117;
           line-height: 1.45; margin-bottom: 4px;
@@ -335,8 +305,6 @@ function HomeInner() {
         .tdh-sponsor strong { color: #4b5563; font-weight: 500; }
 
         /* ── KPI row ── */
-        /* FIX: constrained in its own flex-shrink:0 row, evenly distributed,
-           never overlaps the map below it */
         .kpi-row {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
@@ -361,7 +329,6 @@ function HomeInner() {
         }
 
         /* ── Map / content area ── */
-        /* FIX: takes all remaining height after header+KPIs, scrolls internally */
         .detail-content {
           flex: 1;
           min-height: 0;
@@ -382,8 +349,6 @@ function HomeInner() {
         .b-warning    { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
         .b-default    { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
         .b-phase      { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-family: 'DM Mono', monospace; }
-
-        /* FIX: NA badge — intentional neutral pill instead of raw "NA" text */
         .b-na {
           background: #f1f5f9;
           color: #64748b;
@@ -458,47 +423,22 @@ function HomeInner() {
           </div>
         </header>
 
-        {/* ── Hero (no results yet) ── */}
+        {/* ── Hero: just the form, full-width, no text or stats ── */}
         {!hasResults && (
           <div className="hero-wrap">
-            <div className="hero-inner">
-              <div className="hero-badge">🔬 Clinical Research Platform</div>
-              <h1 className="hero-title">
-                Find the right <em>clinical trial</em><br />for your patients
-              </h1>
-              <p className="hero-sub">
-                Search active studies, explore trial sites across the country, and connect
-                with nearby physicians — all in one place.
-              </p>
-              <div className="hero-form-card">
-                <SearchForm
-                  key="hero"
-                  onSearch={handleSearch}
-                  loading={loading}
-                  compact={false}
-                  initialValues={filtersFromUrl}
-                />
-              </div>
-              <div className="hero-stats">
-                <div className="hero-stat">
-                  <div className="hero-stat-num">450K+</div>
-                  <div className="hero-stat-lbl">Active Trials</div>
-                </div>
-                <div className="hero-stat">
-                  <div className="hero-stat-num">180+</div>
-                  <div className="hero-stat-lbl">Countries</div>
-                </div>
-                <div className="hero-stat">
-                  <div className="hero-stat-num">2M+</div>
-                  <div className="hero-stat-lbl">Sites Indexed</div>
-                </div>
-              </div>
+            <div className="hero-form-only">
+              <SearchForm
+                key="hero"
+                onSearch={handleSearch}
+                loading={loading}
+                compact={false}
+                initialValues={filtersFromUrl}
+              />
             </div>
           </div>
         )}
 
         {/* ── Compact search bar (results active) ── */}
-        {/* FIX: full-height flex container so SearchForm children align center */}
         {hasResults && (
           <div className="search-card">
             <SearchForm
@@ -515,7 +455,7 @@ function HomeInner() {
         {hasResults && (
           <div className="results-layout">
 
-            {/* LEFT: Trial list — fixed 320px, never overlaps right */}
+            {/* LEFT: Trial list */}
             <div className="trials-panel">
               {loading && (
                 <div className="state-box">
@@ -550,10 +490,9 @@ function HomeInner() {
               )}
             </div>
 
-            {/* RIGHT: Detail panel — flex column, content stacks top-to-bottom */}
+            {/* RIGHT: Detail panel */}
             <div className="detail-panel">
 
-              {/* Empty state */}
               {!selectedTrial && (
                 <div className="detail-empty">
                   <div className="detail-empty-icon">🗺️</div>
@@ -563,7 +502,6 @@ function HomeInner() {
 
               {selectedTrial && (
                 <>
-                  {/* FIX: Trial header — constrained box, title clamped, never overflows */}
                   <div className="trial-detail-header">
                     <div className="tdh-badges">
                       <span className="tdh-nct">{selectedTrial.nctId}</span>
@@ -571,15 +509,14 @@ function HomeInner() {
                       {selectedTrial.status && (() => {
                         const s = selectedTrial.status.toLowerCase();
                         let cls = "badge b-default";
-                        if (s === "recruiting")                                   cls = "badge b-recruiting";
-                        else if (s.includes("active"))                            cls = "badge b-active";
-                        else if (s === "completed")                               cls = "badge b-completed";
-                        else if (s === "terminated")                              cls = "badge b-terminated";
+                        if (s === "recruiting")                                      cls = "badge b-recruiting";
+                        else if (s.includes("active"))                               cls = "badge b-active";
+                        else if (s === "completed")                                  cls = "badge b-completed";
+                        else if (s === "terminated")                                 cls = "badge b-terminated";
                         else if (s.includes("not yet") || s.includes("invitation")) cls = "badge b-warning";
                         return <span className={cls}>{selectedTrial.status}</span>;
                       })()}
 
-                      {/* FIX: render phases; replace raw "N/A" string with styled pill */}
                       {selectedTrial.phases?.map((p) =>
                         p === "N/A" || p === "NA"
                           ? <span key={p} className="b-na">Not applicable</span>
@@ -596,7 +533,6 @@ function HomeInner() {
                     )}
                   </div>
 
-                  {/* FIX: KPI row sits directly below the header, above map/content */}
                   {siteData && !sitesLoading && (
                     <div className="kpi-row">
                       <div className="kpi-cell">
@@ -624,10 +560,8 @@ function HomeInner() {
                     </div>
                   )}
 
-                  {/* FIX: scrollable content area — map is pushed below header+KPIs */}
                   <div className="detail-content">
 
-                    {/* Sites loading */}
                     {sitesLoading && (
                       <div className="state-box">
                         <div className="spinner" />
@@ -635,7 +569,6 @@ function HomeInner() {
                       </div>
                     )}
 
-                    {/* Sites error */}
                     {sitesError && !sitesLoading && (
                       <div className="error-box">
                         <span className="err-label">Error</span>
@@ -643,7 +576,6 @@ function HomeInner() {
                       </div>
                     )}
 
-                    {/* Physician panel (site selected) */}
                     {siteData && !sitesLoading && selectedSite && (
                       <PhysicianPanel
                         site={selectedSite}
@@ -659,7 +591,6 @@ function HomeInner() {
                       />
                     )}
 
-                    {/* Site map (no site selected yet) */}
                     {siteData && !sitesLoading && !selectedSite && (
                       <TrialSiteMap
                         sites={siteData.sites}
