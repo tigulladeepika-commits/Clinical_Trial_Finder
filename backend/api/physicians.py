@@ -88,28 +88,54 @@ async def search_physicians(
     #   initial_specialty=["Medical Oncology", "Hematology & Oncology"]
     #   → resolves each independently, deduplicates, unions all results
 
+    resolved_groups: list[list[str]] = []
+
+    def _collect_resolved(raw: Optional[str]) -> None:
+        resolved = _resolve_specialty_input(raw)
+        if resolved:
+            resolved_groups.append(resolved)
+
+    # Resolve each input independently, then order the final list so the
+    # user's primary requested specialties are queried before broader fallbacks.
+    for s in (specialty         or []):
+        _collect_resolved(s)
+    for s in (initial_specialty or []):
+        _collect_resolved(s)
+    for s in (user_specialty    or []):
+        _collect_resolved(s)
+
     descriptions: list[str] = []
     seen_descs:   set[str]  = set()
 
-    def _add_resolved(raw: Optional[str]) -> None:
-        resolved = _resolve_specialty_input(raw)
-        for spec in resolved:
-            if spec not in seen_descs:
-                seen_descs.add(spec)
-                descriptions.append(spec)
+    def _add_description(desc: str) -> None:
+        if not desc or desc in seen_descs or len(descriptions) >= cfg.MAX_DESC_COUNT:
+            return
+        seen_descs.add(desc)
+        descriptions.append(desc)
 
-    # Iterate over each list, resolve each item individually
-    for s in (specialty         or []):
-        _add_resolved(s)
-    for s in (initial_specialty or []):
-        _add_resolved(s)
-    for s in (user_specialty    or []):
-        _add_resolved(s)
+    for group in resolved_groups:
+        if group:
+            _add_description(group[0])
+
+    for group in resolved_groups:
+        for desc in group[1:]:
+            _add_description(desc)
+
+    query_descriptions = descriptions[: cfg.MAX_TAX_QUERIES]
 
     # FIX: Removed the fallback that added raw strings when descriptions was empty.
     # This was causing NPPES to return ALL physicians (including dentists) when
     # no valid specialty was found. Now we only search with valid resolved specialties.
     # If descriptions is empty, we return zero results instead of querying everything.
+
+    if not query_descriptions:
+        return {
+            "physicians":         [],
+            "total":              0,
+            "radius_miles":       radius,
+            "zips_searched":      0,
+            "search_specialties": [],
+        }
 
     logger.info(
         "Physician search | lat=%.4f lng=%.4f radius=%.1fmi "
@@ -131,7 +157,7 @@ async def search_physicians(
             "total":              0,
             "radius_miles":       radius,
             "zips_searched":      0,
-            "search_specialties": descriptions,
+            "search_specialties": query_descriptions,
         }
 
     # ── 4. NPPES fan-out per ZIP × specialty ──────────────────────────────────
@@ -144,25 +170,17 @@ async def search_physicians(
         if len(raw_physicians) >= early_stop_threshold:
             break
 
-        if descriptions:
-            for desc in descriptions[: cfg.MAX_TAX_QUERIES]:
-                rows, _ = nppes.fetch_with_retry({
-                    "postal_code":          zipcode,
-                    "taxonomy_description": desc,
-                    "limit":                50,
-                })
-                for row in rows:
-                    parsed = nppes.parse_physician(row)
-                    if parsed and parsed["npi"] not in seen_npis:
-                        seen_npis.add(parsed["npi"])
-                        parsed["matched_specialty"] = desc
-                        raw_physicians.append(parsed)
-        else:
-            rows, _ = nppes.fetch_with_retry({"postal_code": zipcode, "limit": 50})
+        for desc in query_descriptions:
+            rows, _ = nppes.fetch_with_retry({
+                "postal_code":          zipcode,
+                "taxonomy_description": desc,
+                "limit":                50,
+            })
             for row in rows:
                 parsed = nppes.parse_physician(row)
                 if parsed and parsed["npi"] not in seen_npis:
                     seen_npis.add(parsed["npi"])
+                    parsed["matched_specialty"] = desc
                     raw_physicians.append(parsed)
 
     if not raw_physicians:
@@ -171,7 +189,7 @@ async def search_physicians(
             "total":              0,
             "radius_miles":       radius,
             "zips_searched":      len(zip_batch),
-            "search_specialties": descriptions,
+            "search_specialties": query_descriptions,
         }
 
     # ── 5. ZIP centroid pre-filter + geocode + strict distance filter ─────────
@@ -198,7 +216,7 @@ async def search_physicians(
             "total":              0,
             "radius_miles":       radius,
             "zips_searched":      len(zip_batch),
-            "search_specialties": descriptions,
+            "search_specialties": query_descriptions,
         }
 
     nppes.batch_geocode_for_display(pre_filtered)
@@ -228,5 +246,5 @@ async def search_physicians(
         "total":              len(precise),
         "radius_miles":       radius,
         "zips_searched":      len(zip_batch),
-        "search_specialties": descriptions,
+        "search_specialties": query_descriptions,
     }

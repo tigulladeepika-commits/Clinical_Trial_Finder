@@ -806,6 +806,52 @@ def initialize() -> None:
 #  CORE LOOKUP FUNCTIONS
 # ─────────────────────────────────────────────
 
+def _entries_snapshot() -> List[Dict]:
+    with _taxonomy_lock:
+        return list(_taxonomy_entries)
+
+
+def _norm(text: str) -> str:
+    return " ".join((text or "").lower().split())
+
+
+def _entry_result(entry: Dict) -> Dict:
+    return {
+        "display": entry["display"],
+        "classification": entry["classification"],
+    }
+
+
+def _find_direct_taxonomy_match(q: str, entries: Optional[List[Dict]] = None) -> Optional[Dict]:
+    """
+    Prefer direct specialty matches before consulting the broader condition map.
+    This preserves inputs like "Hematology & Oncology" and also handles longer
+    live NUCC labels that begin with a shorter canonical specialty name.
+    """
+    q_norm = _norm(q)
+    if not q_norm:
+        return None
+
+    snapshot = entries if entries is not None else _entries_snapshot()
+
+    def _matches(entry: Dict, *, prefix: bool) -> bool:
+        display = _norm(entry.get("display", ""))
+        spec = _norm(entry.get("specialization", ""))
+        if prefix:
+            return display.startswith(q_norm) or spec.startswith(q_norm)
+        return display == q_norm or spec == q_norm
+
+    exact = [e for e in snapshot if _matches(e, prefix=False)]
+    if exact:
+        return min(exact, key=lambda e: len(_norm(e.get("display", ""))))
+
+    prefixed = [e for e in snapshot if _matches(e, prefix=True)]
+    if prefixed:
+        return min(prefixed, key=lambda e: len(_norm(e.get("display", ""))))
+
+    return None
+
+
 def _condition_map_lookup(q: str) -> Optional[List[str]]:
     """
     Resolve a condition/specialty string to a list of NUCC specialty names
@@ -862,26 +908,26 @@ def search(q: str, limit: int = 12) -> List[Dict]:
     if not q_stripped:
         return []
 
+    entries = _entries_snapshot()
+
+    direct = _find_direct_taxonomy_match(q_stripped, entries)
+    if direct:
+        return [_entry_result(direct)]
+
     condition_specialties = _condition_map_lookup(q_stripped)
     if condition_specialties:
-        with _taxonomy_lock:
-            entries_snapshot = list(_taxonomy_entries)
         results = []
         seen: set = set()
         for specialty_name in condition_specialties:
-            for e in entries_snapshot:
-                if e["display"].lower() == specialty_name.lower() and e["display"] not in seen:
-                    seen.add(e["display"])
-                    results.append({"display": e["display"], "classification": e["classification"]})
-                    break
+            match = _find_direct_taxonomy_match(specialty_name, entries)
+            if match and match["display"] not in seen:
+                seen.add(match["display"])
+                results.append(_entry_result(match))
         if results:
             return results[:limit]
 
     q_lower = q_stripped.lower()
     q_words = [w for w in q_lower.split() if len(w) >= 2]
-
-    with _taxonomy_lock:
-        entries = list(_taxonomy_entries)
 
     scored: List[tuple] = []
     seen_display: set = set()
@@ -920,7 +966,7 @@ def resolve(q: str) -> str:
     return matches[0]["display"] if matches else q
 
 
-def resolve_with_broader(q: str) -> List[str]:
+def _resolve_with_broader_legacy(q: str) -> List[str]:
     """
     Resolve a condition/specialty query and return all NUCC-valid specialty
     names to use in an OR-based NPPES physician search.
@@ -987,6 +1033,59 @@ def resolve_with_broader(q: str) -> List[str]:
     # returning ALL physicians (including dentists) when no valid specialty
     # is found. This ensures we only search for physicians when we have a
     # valid specialty filter.
+    return all_specialties
+
+
+def resolve_with_broader(q: str) -> List[str]:
+    """
+    Resolve a condition/specialty query and return NUCC-valid specialty names
+    to use in an OR-based NPPES physician search.
+
+    Resolution order:
+      1. Preserve direct taxonomy specialty matches first.
+      2. Otherwise use CONDITION_MAP for raw clinical conditions.
+      3. Expand each accepted specialty through SPECIALTY_HIERARCHY.
+      4. Fallback to fuzzy taxonomy matching only.
+
+    Returns a deduplicated list preserving priority order.
+    """
+    if not q:
+        return []
+
+    all_specialties: List[str] = []
+
+    def _add_if_valid(name: str) -> None:
+        match = _find_direct_taxonomy_match(name)
+        if not match:
+            return
+        resolved = match["display"]
+        if resolved not in all_specialties:
+            all_specialties.append(resolved)
+
+    direct = _find_direct_taxonomy_match(q)
+    if direct:
+        exact = direct["display"]
+        all_specialties.append(exact)
+        for broader in SPECIALTY_HIERARCHY.get(exact, []):
+            _add_if_valid(broader)
+        return all_specialties
+
+    condition_hits = _condition_map_lookup(q)
+    if condition_hits:
+        for specialty_name in condition_hits:
+            _add_if_valid(specialty_name)
+            for broader in SPECIALTY_HIERARCHY.get(specialty_name, []):
+                _add_if_valid(broader)
+        if all_specialties:
+            return all_specialties
+
+    matches = search(q, limit=1)
+    if matches:
+        exact = matches[0]["display"]
+        _add_if_valid(exact)
+        for broader in SPECIALTY_HIERARCHY.get(exact, []):
+            _add_if_valid(broader)
+
     return all_specialties
 
 
