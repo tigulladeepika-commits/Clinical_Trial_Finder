@@ -31,7 +31,6 @@ export interface PointOfContact {
   email: string | null;
 }
 
-// Used by SearchForm, page.tsx, and URL param parsing
 export interface TrialSearchFilters {
   condition: string;
   city:      string;
@@ -46,6 +45,7 @@ export interface TrialFetchParams {
   state?:     string | null;
   status?:    string;
   phase?:     string;
+  us_only?:   boolean;        // ← added: filter to trials with ≥1 US site
   page_size?: number;
   page?:      number;
 }
@@ -62,5 +62,4 @@ export interface SiteData {
   sites: TrialLocation[];
 }
 
-// Alias used by TrialSiteMap — same shape as TrialLocation
 export type TrialSite = TrialLocation;

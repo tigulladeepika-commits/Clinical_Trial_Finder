@@ -260,6 +260,11 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "pain block":             ["Anesthesiology", "Pain Medicine"],
     # ── Cancer / Oncology ─────────────────────────────────────────────────────
     "cancer":                 ["Medical Oncology", "Hematology & Oncology"],
+    "solid tumor":            ["Medical Oncology", "Hematology & Oncology"],
+    "malignant neoplasm":     ["Medical Oncology", "Hematology & Oncology"],
+    "malignant":              ["Medical Oncology", "Hematology & Oncology"],
+    "neoplasm":               ["Medical Oncology", "Hematology & Oncology"],
+    "neoplasia":              ["Medical Oncology", "Hematology & Oncology"],
     "tumor":                  ["Medical Oncology", "Radiation Oncology"],
     "oncology":               ["Medical Oncology", "Hematology & Oncology"],
     "leukemia":               ["Hematology & Oncology"],
@@ -978,7 +983,11 @@ def resolve_with_broader(q: str) -> List[str]:
             _add_if_valid(broader)
 
     # ── Step 4: fallback ──────────────────────────────────────────────────────
-    return all_specialties if all_specialties else [q]
+    # FIX: Return empty list instead of raw input [q] to prevent NPPES from
+    # returning ALL physicians (including dentists) when no valid specialty
+    # is found. This ensures we only search for physicians when we have a
+    # valid specialty filter.
+    return all_specialties
 
 
 # ─────────────────────────────────────────────

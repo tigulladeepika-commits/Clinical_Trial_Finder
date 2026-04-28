@@ -39,10 +39,10 @@ export function useTrials(
   const [hasMore,    setHasMore]    = useState(false);
 
   const LIMIT = 10;
-  const offsetRef    = useRef(0);
-  const abortRef     = useRef<AbortController | null>(null);
+  const offsetRef     = useRef(0);
+  const abortRef      = useRef<AbortController | null>(null);
 
-  const requestKey = `${condition ?? ""}|${city ?? ""}|${state ?? ""}|${status ?? ""}|${phase ?? ""}`;
+  const requestKey    = `${condition ?? ""}|${city ?? ""}|${state ?? ""}|${status ?? ""}|${phase ?? ""}`;
   const requestKeyRef = useRef(requestKey);
 
   const load = useCallback(
@@ -66,6 +66,7 @@ export function useTrials(
             state,
             status,
             phase,
+            us_only:   true,   // ← only return trials with at least one US site
             page_size: LIMIT,
             page:      Math.floor(currentOffset / LIMIT) + 1,
           },

@@ -106,16 +106,10 @@ async def search_physicians(
     for s in (user_specialty    or []):
         _add_resolved(s)
 
-    # Fallback: if nothing resolved, include raw strings so NPPES still gets
-    # something to query against (better than returning zero results).
-    if not descriptions:
-        all_raw = (specialty or []) + (initial_specialty or []) + (user_specialty or [])
-        for raw in all_raw:
-            if raw:
-                clean = sanitise(raw, cfg.MAX_DESC_LEN)
-                if clean and clean not in seen_descs:
-                    seen_descs.add(clean)
-                    descriptions.append(clean)
+    # FIX: Removed the fallback that added raw strings when descriptions was empty.
+    # This was causing NPPES to return ALL physicians (including dentists) when
+    # no valid specialty was found. Now we only search with valid resolved specialties.
+    # If descriptions is empty, we return zero results instead of querying everything.
 
     logger.info(
         "Physician search | lat=%.4f lng=%.4f radius=%.1fmi "
