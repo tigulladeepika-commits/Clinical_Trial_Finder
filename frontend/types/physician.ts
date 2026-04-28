@@ -9,7 +9,7 @@ export interface Physician {
   lat?:               number | null;
   lng?:               number | null;
   distance_miles?:    number | null;
-  matched_specialty?: string | null;   // which specialty bucket this physician matched
+  matched_specialty?: string | null;
 }
 
 export interface SelectedSite {
@@ -26,9 +26,9 @@ export interface PhysicianSearchParams {
   lat:                number;
   lng:                number;
   radius:             number;
-  specialty?:         string;   // raw trial condition → backend maps via resolve_with_broader
-  initial_specialty?: string;   // specialty from the user's very first search (always OR-included)
-  user_specialty?:    string;   // additional specialty explicitly entered by user
+  specialty?:         string;
+  initial_specialty?: string;
+  user_specialty?:    string;
 }
 
 export interface PhysicianFetchResponse {
@@ -36,17 +36,23 @@ export interface PhysicianFetchResponse {
   total:              number;
   radius_miles:       number;
   zips_searched:      number;
-  search_specialties: string[];  // resolved specialty list that was actually searched (for UI display)
+  search_specialties: string[];
 }
 
 export interface LeadPayload {
-  name:     string;
-  email:    string;
-  phone?:   string;
-  npi:      string;
-  nct_id:   string;
-  site?:    string;
-  message?: string;
+  name:            string;
+  email:           string;
+  phone?:          string;
+  npi?:            string;   // optional — not present on Load More leads
+  nct_id?:         string;   // optional — not present on Load More leads
+  site?:           string;
+  message?:        string;
+  // Salesforce fields
+  company?:        string;   // "Individual Physicians"
+  lead_source?:    string;   // "Clinical Trial"
+  title?:          string;   // physician taxonomy_desc
+  physician_name?: string;   // physician full name (auto-leads)
+  auto?:           boolean;  // true = auto-generated, no user form
 }
 
 export type LeadModalTrigger = "card" | "load_more";

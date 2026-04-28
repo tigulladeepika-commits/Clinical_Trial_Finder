@@ -1,21 +1,18 @@
 // lib/api.ts
 //
-// v4 changes:
-//  - PhysicianSearchParams now has three specialty fields:
-//      specialty         — raw trial condition (backend maps via resolve_with_broader)
-//      initial_specialty — the specialty from the user's very first search;
-//                          forwarded on every subsequent search so it is always
-//                          OR-included even when the user edits the field.
-//      user_specialty    — any additional specialty explicitly typed by the user.
-//  - fetchPhysicians / getPhysiciansForTrial both forward all three fields.
-//  - PhysicianFetchResponse now includes search_specialties[] so the UI
-//    can display which specialties were actually searched.
+// v6 changes:
+//  - submitAutoLead() — auto-generates a Salesforce lead from a Physician
+//    object without a user form. Fixed fields: email=lead@aquarient.local,
+//    company=Individual Physicians, lead_source=Clinical Trial.
+//  - buildPhysicianParams() helper (v5) retained.
 
 import type { TrialFetchParams, TrialFetchResponse, SiteData, Trial } from "@/types/trial";
 import type {
   PhysicianSearchParams,
   PhysicianFetchResponse,
   LeadPayload,
+  Physician,
+  SelectedSite,
 } from "@/types/physician";
 
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/+$/, "");
@@ -60,31 +57,50 @@ export async function fetchTrialSites(nctId: string, signal?: AbortSignal): Prom
 
 // ── Physicians ────────────────────────────────────────────────────────────────
 
+/**
+ * Build a URLSearchParams string from PhysicianSearchParams.
+ * Specialty fields are split on commas and appended as repeated params
+ * so "Medical Oncology, Hematology & Oncology" becomes:
+ *   specialty=Medical+Oncology&specialty=Hematology+%26+Oncology
+ */
+function buildPhysicianParams(params: PhysicianSearchParams): string {
+  const qs = new URLSearchParams();
+
+  qs.append("lat",    String(params.lat));
+  qs.append("lng",    String(params.lng));
+  qs.append("radius", String(params.radius));
+
+  const specialtyFields = [
+    ["specialty",         params.specialty],
+    ["initial_specialty", params.initial_specialty],
+    ["user_specialty",    params.user_specialty],
+  ] as const;
+
+  for (const [key, value] of specialtyFields) {
+    if (!value?.trim()) continue;
+    value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((s) => qs.append(key, s));
+  }
+
+  return qs.toString();
+}
+
 export async function fetchPhysicians(
   params:  PhysicianSearchParams,
   signal?: AbortSignal,
 ): Promise<PhysicianFetchResponse> {
-  const qs = new URLSearchParams(
-    Object.entries(params)
-      .filter(([, v]) => v !== undefined && v !== null && v !== "")
-      .map(([k, v]) => [k, String(v)]),
-  ).toString();
-
-  return apiFetch<PhysicianFetchResponse>(`/api/physicians/search?${qs}`, undefined, signal);
+  return apiFetch<PhysicianFetchResponse>(
+    `/api/physicians/search?${buildPhysicianParams(params)}`,
+    undefined,
+    signal,
+  );
 }
 
 /**
  * Fetch the NUCC specialty list for a medical condition string.
- *
- * The backend uses a 4-pass lookup (exact → prefix → substring → token)
- * against CONDITION_MAP so multi-word or mixed-case conditions from
- * ClinicalTrials.gov are handled correctly.
- *
- * Example:
- *   "High Grade Sarcoma" → ["Medical Oncology", "General Surgery"]
- *   "Metastatic Breast Cancer" → ["Medical Oncology", "Radiation Oncology"]
- *
- * Returns [] on network error (caller falls back gracefully).
  */
 export async function getConditionSpecialties(
   condition: string,
@@ -108,13 +124,6 @@ export async function getConditionSpecialties(
 
 /**
  * Fire a physician search directly from a Trial object.
- *
- * Passes all three specialty inputs to the backend so they are OR-combined:
- *   specialty         — trial condition (mapped via resolve_with_broader)
- *   initial_specialty — specialty from the user's first search (always included)
- *   user_specialty    — any additional specialty the user typed explicitly
- *
- * Returns null when the trial has no geocoded location data.
  */
 export async function getPhysiciansForTrial(
   trial:            Trial,
@@ -140,19 +149,13 @@ export async function getPhysiciansForTrial(
     lat:    site.lat,
     lng:    site.lon,
     radius,
-    ...(trialCondition.trim()    ? { specialty:          trialCondition.trim()    } : {}),
-    ...(initialSpecialty?.trim() ? { initial_specialty:  initialSpecialty.trim()  } : {}),
-    ...(userSpecialty?.trim()    ? { user_specialty:     userSpecialty.trim()     } : {}),
+    ...(trialCondition.trim()    ? { specialty:         trialCondition.trim()   } : {}),
+    ...(initialSpecialty?.trim() ? { initial_specialty: initialSpecialty.trim() } : {}),
+    ...(userSpecialty?.trim()    ? { user_specialty:    userSpecialty.trim()    } : {}),
   };
 
-  const qs = new URLSearchParams(
-    Object.entries(params)
-      .filter(([, v]) => v !== undefined && v !== null && v !== "")
-      .map(([k, v]) => [k, String(v)]),
-  ).toString();
-
   return apiFetch<PhysicianFetchResponse>(
-    `/api/physicians/search?${qs}`,
+    `/api/physicians/search?${buildPhysicianParams(params)}`,
     undefined,
     signal,
   );
@@ -163,6 +166,47 @@ export async function getPhysiciansForTrial(
 export async function submitLead(
   payload: LeadPayload,
 ): Promise<{ success: boolean; lead_id?: string }> {
+  return apiFetch("/api/leads", {
+    method: "POST",
+    body:   JSON.stringify(payload),
+  });
+}
+
+/**
+ * Auto-generate a Salesforce lead from a Physician record.
+ * No user form — all fields are derived from the physician data.
+ *
+ * Fixed values:
+ *   email       → lead@aquarient.local
+ *   company     → Individual Physicians
+ *   lead_source → Clinical Trial
+ *
+ * Derived values:
+ *   name   → physician.name
+ *   phone  → physician.phone
+ *   title  → physician.taxonomy_desc
+ *   npi    → physician.npi
+ *   nct_id → site.nct_id
+ *   site   → site.facility
+ */
+export async function submitAutoLead(
+  physician: Physician,
+  site:      SelectedSite,
+): Promise<{ success: boolean; id?: string }> {
+  const payload = {
+    name:           physician.name,
+    email:          "lead@aquarient.local",
+    phone:          physician.phone          ?? "",
+    title:          physician.taxonomy_desc  ?? "",
+    company:        "Individual Physicians",
+    lead_source:    "Clinical Trial",
+    physician_name: physician.name,
+    npi:            physician.npi,
+    nct_id:         site.nct_id,
+    site:           site.facility            ?? "",
+    auto:           true,
+  };
+
   return apiFetch("/api/leads", {
     method: "POST",
     body:   JSON.stringify(payload),

@@ -7,13 +7,18 @@ near a clinical trial site. Stores to data/leads.json and
 optionally pushes to Salesforce if SF_OID is configured.
 
 Request body (JSON):
-    name        str   required
-    email       str   required
-    phone       str   optional
-    npi         str   optional  — physician NPI the user is enquiring about
-    nct_id      str   optional  — trial NCT ID context
-    site        str   optional  — trial site name
-    message     str   optional
+    name            str   required
+    email           str   required
+    phone           str   optional
+    npi             str   optional  — physician NPI
+    nct_id          str   optional  — trial NCT ID context
+    site            str   optional  — trial site name
+    message         str   optional
+    lead_source     str   optional  — defaults to "Clinical Trial"
+    company         str   optional  — defaults to "Individual Physicians"
+    title           str   optional  — physician taxonomy / specialty
+    physician_name  str   optional  — physician full name (for auto-leads)
+    auto            bool  optional  — if true, lead was auto-generated (no user form)
 
 Response:
     { "success": true, "id": "<uuid>" }
@@ -39,15 +44,21 @@ router = APIRouter()
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class LeadRequest(BaseModel):
-    name:    str
-    email:   EmailStr
-    phone:   str = ""
-    npi:     str = ""
-    nct_id:  str = ""
-    site:    str = ""
-    message: str = ""
+    name:           str
+    email:          EmailStr
+    phone:          str  = ""
+    npi:            str  = ""
+    nct_id:         str  = ""
+    site:           str  = ""
+    message:        str  = ""
+    lead_source:    str  = "Clinical Trial"
+    company:        str  = "Individual Physicians"
+    title:          str  = ""
+    physician_name: str  = ""
+    auto:           bool = False
 
-    @field_validator("name", "phone", "npi", "nct_id", "site", "message", mode="before")
+    @field_validator("name", "phone", "npi", "nct_id", "site", "message",
+                     "lead_source", "company", "title", "physician_name", mode="before")
     @classmethod
     def sanitize_fields(cls, v: str) -> str:
         return sanitise(str(v or ""), 500)
@@ -62,7 +73,7 @@ class LeadRequest(BaseModel):
 
 class LeadResponse(BaseModel):
     success: bool
-    id: str
+    id:      str
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -111,18 +122,38 @@ async def capture_lead(request: Request, body: LeadRequest):
     """
     Capture a contact lead from the physician discovery UI.
     Persists to data/leads.json and optionally forwards to Salesforce.
+
+    Two modes:
+      auto=false (default) — user filled in the Load More form
+      auto=true            — physician "Add as Lead" auto-generated lead
     """
     lead_id = str(uuid.uuid4())
+
+    # Split name into first / last for Salesforce
+    name_parts = body.name.strip().split(" ", 1)
+    first_name = name_parts[0]
+    last_name  = name_parts[1] if len(name_parts) > 1 else ""
+
     lead = {
-        "id": lead_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "name": body.name,
-        "email": str(body.email),
-        "phone": body.phone,
-        "npi": body.npi,
-        "nct_id": body.nct_id,
-        "site": body.site,
-        "message": body.message,
+        "id":             lead_id,
+        "created_at":     datetime.now(timezone.utc).isoformat(),
+        # Core identity
+        "name":           body.name,
+        "first_name":     first_name,
+        "last_name":      last_name,
+        "email":          str(body.email),
+        "phone":          body.phone,
+        # Salesforce fields
+        "lead_source":    body.lead_source,
+        "company":        body.company,
+        "title":          body.title,
+        # Physician context
+        "physician_name": body.physician_name,
+        "npi":            body.npi,
+        "nct_id":         body.nct_id,
+        "site":           body.site,
+        "message":        body.message,
+        "auto":           body.auto,
     }
 
     try:
@@ -134,8 +165,8 @@ async def capture_lead(request: Request, body: LeadRequest):
     _push_to_salesforce(lead)
 
     logger.info(
-        "Lead captured | id=%s name=%s email=%s npi=%s nct_id=%s",
-        lead_id, body.name, str(body.email), body.npi or "—", body.nct_id or "—",
+        "Lead captured | id=%s auto=%s name=%s email=%s npi=%s nct_id=%s",
+        lead_id, body.auto, body.name, str(body.email), body.npi or "—", body.nct_id or "—",
     )
 
     return LeadResponse(success=True, id=lead_id)
