@@ -99,26 +99,42 @@ def _load_zip_database() -> None:
         _zip_db_ready.set()
         logger.info("ZIP db ready: %d entries", len(_zip_db))
 
-    # Auto-invalidate cache if it contains full state names instead of 2-letter codes.
-    # This handles the v2.1.4 migration where parts[3] (full name e.g. "Massachusetts")
-    # was changed to parts[4] (code e.g. "MA"). Any cache built before this fix
-    # will have {"Massachusetts": [...]} keys and must be discarded.
+    # Cache version — bump this whenever the cache schema changes.
+    # v2.1.4: state codes changed from full names ("Massachusetts") to
+    # 2-letter abbreviations ("MA"). Any cache without this version tag
+    # is deleted and re-downloaded fresh.
+    CACHE_VERSION = "2.1.4"
+
     if os.path.exists(local_cache):
         try:
             with open(local_cache) as f:
                 raw = json.load(f)
-            locs = raw.get("locations", {})
-            if locs:
-                sample_state = next(iter(locs.values()))[1]  # e.g. "Massachusetts" or "MA"
-                if len(sample_state) > 2:
-                    logger.warning(
-                        "ZIP cache has full state names (old format, e.g. %r) — "
-                        "deleting and re-downloading with 2-letter state codes",
-                        sample_state,
-                    )
-                    os.remove(local_cache)
+            cached_version = raw.get("version", "")
+            if cached_version != CACHE_VERSION:
+                logger.warning(
+                    "ZIP cache version mismatch (cached=%r, expected=%r) — "
+                    "deleting and re-downloading",
+                    cached_version, CACHE_VERSION,
+                )
+                os.remove(local_cache)
+            else:
+                # Safety net: also check for full-state-name format
+                locs = raw.get("locations", {})
+                if locs:
+                    sample_state = next(iter(locs.values()))[1]
+                    if len(sample_state) > 2:
+                        logger.warning(
+                            "ZIP cache has full state names (e.g. %r) — "
+                            "deleting and re-downloading",
+                            sample_state,
+                        )
+                        os.remove(local_cache)
         except Exception as e:
-            logger.warning("ZIP cache pre-check failed, will attempt normal load: %s", e)
+            logger.warning("ZIP cache pre-check failed, will re-download: %s", e)
+            try:
+                os.remove(local_cache)
+            except Exception:
+                pass
 
     # Try loading from disk cache first
     if os.path.exists(local_cache):
@@ -177,6 +193,7 @@ def _load_zip_database() -> None:
         # TypeError: unsupported operand type(s) for +: 'PosixPath' and 'str'
         tmp = str(local_cache) + ".tmp"
         cache_data = {
+            "version": CACHE_VERSION,
             "zips": {k: list(v) for k, v in db.items()},
             "locations": locations,
         }
