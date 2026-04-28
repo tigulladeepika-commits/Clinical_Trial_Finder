@@ -1,4 +1,15 @@
 // components/physicians/PhysicianPanel.tsx
+//
+// v3 changes:
+//  - Specialty input placeholder updated to "Override specialty (optional)"
+//    and a `title` tooltip added so users understand the field is pre-filled
+//    from the trial condition and can be left as-is or overridden.
+//  - No logic changes — the specialty state is still initialised from
+//    site.condition and passed back to handlePhysicianSearch in page.tsx
+//    which correctly routes it as userEntered when it differs from the
+//    original condition, or leaves it empty (re-using mapped specialties)
+//    when the user hasn't changed it.
+
 "use client";
 
 import { useState, useCallback }  from "react";
@@ -45,13 +56,12 @@ export default function PhysicianPanel({
   // Show lead modal before Load More (as per original spec)
   const handleLoadMore = useCallback(() => {
     if (!physicians.length) { onLoadMore(); return; }
-    // Pick first physician as the "anchor" for the lead form
     setLeadPhys(physicians[0]);
   }, [physicians, onLoadMore]);
 
   const handleLeadClose = useCallback(() => {
     setLeadPhys(null);
-    onLoadMore();   // proceed to show more cards after modal closes
+    onLoadMore();
   }, [onLoadMore]);
 
   return (
@@ -126,10 +136,23 @@ export default function PhysicianPanel({
           flexWrap:     "wrap",
         }}
       >
+        {/*
+          The specialty field is pre-filled from the trial condition
+          (e.g. "High Grade Sarcoma"). The backend maps this automatically
+          to real NUCC specialties (Medical Oncology, etc.) via
+          resolve_with_broader(). The user can leave it as-is for the
+          condition-mapped search, or type a different specialty to add an
+          additional OR filter on top of the mapped results.
+        */}
         <input
           value={specialty}
           onChange={(e) => setSpecialty(e.target.value)}
-          placeholder="Specialty / condition"
+          placeholder="Override specialty (optional)"
+          title={
+            site.condition
+              ? `Pre-filled from trial condition "${site.condition}". Edit to search a different specialty, or leave as-is to use the automatic specialty mapping.`
+              : "Enter a specialty or condition to filter physicians"
+          }
           style={{
             flex:         "2 1 140px",
             height:       32,

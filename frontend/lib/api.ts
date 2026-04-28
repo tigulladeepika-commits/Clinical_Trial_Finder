@@ -1,4 +1,13 @@
 // lib/api.ts
+//
+// v3 changes:
+//  - getPhysiciansForTrial(): fixed bug where both trialCondition and
+//    userSpecialty were assigned to the `specialty` key — the second
+//    overwrote the first. They now use their correct distinct keys:
+//    `specialty` for the trial condition, `user_specialty` for the
+//    explicit user override. This ensures the backend receives both
+//    and applies OR logic across all resolved specialties.
+//  - getConditionSpecialties(): no functional changes; JSDoc updated.
 
 import type { TrialFetchParams, TrialFetchResponse, SiteData, Trial } from "@/types/trial";
 import type {
@@ -17,7 +26,7 @@ async function apiFetch<T>(
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
-    // FIX: signal must come after the options spread so it is never overwritten
+    // signal must come after the options spread so it is never overwritten
     ...(signal ? { signal } : {}),
   });
 
@@ -64,27 +73,32 @@ export async function fetchPhysicians(
 }
 
 /**
- * CRITICAL FIX: Fetch mapped specialties for a medical condition.
- * 
- * When a trial condition is "High Grade Sarcoma", this returns
- * ["Medical Oncology", "Surgical Oncology"] so the physician
- * search can find specialists in those broader categories.
+ * Fetch the NUCC specialty list for a medical condition string.
+ *
+ * The backend uses a 4-pass lookup (exact → prefix → substring → token)
+ * against CONDITION_MAP so multi-word or mixed-case conditions from
+ * ClinicalTrials.gov are handled correctly.
+ *
+ * Example:
+ *   "High Grade Sarcoma" → ["Medical Oncology", "General Surgery"]
+ *   "Metastatic Breast Cancer" → ["Medical Oncology", "Radiation Oncology"]
+ *
+ * Returns [] on network error (caller falls back gracefully).
  */
 export async function getConditionSpecialties(
   condition: string,
   signal?: AbortSignal,
 ): Promise<string[]> {
-  if (!condition || !condition.trim()) {
-    return [];
-  }
-  
+  if (!condition?.trim()) return [];
+
   try {
     const encoded = encodeURIComponent(condition.trim());
-    const response = await apiFetch<{
-      specialties: string[];
-    }>(`/api/trials/condition/${encoded}/specialties`, undefined, signal);
-    
-    return response.specialties || [];
+    const response = await apiFetch<{ specialties: string[] }>(
+      `/api/trials/condition/${encoded}/specialties`,
+      undefined,
+      signal,
+    );
+    return response.specialties ?? [];
   } catch (err) {
     console.warn(`Could not fetch specialties for condition "${condition}":`, err);
     return [];
@@ -92,9 +106,16 @@ export async function getConditionSpecialties(
 }
 
 /**
- * Convenience helper used by page.tsx to fire a physician search
- * directly from a Trial object.  Returns null when the trial has no
- * geocoded location data (avoids a pointless 400 from the backend).
+ * Fire a physician search directly from a Trial object.
+ *
+ * Returns null when the trial has no geocoded location data (avoids a
+ * pointless 400 from the backend).
+ *
+ * FIX v3: `trialCondition` and `userSpecialty` previously both wrote to the
+ * `specialty` key — the second assignment silently overwrote the first.
+ * They now use distinct keys so the backend receives both:
+ *   specialty      → trial condition string (backend maps via resolve_with_broader)
+ *   user_specialty → explicit user override (OR'd with specialty results)
  */
 export async function getPhysiciansForTrial(
   trial:         Trial,
@@ -120,15 +141,20 @@ export async function getPhysiciansForTrial(
     lat:    site.lat,
     lng:    site.lon,
     radius,
-    // FIX: only add specialty when it is a non-empty string
-    ...(trialCondition.trim() ? { specialty: trialCondition.trim() } : {}),
-    ...(userSpecialty?.trim()  ? { specialty: userSpecialty.trim() } : {}),
+    // specialty = trial condition — backend maps this via resolve_with_broader()
+    ...(trialCondition.trim()  ? { specialty:      trialCondition.trim()  } : {}),
+    // user_specialty = explicit user override — OR'd with specialty results
+    ...(userSpecialty?.trim()  ? { user_specialty: userSpecialty.trim()   } : {}),
   };
 
+  const qs = new URLSearchParams(
+    Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== null && v !== "")
+      .map(([k, v]) => [k, String(v)]),
+  ).toString();
+
   return apiFetch<PhysicianFetchResponse>(
-    `/api/physicians/search?${new URLSearchParams(
-      Object.entries(params).map(([k, v]) => [k, String(v)]),
-    )}`,
+    `/api/physicians/search?${qs}`,
     undefined,
     signal,
   );

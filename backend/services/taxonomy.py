@@ -6,6 +6,17 @@ v2 changes:
   - Added CONDITION_MAP: maps plain-language condition queries to NUCC specialties.
   - search() now checks condition map first, then falls back to specialty matching.
   - resolve() helper returns the best NUCC display string for a raw user query.
+
+v3 changes:
+  - _condition_map_lookup() now uses 4-pass matching (exact → prefix → substring
+    key → token overlap) so multi-word trial conditions like "High Grade Sarcoma"
+    correctly map to ["Medical Oncology", "Surgical Oncology"] even though the key
+    stored in CONDITION_MAP is just "sarcoma" or "high grade sarcoma".
+  - resolve_with_broader() now runs condition-map lookup first, then expands each
+    hit through SPECIALTY_HIERARCHY, and only includes broader terms that actually
+    exist in the loaded NUCC taxonomy. This prevents phantom NPPES queries like
+    taxonomy_description=Oncology (not a real NUCC code) from silently returning
+    zero results.
 """
 
 import csv
@@ -67,6 +78,9 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "dizziness":              ["Neurology", "Otolaryngology"],
     "vertigo":                ["Otolaryngology", "Neurology"],
     "tinnitus":               ["Otolaryngology", "Neurology"],
+    "glioma":                 ["Neurology", "Neurosurgery", "Medical Oncology"],
+    "glioblastoma":           ["Neurology", "Neurosurgery", "Medical Oncology"],
+    "meningioma":             ["Neurosurgery", "Neurology"],
     # ── Cardiac ───────────────────────────────────────────────────────────────
     "heart":                  ["Cardiovascular Disease", "Interventional Cardiology"],
     "heart disease":          ["Cardiovascular Disease", "Interventional Cardiology"],
@@ -166,6 +180,7 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "tuberculosis":           ["Infectious Disease", "Pulmonary Disease"],
     "lung cancer":            ["Thoracic Surgery", "Medical Oncology", "Pulmonary Disease"],
     "pleural":                ["Thoracic Surgery", "Pulmonary Disease"],
+    "mesothelioma":           ["Thoracic Surgery", "Medical Oncology"],
     # ── Mental Health ─────────────────────────────────────────────────────────
     "depression":             ["Psychiatry"],
     "anxiety":                ["Psychiatry"],
@@ -264,19 +279,44 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "kidney cancer":          ["Urology", "Medical Oncology"],
     "skin cancer":            ["Dermatology", "Medical Oncology"],
     "head and neck cancer":   ["Otolaryngology", "Medical Oncology"],
-    # CRITICAL FIX: Sarcoma → Oncology mapping for physician search
-    # When user searches for conditions like "high grade sarcoma" or "soft tissue sarcoma",
-    # the system maps to Medical Oncology to find specialists
-    "sarcoma":                ["Medical Oncology", "Orthopedic Surgery"],
-    "soft tissue sarcoma":    ["Medical Oncology", "Surgical Oncology"],
-    "bone sarcoma":           ["Medical Oncology", "Orthopedic Surgery"],
-    "ewing sarcoma":          ["Medical Oncology", "Orthopedic Surgery"],
-    "rhabdomyosarcoma":       ["Medical Oncology", "Pediatric Hematology-Oncology"],
-    "high grade sarcoma":     ["Medical Oncology", "Surgical Oncology"],
+    "colorectal cancer":      ["Gastroenterology", "Medical Oncology", "Colon & Rectal Surgery"],
+    "colon cancer":           ["Gastroenterology", "Medical Oncology", "Colon & Rectal Surgery"],
+    "rectal cancer":          ["Colon & Rectal Surgery", "Medical Oncology"],
+    "pancreatic cancer":      ["Gastroenterology", "Medical Oncology"],
+    "bladder cancer":         ["Urology", "Medical Oncology"],
+    "thyroid cancer":         ["Endocrinology, Diabetes & Metabolism", "Medical Oncology"],
+    "hepatocellular":         ["Gastroenterology", "Medical Oncology"],
+    "cholangiocarcinoma":     ["Gastroenterology", "Medical Oncology"],
+    # ── Sarcoma (mapped explicitly for physician discovery) ───────────────────
+    "sarcoma":                ["Medical Oncology", "Orthopaedic Surgery"],
+    "soft tissue sarcoma":    ["Medical Oncology", "General Surgery"],
+    "bone sarcoma":           ["Medical Oncology", "Orthopaedic Surgery"],
+    "ewing sarcoma":          ["Medical Oncology", "Orthopaedic Surgery"],
+    "rhabdomyosarcoma":       ["Medical Oncology", "Pediatrics"],
+    "high grade sarcoma":     ["Medical Oncology", "General Surgery"],
+    "low grade sarcoma":      ["Medical Oncology", "Orthopaedic Surgery"],
+    "leiomyosarcoma":         ["Medical Oncology", "General Surgery"],
+    "liposarcoma":            ["Medical Oncology", "General Surgery"],
+    "osteosarcoma":           ["Medical Oncology", "Orthopaedic Surgery"],
+    "synovial sarcoma":       ["Medical Oncology", "Orthopaedic Surgery"],
+    "angiosarcoma":           ["Medical Oncology", "Vascular Surgery"],
+    "chondrosarcoma":         ["Medical Oncology", "Orthopaedic Surgery"],
+    # ── Other oncology terms ──────────────────────────────────────────────────
     "chemotherapy":           ["Medical Oncology"],
     "radiation":              ["Radiation Oncology"],
     "biopsy":                 ["Medical Oncology"],
     "breast reconstruction":  ["Plastic Surgery", "Medical Oncology"],
+    "immunotherapy":          ["Medical Oncology", "Allergy & Immunology"],
+    "targeted therapy":       ["Medical Oncology"],
+    "clinical trial":         ["Medical Oncology"],
+    "carcinoma":              ["Medical Oncology"],
+    "adenocarcinoma":         ["Medical Oncology"],
+    "squamous cell":          ["Dermatology", "Medical Oncology"],
+    "malignant":              ["Medical Oncology"],
+    "metastatic":             ["Medical Oncology"],
+    "metastasis":             ["Medical Oncology"],
+    "neoplasm":               ["Medical Oncology"],
+    "neoplasia":              ["Medical Oncology"],
     # ── Kidney / Urology ──────────────────────────────────────────────────────
     "kidney":                 ["Nephrology", "Urology"],
     "kidney disease":         ["Nephrology"],
@@ -533,121 +573,81 @@ CONDITION_MAP: Dict[str, List[str]] = {
 #  SPECIALTY HIERARCHY MAP (broader categories)
 # ─────────────────────────────────────────────
 # Maps specific/niche specialties to their broader parent categories.
-# This enables physician search to find specialists when searching by
-# more specific conditions that map to broader specialty areas.
+# IMPORTANT: only list broader terms that actually appear in _SEED_TAXONOMY
+# as display names — otherwise resolve() returns the raw string and NPPES
+# gets a query it cannot match.
 
 SPECIALTY_HIERARCHY: Dict[str, List[str]] = {
-    # Oncology → broader Cancer/Oncology
-    "Medical Oncology": ["Oncology", "Cancer"],
-    "Surgical Oncology": ["Oncology", "Cancer"],
-    "Radiation Oncology": ["Oncology", "Cancer"],
-    "Hematology & Oncology": ["Oncology", "Cancer", "Hematology"],
-    "Pediatric Hematology-Oncology": ["Oncology", "Cancer", "Pediatric Oncology"],
-    
-    # Specific cancers → broader Oncology
-    "Gynecologic Oncology": ["Oncology", "Cancer"],
-    "Pediatric Oncology": ["Oncology", "Cancer"],
-    
-    # Neurology sub-specialties → broader Neurology
-    "Neurology": ["Brain & Nervous System"],
-    "Neurosurgery": ["Brain & Nervous System"],
-    
-    # Cardiac → broader Cardiovascular
-    "Cardiovascular Disease": ["Cardiology", "Heart"],
-    "Interventional Cardiology": ["Cardiology", "Heart"],
-    "Cardiac Surgery": ["Cardiology", "Heart"],
-    
-    # Orthopedic → broader Orthopaedic
-    "Orthopaedic Surgery": ["Orthopedics"],
-    "Sports Medicine": ["Orthopedics"],
-    
-    # GI → broader Gastroenterology
-    "Gastroenterology": ["GI"],
-    "Colon & Rectal Surgery": ["GI"],
-    
-    # Pulmonary → broader Respiratory
-    "Pulmonary Disease": ["Respiratory", "Lung"],
-    "Sleep Medicine": ["Respiratory"],
-    
+    # Oncology sub-specialties expand to each other so OR search casts a wide net
+    "Medical Oncology":              ["Hematology & Oncology", "Radiation Oncology"],
+    "Surgical Oncology":             ["Medical Oncology", "General Surgery"],
+    "Radiation Oncology":            ["Medical Oncology"],
+    "Hematology & Oncology":         ["Medical Oncology"],
+
+    # Neurology / Neurosurgery
+    "Neurology":                     ["Neurosurgery"],
+    "Neurosurgery":                  ["Neurology"],
+
+    # Cardiac
+    "Cardiovascular Disease":        ["Interventional Cardiology", "Cardiac Surgery"],
+    "Interventional Cardiology":     ["Cardiovascular Disease"],
+    "Cardiac Surgery":               ["Cardiovascular Disease", "Thoracic Surgery"],
+
+    # Orthopaedic
+    "Orthopaedic Surgery":           ["Sports Medicine"],
+    "Sports Medicine":               ["Orthopaedic Surgery", "Physical Medicine & Rehabilitation"],
+
+    # GI
+    "Gastroenterology":              ["Colon & Rectal Surgery"],
+    "Colon & Rectal Surgery":        ["Gastroenterology", "General Surgery"],
+
+    # Pulmonary
+    "Pulmonary Disease":             ["Sleep Medicine", "Thoracic Surgery"],
+    "Sleep Medicine":                ["Pulmonary Disease"],
+
     # Endocrine
-    "Endocrinology, Diabetes & Metabolism": ["Endocrine", "Metabolism"],
-    
+    "Endocrinology, Diabetes & Metabolism": ["Internal Medicine"],
+
     # Rheumatology
-    "Rheumatology": ["Autoimmune", "Inflammatory"],
-    
+    "Rheumatology":                  ["Internal Medicine", "Allergy & Immunology"],
+
     # Nephrology
-    "Nephrology": ["Kidney"],
-    
-    # Urology
-    "Urology": ["Urinary"],
-    
-    # Psychiatry sub-specialties → broader Mental Health
-    "Psychiatry": ["Mental Health"],
-    "Addiction Medicine": ["Mental Health", "Addiction"],
-    
-    # Pain Medicine
-    "Pain Medicine": ["Pain Management"],
-    
+    "Nephrology":                    ["Internal Medicine"],
+
+    # Psychiatry
+    "Psychiatry":                    ["Addiction Medicine"],
+    "Addiction Medicine":            ["Psychiatry", "Pain Medicine"],
+
+    # Pain
+    "Pain Medicine":                 ["Anesthesiology", "Physical Medicine & Rehabilitation"],
+
     # Geriatrics
-    "Geriatric Medicine": ["Geriatrics", "Elderly Care"],
+    "Geriatric Medicine":            ["Internal Medicine", "Family Medicine"],
+
+    # Thoracic
+    "Thoracic Surgery":              ["Cardiac Surgery", "General Surgery"],
+
+    # Vascular
+    "Vascular Surgery":              ["General Surgery"],
+
+    # Infectious Disease
+    "Infectious Disease":            ["Internal Medicine"],
+
+    # Urology
+    "Urology":                       ["General Surgery"],
+
+    # OB/GYN
+    "Obstetrics & Gynecology":       ["General Surgery"],
 }
 
-# Reverse mapping: broader category → specific specialties
+# Reverse mapping built at module load (not used directly in resolution
+# but available for future tooling / admin endpoints)
 _BROADER_TO_SPECIFIC: Dict[str, List[str]] = {}
-for specific, broader_list in SPECIALTY_HIERARCHY.items():
-    for broader in broader_list:
-        if broader not in _BROADER_TO_SPECIFIC:
-            _BROADER_TO_SPECIFIC[broader] = []
-        if specific not in _BROADER_TO_SPECIFIC[broader]:
-            _BROADER_TO_SPECIFIC[broader].append(specific)
-
-
-def get_broader_specialties(specialty: str) -> List[str]:
-    """
-    Get broader specialty categories for a given specialty.
-    Returns the original specialty plus any broader categories.
-    
-    Example:
-        "High Grade Sarcoma" → "Medical Oncology" → returns ["Medical Oncology", "Oncology", "Cancer"]
-    """
-    results = [specialty]
-    
-    # First check if the specialty itself is a key in hierarchy
-    if specialty in SPECIALTY_HIERARCHY:
-        results.extend(SPECIALTY_HIERARCHY[specialty])
-    
-    # Also check if any broader category matches this specialty
-    for broader, specifics in _BROADER_TO_SPECIFIC.items():
-        if specialty.lower() == broader.lower():
-            results.extend(specifics)
-            break
-    
-    return list(dict.fromkeys(results))  # Remove duplicates, preserve order
-
-
-def resolve_with_broader(q: str) -> List[str]:
-    """
-    Resolve a specialty query and return all related specialties
-    (exact match + broader categories).
-    
-    Returns list of specialty descriptions to use in OR search.
-    """
-    # First resolve the exact specialty
-    exact = resolve(q)
-    if not exact:
-        return [q] if q else []
-    
-    # Get broader categories for this specialty
-    broader = get_broader_specialties(exact)
-    
-    # Resolve each broader category to actual NUCC taxonomy names
-    all_specialties = []
-    for spec in broader:
-        resolved = resolve(spec)
-        if resolved and resolved not in all_specialties:
-            all_specialties.append(resolved)
-    
-    return all_specialties
+for _specific, _broader_list in SPECIALTY_HIERARCHY.items():
+    for _broader in _broader_list:
+        _BROADER_TO_SPECIFIC.setdefault(_broader, [])
+        if _specific not in _BROADER_TO_SPECIFIC[_broader]:
+            _BROADER_TO_SPECIFIC[_broader].append(_specific)
 
 
 # ─────────────────────────────────────────────
@@ -733,6 +733,9 @@ _SEED_TAXONOMY = [
     ("Hospital", "General Acute Care Hospital"),
 ]
 
+# Build a set of all valid seed display names for fast membership tests
+_SEED_DISPLAY_NAMES: set = set()
+
 
 def _build_entries(rows: List[tuple]) -> List[Dict]:
     out, seen = [], set()
@@ -758,6 +761,11 @@ def _load_taxonomy_background() -> None:
     global _taxonomy_loaded, _taxonomy_source
 
     seed = _build_entries(_SEED_TAXONOMY)
+
+    # Populate the seed display name set for resolve_with_broader guard
+    global _SEED_DISPLAY_NAMES
+    _SEED_DISPLAY_NAMES = {e["display"] for e in seed}
+
     with _taxonomy_lock:
         _taxonomy_entries[:] = seed
         _taxonomy_loaded = True
@@ -775,6 +783,8 @@ def _load_taxonomy_background() -> None:
         ]
         if rows:
             live = _build_entries(rows)
+            # Update the display name set with live entries too
+            _SEED_DISPLAY_NAMES = {e["display"] for e in live}
             with _taxonomy_lock:
                 _taxonomy_entries[:] = live
                 _taxonomy_source = "NUCC CSV"
@@ -787,15 +797,58 @@ def initialize() -> None:
     threading.Thread(target=_load_taxonomy_background, daemon=True, name="tax-loader").start()
 
 
+# ─────────────────────────────────────────────
+#  CORE LOOKUP FUNCTIONS
+# ─────────────────────────────────────────────
+
 def _condition_map_lookup(q: str) -> Optional[List[str]]:
-    q = q.lower().strip()
-    if q in CONDITION_MAP:
-        return CONDITION_MAP[q]
-    if len(q) >= 3:
-        candidates = [key for key in CONDITION_MAP if key.startswith(q)]
-        if candidates:
-            best_key = max(candidates, key=len)
-            return CONDITION_MAP[best_key]
+    """
+    Resolve a condition/specialty string to a list of NUCC specialty names
+    via CONDITION_MAP using a 4-pass strategy:
+
+      1. Exact match            — "high grade sarcoma" → direct key hit
+      2. Prefix match           — q starts with a known key
+      3. Substring key match    — a known key appears anywhere in q
+                                  e.g. "metastatic soft tissue sarcoma" contains
+                                  "soft tissue sarcoma"
+      4. Token overlap          — any meaningful token (≥4 chars) in q matches
+                                  the start of a key
+                                  e.g. "sarcoma" token in q hits key "sarcoma"
+
+    Longer / more specific keys are preferred at every pass to avoid over-broad
+    matches (e.g. "cancer" when "breast cancer" also matches).
+    """
+    q_lower = q.lower().strip()
+    if not q_lower:
+        return None
+
+    # Pass 1: exact
+    if q_lower in CONDITION_MAP:
+        return CONDITION_MAP[q_lower]
+
+    # Pass 2: q starts with a known key (original prefix behaviour)
+    prefix_candidates = [k for k in CONDITION_MAP if q_lower.startswith(k)]
+    if prefix_candidates:
+        return CONDITION_MAP[max(prefix_candidates, key=len)]
+
+    # Pass 3: a map key is a substring of q — prefer the most specific (longest) key
+    if len(q_lower) >= 3:
+        contained = [k for k in CONDITION_MAP if k in q_lower]
+        if contained:
+            return CONDITION_MAP[max(contained, key=len)]
+
+    # Pass 4: token overlap — any word (≥4 chars) in q matches the start of a key
+    tokens = [t for t in q_lower.split() if len(t) >= 4]
+    best_key: Optional[str] = None
+    best_len = 0
+    for token in tokens:
+        for key in CONDITION_MAP:
+            if key.startswith(token) and len(key) > best_len:
+                best_key = key
+                best_len = len(key)
+    if best_key:
+        return CONDITION_MAP[best_key]
+
     return None
 
 
@@ -809,7 +862,7 @@ def search(q: str, limit: int = 12) -> List[Dict]:
         with _taxonomy_lock:
             entries_snapshot = list(_taxonomy_entries)
         results = []
-        seen = set()
+        seen: set = set()
         for specialty_name in condition_specialties:
             for e in entries_snapshot:
                 if e["display"].lower() == specialty_name.lower() and e["display"] not in seen:
@@ -826,7 +879,7 @@ def search(q: str, limit: int = 12) -> List[Dict]:
         entries = list(_taxonomy_entries)
 
     scored: List[tuple] = []
-    seen: set = set()
+    seen_display: set = set()
 
     for e in entries:
         st = e["search_text"]
@@ -846,8 +899,8 @@ def search(q: str, limit: int = 12) -> List[Dict]:
         elif any(w in st for w in q_words):
             score = 30
 
-        if score > 0 and d not in seen:
-            seen.add(d)
+        if score > 0 and d not in seen_display:
+            seen_display.add(d)
             scored.append((score, d, e["classification"]))
 
     return [
@@ -857,9 +910,80 @@ def search(q: str, limit: int = 12) -> List[Dict]:
 
 
 def resolve(q: str) -> str:
+    """Return the best-matching NUCC display name for q, or q itself if no match."""
     matches = search(q, limit=1)
     return matches[0]["display"] if matches else q
 
+
+def resolve_with_broader(q: str) -> List[str]:
+    """
+    Resolve a condition/specialty query and return all NUCC-valid specialty
+    names to use in an OR-based NPPES physician search.
+
+    Resolution order:
+      1. Try CONDITION_MAP via _condition_map_lookup() (4-pass matching).
+         This handles raw trial conditions like "High Grade Sarcoma Phase 2"
+         which map directly to ["Medical Oncology", "General Surgery"].
+      2. For each mapped specialty, expand via SPECIALTY_HIERARCHY to pick up
+         closely related specialties (e.g. Medical Oncology → Hematology &
+         Oncology, Radiation Oncology).
+      3. Only include a specialty if it actually resolves to a real NUCC entry
+         in the currently loaded taxonomy — this prevents abstract labels like
+         "Oncology" or "Cancer" (not real NUCC codes) from producing empty
+         NPPES results.
+      4. If no condition-map hit, try resolve() directly (handles cases where
+         the user typed an actual specialty name like "Medical Oncology").
+      5. Fallback: return [q] so callers always have something to query.
+
+    Returns a deduplicated list preserving priority order.
+    """
+    if not q:
+        return []
+
+    all_specialties: List[str] = []
+
+    def _add_if_valid(name: str) -> None:
+        """
+        Add `name` only if it resolves to a known NUCC entry AND it hasn't
+        been added already.  This guards against abstract broader terms like
+        "Oncology" that are not real NUCC taxonomy codes.
+        """
+        resolved = resolve(name)
+        # resolve() returns the input unchanged when nothing matched in the
+        # taxonomy.  We accept it only when the raw name itself IS a seed entry.
+        is_in_taxonomy = (
+            resolved != name                    # resolve found something different → real match
+            or name in _SEED_DISPLAY_NAMES      # raw name is a confirmed seed entry
+        )
+        if is_in_taxonomy and resolved not in all_specialties:
+            all_specialties.append(resolved)
+
+    # ── Step 1: condition-map lookup (handles clinical-trial conditions) ──────
+    condition_hits = _condition_map_lookup(q)
+    if condition_hits:
+        for specialty_name in condition_hits:
+            _add_if_valid(specialty_name)
+            # ── Step 2: expand each hit through the hierarchy ─────────────────
+            for broader in SPECIALTY_HIERARCHY.get(specialty_name, []):
+                _add_if_valid(broader)
+        # Return early — condition map is authoritative for clinical conditions
+        if all_specialties:
+            return all_specialties
+
+    # ── Step 3: direct specialty resolve (user typed "Medical Oncology" etc.) ──
+    exact = resolve(q)
+    if exact and exact not in all_specialties:
+        all_specialties.append(exact)
+        for broader in SPECIALTY_HIERARCHY.get(exact, []):
+            _add_if_valid(broader)
+
+    # ── Step 4: fallback ──────────────────────────────────────────────────────
+    return all_specialties if all_specialties else [q]
+
+
+# ─────────────────────────────────────────────
+#  STATUS / INFO
+# ─────────────────────────────────────────────
 
 def is_loaded() -> bool:
     return _taxonomy_loaded

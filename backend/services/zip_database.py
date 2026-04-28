@@ -40,6 +40,10 @@ _zip_db_lock = threading.Lock()
 _zip_index: Dict[Tuple[int, int], List] = {}
 _zip_index_lock = threading.Lock()
 
+# City/State lookup: ZIP code -> (city, state)
+_zip_location: Dict[str, Tuple[str, str]] = {}
+_zip_location_lock = threading.Lock()
+
 _ZIP_FALLBACK: Dict[str, Tuple[float, float]] = {
     "10001": (40.7506, -73.9971), "90210": (34.0901, -118.4065),
     "60601": (41.8859, -87.6181), "77030": (29.7079, -95.4010),
@@ -69,10 +73,13 @@ def _load_zip_database() -> None:
     """Load ZIP database from cache or download from GeoNames."""
     local_cache = cfg.ZIP_DB_PATH
 
-    def _apply(db: Dict) -> None:
+    def _apply(db: Dict, locations: Dict) -> None:
         with _zip_db_lock:
             _zip_db.clear()
             _zip_db.update(db)
+        with _zip_location_lock:
+            _zip_location.clear()
+            _zip_location.update(locations)
         _build_spatial_index(db)
         _zip_db_ready.set()
         logger.info("ZIP db ready: %d entries", len(_zip_db))
@@ -82,7 +89,15 @@ def _load_zip_database() -> None:
         try:
             with open(local_cache) as f:
                 raw = json.load(f)
-            _apply({k: (float(v[0]), float(v[1])) for k, v in raw.items()})
+            # Check if it's the new format with locations
+            if "zips" in raw:
+                db = {k: (float(v[0]), float(v[1])) for k, v in raw["zips"].items()}
+                locs = raw.get("locations", {})
+                _apply(db, locs)
+            else:
+                # Old format - just coordinates
+                db = {k: (float(v[0]), float(v[1])) for k, v in raw.items()}
+                _apply(db, {})
             logger.info("ZIP db loaded from disk cache")
             return
         except Exception as e:
@@ -101,25 +116,39 @@ def _load_zip_database() -> None:
             content = f.read().decode("utf-8", errors="replace")
 
         db: Dict = {}
+        locations: Dict[str, Tuple[str, str]] = {}
         for line in content.splitlines():
             parts = line.split("\t")
-            if len(parts) >= 11:
+            if len(parts) >= 4:
                 try:
-                    db[parts[1].strip()] = (float(parts[9]), float(parts[10]))
+                    zipcode = parts[1].strip()
+                    city = parts[2].strip() if len(parts) > 2 else ""
+                    state = parts[3].strip() if len(parts) > 3 else ""
+                    lat = float(parts[9]) if len(parts) > 9 else 0.0
+                    lng = float(parts[10]) if len(parts) > 10 else 0.0
+                    
+                    if zipcode and lat and lng:
+                        db[zipcode] = (lat, lng)
+                        if city and state:
+                            locations[zipcode] = (city, state)
                 except (ValueError, IndexError):
                     pass
 
         # FIX v2.1.3: cast to str before concatenating ".tmp" to avoid
         # TypeError: unsupported operand type(s) for +: 'PosixPath' and 'str'
         tmp = str(local_cache) + ".tmp"
+        cache_data = {
+            "zips": {k: list(v) for k, v in db.items()},
+            "locations": locations,
+        }
         with open(tmp, "w") as f:
-            json.dump({k: list(v) for k, v in db.items()}, f)
+            json.dump(cache_data, f)
         os.replace(tmp, local_cache)
-        _apply(db)
+        _apply(db, locations)
 
     except Exception as e:
         logger.error("ZIP db download failed: %s — using fallback", e)
-        _apply(_ZIP_FALLBACK)
+        _apply(_ZIP_FALLBACK, {})
 
 
 def initialize(background: bool = True) -> None:
@@ -213,3 +242,23 @@ def find_zips_in_radius(
 
     result.sort()
     return [z for _, z in result]
+
+
+def get_zip_location(zipcode: str) -> Tuple[Optional[str], Optional[str]]:
+    """Get city and state for a ZIP code."""
+    z = str(zipcode or "")[:5].strip()
+    with _zip_location_lock:
+        v = _zip_location.get(z)
+    return (v[0], v[1]) if v else (None, None)
+
+
+def get_cities_by_state() -> Dict[str, List[str]]:
+    """Get all cities grouped by state for validation."""
+    cities_by_state: Dict[str, Set[str]] = {}
+    with _zip_location_lock:
+        for zipcode, (city, state) in _zip_location.items():
+            if state and city:
+                if state not in cities_by_state:
+                    cities_by_state[state] = set()
+                cities_by_state[state].add(city)
+    return {state: sorted(list(cities)) for state, cities in cities_by_state.items()}
