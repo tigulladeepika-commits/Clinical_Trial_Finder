@@ -136,76 +136,6 @@ async def search_trials(
     )
 
 
-@router.get("/{nct_id}/sites", response_model=TrialSitesResponse)
-async def get_trial_sites(nct_id: str, response: Response = None) -> TrialSitesResponse:
-    """
-    Return the title and all site locations for a single trial.
-    The frontend uses this to populate the map and site list.
-    
-    HTTP Caching (Issue #6): Cache for 24 hours since trial sites don't change
-    frequently. Users who click back or re-select the same trial get instant results.
-    """
-    if response:
-        response.headers["Cache-Control"] = "public, max-age=86400"  # 24 hours
-    
-    try:
-        data = fetch_study_detail(nct_id)
-    except Exception as exc:
-        logger.exception("Error fetching sites for %s: %s", nct_id, exc)
-        raise HTTPException(status_code=502, detail=f"Could not fetch trial {nct_id}") from exc
-
-    if not data:
-        raise HTTPException(status_code=404, detail=f"Trial {nct_id} not found")
-
-    protocol       = data.get("protocolSection", {})
-    id_module      = protocol.get("identificationModule", {})
-    contacts       = protocol.get("contactsLocationsModule", {})
-    status_mod     = protocol.get("statusModule", {})
-    overall_status = status_mod.get("overallStatus")
-
-    title = id_module.get("briefTitle") or nct_id
-
-    raw_locations = contacts.get("locations") or []
-    sites: list[SiteLocation] = []
-    for loc in raw_locations:
-        geo      = loc.get("geoPoint") or {}
-        s_status = loc.get("recruitmentStatus") or overall_status
-        sites.append(SiteLocation(
-            facility = loc.get("facility"),
-            city     = loc.get("city"),
-            state    = loc.get("state"),
-            country  = loc.get("country"),
-            status   = s_status,
-            lat      = geo.get("lat"),
-            lon      = geo.get("lon"),
-        ))
-
-    return TrialSitesResponse(title=title, sites=sites)
-
-
-@router.get("/{nct_id}")
-async def get_trial(nct_id: str, response: Response = None) -> dict[str, Any]:
-    """
-    Return full trial details (all protocol sections).
-    
-    HTTP Caching (Issue #6): Cache for 24 hours since trial data is static.
-    Users viewing the same trial multiple times or bookmarking will benefit from cache.
-    """
-    if response:
-        response.headers["Cache-Control"] = "public, max-age=86400"  # 24 hours
-    
-    try:
-        data = fetch_study_detail(nct_id)
-    except Exception as exc:
-        logger.exception("Error fetching trial %s: %s", nct_id, exc)
-        raise HTTPException(status_code=502, detail=f"Could not fetch trial {nct_id}") from exc
-
-    if not data:
-        raise HTTPException(status_code=404, detail=f"Trial {nct_id} not found")
-
-    return data
-
-
 @router.get("/condition/{condition}/specialties")
 async def get_condition_specialties(condition: str, response: Response = None) -> dict[str, Any]:
     """
@@ -342,3 +272,80 @@ async def validate_city_state_endpoint(
             logger.warning("Error validating city/state: %s", exc)
             # Don't block search on validation errors
             return {"isValid": True}
+    
+    return {"isValid": True}
+
+
+# ── Generic trial detail endpoints (must come AFTER specific routes) ────────
+
+@router.get("/{nct_id}/sites", response_model=TrialSitesResponse)
+async def get_trial_sites(nct_id: str, response: Response = None) -> TrialSitesResponse:
+    """
+    Return the title and all site locations for a single trial.
+    The frontend uses this to populate the map and site list.
+    
+    HTTP Caching (Issue #6): Cache for 24 hours since trial sites don't change
+    frequently. Users who click back or re-select the same trial get instant results.
+    """
+    if response:
+        response.headers["Cache-Control"] = "public, max-age=86400"  # 24 hours
+    
+    try:
+        data = fetch_study_detail(nct_id)
+    except Exception as exc:
+        logger.exception("Error fetching sites for %s: %s", nct_id, exc)
+        raise HTTPException(status_code=502, detail=f"Could not fetch trial {nct_id}") from exc
+
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Trial {nct_id} not found")
+
+    protocol       = data.get("protocolSection", {})
+    id_module      = protocol.get("identificationModule", {})
+    contacts       = protocol.get("contactsLocationsModule", {})
+    status_mod     = protocol.get("statusModule", {})
+    overall_status = status_mod.get("overallStatus")
+
+    title = id_module.get("briefTitle") or nct_id
+
+    raw_locations = contacts.get("locations") or []
+    sites: list[SiteLocation] = []
+    for loc in raw_locations:
+        geo      = loc.get("geoPoint") or {}
+        s_status = loc.get("recruitmentStatus") or overall_status
+        sites.append(SiteLocation(
+            facility = loc.get("facility"),
+            city     = loc.get("city"),
+            state    = loc.get("state"),
+            country  = loc.get("country"),
+            status   = s_status,
+            lat      = geo.get("lat"),
+            lon      = geo.get("lon"),
+        ))
+
+    return TrialSitesResponse(title=title, sites=sites)
+
+
+@router.get("/{nct_id}")
+async def get_trial(nct_id: str, response: Response = None) -> dict[str, Any]:
+    """
+    Return full trial details (all protocol sections).
+    
+    HTTP Caching (Issue #6): Cache for 24 hours since trial data is static.
+    Users viewing the same trial multiple times or bookmarking will benefit from cache.
+    """
+    if response:
+        response.headers["Cache-Control"] = "public, max-age=86400"  # 24 hours
+    
+    try:
+        data = fetch_study_detail(nct_id)
+    except Exception as exc:
+        logger.exception("Error fetching trial %s: %s", nct_id, exc)
+        raise HTTPException(status_code=502, detail=f"Could not fetch trial {nct_id}") from exc
+
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Trial {nct_id} not found")
+
+    return data
+
+
+# End of trials router
