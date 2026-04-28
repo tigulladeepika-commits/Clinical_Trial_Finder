@@ -76,21 +76,27 @@ async def search_physicians(
         raise HTTPException(status_code=422, detail=str(exc))
 
     # ── 2. Resolve specialties (OR logic) ─────────────────────────────────────
+    # Use resolve_with_broader to get both exact specialty AND broader categories.
+    # This ensures that if a condition maps to a specific specialty like "Medical Oncology",
+    # we also search for broader categories like "Oncology" and "Cancer".
     descriptions: list[str] = []
 
     if specialty:
         clean = sanitise(specialty, cfg.MAX_DESC_LEN)
         if clean:
-            resolved = tax_service.resolve(clean)
-            descriptions.append(resolved)
+            # Get all related specialties (exact + broader categories)
+            resolved_specialties = tax_service.resolve_with_broader(clean)
+            descriptions.extend(resolved_specialties)
 
     if user_specialty:
         clean = sanitise(user_specialty, cfg.MAX_DESC_LEN)
         if clean:
-            resolved = tax_service.resolve(clean)
-            # Only add if not already present (avoids duplicate NPPES queries)
-            if resolved not in descriptions:
-                descriptions.append(resolved)
+            # Get all related specialties for user-entered specialty too
+            resolved_specialties = tax_service.resolve_with_broader(clean)
+            for spec in resolved_specialties:
+                # Only add if not already present (avoids duplicate NPPES queries)
+                if spec not in descriptions:
+                    descriptions.append(spec)
 
     logger.info(
         "Physician search | lat=%.4f lng=%.4f radius=%.1fmi descriptions=%s",

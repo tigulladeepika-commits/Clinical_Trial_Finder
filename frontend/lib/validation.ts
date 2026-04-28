@@ -63,6 +63,85 @@ export async function initializeCityStateValidation(): Promise<void> {
  * Returns { isValid, error } where:
  * - isValid=true if city is valid for state or either is empty
  * - error=message if invalid (e.g., "Boston is not in California")
+ * 
+ * This function first checks local data, then falls back to backend validation
+ * for more accurate and up-to-date city/state combinations.
+ */
+export async function validateCityStateAsync(
+  city: string | null | undefined,
+  state: string | null | undefined
+): Promise<{ isValid: boolean; error?: string }> {
+  // Both empty is valid (no filter applied)
+  if (!city && !state) {
+    return { isValid: true };
+  }
+
+  // If only city is provided (no state filter), allow it
+  if (city && !state) {
+    return { isValid: true };
+  }
+
+  // If only state is provided (no city filter), allow it
+  if (!city && state) {
+    return { isValid: true };
+  }
+
+  // Both provided — validate combination
+  if (city && state) {
+    const cityLower = city.trim().toLowerCase();
+    const stateCities = CITIES_BY_STATE[state];
+
+    // If we don't have data for this state, try backend validation
+    if (!stateCities) {
+      return validateWithBackend(city, state);
+    }
+
+    // Check if city is in this state's city list
+    if (!stateCities.has(cityLower)) {
+      // Try backend validation as fallback
+      const backendResult = await validateWithBackend(city, state);
+      if (backendResult.isValid) {
+        return { isValid: true };
+      }
+      return {
+        isValid: false,
+        error: `"${city}" is not a city in ${STATE_CODE_TO_FULL[state] || state}`,
+      };
+    }
+
+    return { isValid: true };
+  }
+
+  return { isValid: true };
+}
+
+/**
+ * Validate city/state combination using the backend endpoint
+ */
+async function validateWithBackend(
+  city: string | null | undefined,
+  state: string | null | undefined
+): Promise<{ isValid: boolean; error?: string }> {
+  try {
+    const params = new URLSearchParams();
+    if (city) params.set("city", city);
+    if (state) params.set("state", state);
+    
+    const response = await fetch(`/api/trials/validate-city-state?${params.toString()}`);
+    if (response.ok) {
+      const data = await response.json();
+      return { isValid: data.isValid, error: data.error };
+    }
+  } catch (err) {
+    console.warn("Backend city/state validation failed:", err);
+  }
+  
+  // If backend fails, allow the search (fail open)
+  return { isValid: true };
+}
+
+/**
+ * Synchronous validation for immediate feedback (uses cached data only)
  */
 export function validateCityState(
   city: string | null | undefined,

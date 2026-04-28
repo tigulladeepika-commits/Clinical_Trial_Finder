@@ -3,7 +3,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { TrialSearchFilters }           from "@/types/trial";
-import { validateCityState, formatValidationError } from "@/lib/validation";
+import { validateCityStateAsync, formatValidationError } from "@/lib/validation";
 
 const STATUSES = [
   "",
@@ -84,11 +84,12 @@ export default function SearchForm({
     initialValues.phase,
   ]);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (!condition.trim()) return;
     
     // CRITICAL FIX: Validate city/state combination before searching
-    const validation = validateCityState(city, state);
+    // Use async validation that falls back to backend if local data is stale
+    const validation = await validateCityStateAsync(city, state);
     if (!validation.isValid) {
       setValidationError(validation.error || "Invalid city/state combination");
       // Show error for 5 seconds
@@ -233,7 +234,7 @@ export default function SearchForm({
                 fontSize: 11, fontWeight: 700, color: "#2563eb",
                 textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 6,
               }}>
-                · ClinicalTrials.gov
+                ClinicalTrials.gov
               </div>
               <h2 style={{ fontSize: 28, fontWeight: 700, color: "#0d1117", margin: 0, lineHeight: 1.2 }}>
                 Find a <em style={{ color: "#2563eb", fontStyle: "italic" }}>clinical trial</em> near you
@@ -271,16 +272,48 @@ export default function SearchForm({
             )}
           </div>
 
-          {/* CRITICAL FIX: Display city/state validation error */}
+          {/* CRITICAL FIX: Display city/state validation error as prominent popup */}
           {validationError && (
             <div style={{
-              marginBottom: 14, padding: "12px 14px",
-              background: "#fee2e2", border: "1px solid #fca5a5",
-              borderRadius: 8, fontSize: 13, color: "#991b1b",
-              fontWeight: 500, display: "flex", alignItems: "center", gap: 8,
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              zIndex: 9999,
+              padding: "24px 32px",
+              background: "#fef2f2",
+              border: "2px solid #dc2626",
+              borderRadius: 12,
+              boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
+              fontSize: 15,
+              color: "#991b1b",
+              fontWeight: 600,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 12,
+              maxWidth: 400,
+              textAlign: "center",
             }}>
-              <span style={{ fontSize: 16 }}>⚠️</span>
-              {validationError}
+              <div style={{ fontSize: 32 }}>⚠️</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>Invalid City/State</div>
+              <div>{validationError}</div>
+              <button
+                onClick={() => setValidationError(null)}
+                style={{
+                  marginTop: 8,
+                  padding: "8px 24px",
+                  background: "#dc2626",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                OK
+              </button>
             </div>
           )}
 

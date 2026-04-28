@@ -31,6 +31,7 @@ from services.clinicaltrials_api import (
     fetch_study_detail,
     validate_city,
     validate_state,
+    STATE_ABBREV_TO_FULL,
 )
 from services import taxonomy as tax_service
 
@@ -284,3 +285,60 @@ async def get_cities_by_state(response: Response = None) -> dict[str, list[str]]
         logger.exception("Error building cities-by-state: %s", exc)
         # Return empty on error; frontend will gracefully degrade
         return {}
+
+
+@router.get("/validate-city-state")
+async def validate_city_state_endpoint(
+    city:  str | None = Query(None, description="City name to validate"),
+    state: str | None = Query(None, description="2-letter state abbreviation"),
+) -> dict[str, Any]:
+    """
+    Validate that a city belongs to the selected state.
+    
+    Returns { isValid: bool, error?: string } for frontend to display
+    a clear popup message if the combination is invalid.
+    
+    This endpoint provides server-side validation as a fallback when
+    the frontend's cached city list is stale or incomplete.
+    """
+    # Both empty is valid
+    if not city and not state:
+        return {"isValid": True}
+    
+    # City only (no state) is valid
+    if city and not state:
+        return {"isValid": True}
+    
+    # State only (no city) is valid
+    if not city and state:
+        return {"isValid": True}
+    
+    # Both provided — validate combination
+    if city and state:
+        try:
+            from services import zip_database
+            if not zip_database.is_ready():
+                zip_database.wait_for_ready(cfg.ZIP_DB_WAIT)
+            
+            # Look up the city in the ZIP database for this state
+            city_normalized = city.strip().lower()
+            state_normalized = state.upper()
+            
+            # Search ZIP data for matching city/state
+            for entry in zip_database._zip_data:
+                entry_state = entry.get("state", "").upper()
+                entry_city = entry.get("city", "").lower()
+                
+                if entry_state == state_normalized and entry_city == city_normalized:
+                    return {"isValid": True}
+            
+            # City not found in this state
+            state_full = STATE_ABBREV_TO_FULL.get(state_normalized.lower(), state)
+            return {
+                "isValid": False,
+                "error": f'Invalid city/state combination: "{city}" is not a city in {state_full}',
+            }
+        except Exception as exc:
+            logger.warning("Error validating city/state: %s", exc)
+            # Don't block search on validation errors
+            return {"isValid": True}

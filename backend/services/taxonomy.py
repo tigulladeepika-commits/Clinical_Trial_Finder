@@ -530,6 +530,127 @@ CONDITION_MAP: Dict[str, List[str]] = {
 
 
 # ─────────────────────────────────────────────
+#  SPECIALTY HIERARCHY MAP (broader categories)
+# ─────────────────────────────────────────────
+# Maps specific/niche specialties to their broader parent categories.
+# This enables physician search to find specialists when searching by
+# more specific conditions that map to broader specialty areas.
+
+SPECIALTY_HIERARCHY: Dict[str, List[str]] = {
+    # Oncology → broader Cancer/Oncology
+    "Medical Oncology": ["Oncology", "Cancer"],
+    "Surgical Oncology": ["Oncology", "Cancer"],
+    "Radiation Oncology": ["Oncology", "Cancer"],
+    "Hematology & Oncology": ["Oncology", "Cancer", "Hematology"],
+    "Pediatric Hematology-Oncology": ["Oncology", "Cancer", "Pediatric Oncology"],
+    
+    # Specific cancers → broader Oncology
+    "Gynecologic Oncology": ["Oncology", "Cancer"],
+    "Pediatric Oncology": ["Oncology", "Cancer"],
+    
+    # Neurology sub-specialties → broader Neurology
+    "Neurology": ["Brain & Nervous System"],
+    "Neurosurgery": ["Brain & Nervous System"],
+    
+    # Cardiac → broader Cardiovascular
+    "Cardiovascular Disease": ["Cardiology", "Heart"],
+    "Interventional Cardiology": ["Cardiology", "Heart"],
+    "Cardiac Surgery": ["Cardiology", "Heart"],
+    
+    # Orthopedic → broader Orthopaedic
+    "Orthopaedic Surgery": ["Orthopedics"],
+    "Sports Medicine": ["Orthopedics"],
+    
+    # GI → broader Gastroenterology
+    "Gastroenterology": ["GI"],
+    "Colon & Rectal Surgery": ["GI"],
+    
+    # Pulmonary → broader Respiratory
+    "Pulmonary Disease": ["Respiratory", "Lung"],
+    "Sleep Medicine": ["Respiratory"],
+    
+    # Endocrine
+    "Endocrinology, Diabetes & Metabolism": ["Endocrine", "Metabolism"],
+    
+    # Rheumatology
+    "Rheumatology": ["Autoimmune", "Inflammatory"],
+    
+    # Nephrology
+    "Nephrology": ["Kidney"],
+    
+    # Urology
+    "Urology": ["Urinary"],
+    
+    # Psychiatry sub-specialties → broader Mental Health
+    "Psychiatry": ["Mental Health"],
+    "Addiction Medicine": ["Mental Health", "Addiction"],
+    
+    # Pain Medicine
+    "Pain Medicine": ["Pain Management"],
+    
+    # Geriatrics
+    "Geriatric Medicine": ["Geriatrics", "Elderly Care"],
+}
+
+# Reverse mapping: broader category → specific specialties
+_BROADER_TO_SPECIFIC: Dict[str, List[str]] = {}
+for specific, broader_list in SPECIALTY_HIERARCHY.items():
+    for broader in broader_list:
+        if broader not in _BROADER_TO_SPECIFIC:
+            _BROADER_TO_SPECIFIC[broader] = []
+        if specific not in _BROADER_TO_SPECIFIC[broader]:
+            _BROADER_TO_SPECIFIC[broader].append(specific)
+
+
+def get_broader_specialties(specialty: str) -> List[str]:
+    """
+    Get broader specialty categories for a given specialty.
+    Returns the original specialty plus any broader categories.
+    
+    Example:
+        "High Grade Sarcoma" → "Medical Oncology" → returns ["Medical Oncology", "Oncology", "Cancer"]
+    """
+    results = [specialty]
+    
+    # First check if the specialty itself is a key in hierarchy
+    if specialty in SPECIALTY_HIERARCHY:
+        results.extend(SPECIALTY_HIERARCHY[specialty])
+    
+    # Also check if any broader category matches this specialty
+    for broader, specifics in _BROADER_TO_SPECIFIC.items():
+        if specialty.lower() == broader.lower():
+            results.extend(specifics)
+            break
+    
+    return list(dict.fromkeys(results))  # Remove duplicates, preserve order
+
+
+def resolve_with_broader(q: str) -> List[str]:
+    """
+    Resolve a specialty query and return all related specialties
+    (exact match + broader categories).
+    
+    Returns list of specialty descriptions to use in OR search.
+    """
+    # First resolve the exact specialty
+    exact = resolve(q)
+    if not exact:
+        return [q] if q else []
+    
+    # Get broader categories for this specialty
+    broader = get_broader_specialties(exact)
+    
+    # Resolve each broader category to actual NUCC taxonomy names
+    all_specialties = []
+    for spec in broader:
+        resolved = resolve(spec)
+        if resolved and resolved not in all_specialties:
+            all_specialties.append(resolved)
+    
+    return all_specialties
+
+
+# ─────────────────────────────────────────────
 #  SEED TAXONOMY
 # ─────────────────────────────────────────────
 
