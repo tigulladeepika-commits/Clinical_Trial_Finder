@@ -1,13 +1,18 @@
 // hooks/usePhysicians.ts
 // Manages all state for physician search triggered by a selected trial site.
 //
-// Fixes applied:
-//  - AbortController signal is properly forwarded to fetchPhysicians so
-//    in-flight requests are actually cancelled on new searches.
-//  - loadMore reveals next PAGE_SIZE results from the already-fetched
-//    full dataset — no extra network request needed.
-//  - `search` is exposed as `search` (not `searchPhysicians`) to keep
-//    the hook's public API consistent with how page.tsx calls it.
+// v4 changes:
+//  - Tracks `initialSpecialtyRef`: the specialty string from the user's very
+//    first search is captured once and forwarded on every subsequent search as
+//    `initial_specialty`, so it is always OR-included even when the user edits
+//    the specialty field or runs a follow-up search with a different value.
+//  - Exposes `searchSpecialties: string[]` — the resolved specialty list
+//    returned by the backend — so the UI (PhysicianPanel) can display a
+//    "Searching: Medical Oncology · Orthopedic Surgery" breadcrumb.
+//  - `search` signature extended: accepts `initialSpecialty?` (the value to
+//    pin) and `userSpecialty?` (the additional explicit override).
+//  - AbortController signal is properly forwarded to fetchPhysicians.
+//  - loadMore reveals next PAGE_SIZE results from the already-fetched dataset.
 
 "use client";
 
@@ -19,57 +24,66 @@ import type {
   SelectedSite,
 } from "@/types/physician";
 
-/** Number of physician cards visible per page. */
 export const PAGE_SIZE = 10;
 
 export interface PhysicianState {
-  /** Full dataset returned by the backend. */
-  allPhysicians: Physician[];
-  /** Visible slice (first `page × PAGE_SIZE` items). */
-  physicians:    Physician[];
-  total:         number;
-  loading:       boolean;
-  error:         string | null;
-  /** true once at least one search has completed (success or error). */
-  searched:      boolean;
-  radiusMiles:   number;
-  zipsSearched:  number;
-  /** 1-based page index. */
-  page:          number;
-  /** true when there are more physicians to reveal. */
-  hasMore:       boolean;
+  allPhysicians:     Physician[];
+  physicians:        Physician[];
+  total:             number;
+  loading:           boolean;
+  error:             string | null;
+  searched:          boolean;
+  radiusMiles:       number;
+  zipsSearched:      number;
+  page:              number;
+  hasMore:           boolean;
+  /** Resolved specialty strings that were actually searched (for UI display). */
+  searchSpecialties: string[];
 }
 
 const INITIAL: PhysicianState = {
-  allPhysicians: [],
-  physicians:    [],
-  total:         0,
-  loading:       false,
-  error:         null,
-  searched:      false,
-  radiusMiles:   25,
-  zipsSearched:  0,
-  page:          1,
-  hasMore:       false,
+  allPhysicians:     [],
+  physicians:        [],
+  total:             0,
+  loading:           false,
+  error:             null,
+  searched:          false,
+  radiusMiles:       25,
+  zipsSearched:      0,
+  page:              1,
+  hasMore:           false,
+  searchSpecialties: [],
 };
 
 export function usePhysicians() {
-  const [state, setState] = useState<PhysicianState>(INITIAL);
-  const abortRef = useRef<AbortController | null>(null);
+  const [state, setState]   = useState<PhysicianState>(INITIAL);
+  const abortRef            = useRef<AbortController | null>(null);
+
+  /**
+   * Captures the specialty string from the user's very first search.
+   * This ref persists across re-searches so `initial_specialty` is always
+   * forwarded to the backend, even when the user later edits the field.
+   */
+  const initialSpecialtyRef = useRef<string | undefined>(undefined);
 
   // ── search ──────────────────────────────────────────────────────────────
-  // CRITICAL FIX: Handle both mapped specialty (from condition) and user-entered specialty
-  // If user enters something different from the initial condition, it's treated as user_specialty
   const search = useCallback(async (
-    site:           SelectedSite,
-    radius:         number = 25,
-    specialty?:     string,  // Mapped specialties from condition (e.g., "Medical Oncology, Surgical Oncology")
-    userSpecialty?: string,  // User-entered override specialty
+    site:              SelectedSite,
+    radius:            number  = 25,
+    specialty?:        string,   // raw trial condition (mapped by backend)
+    userSpecialty?:    string,   // additional specialty explicitly entered by user
+    initialSpecialty?: string,   // specialty from the user's first search (captured once)
   ) => {
-    // Cancel in-flight request AND the outbound HTTP call.
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // Capture the initial specialty once — first non-empty value wins.
+    // Priority: explicit initialSpecialty arg → userSpecialty → specialty
+    if (!initialSpecialtyRef.current) {
+      const first = (initialSpecialty ?? userSpecialty ?? specialty ?? "").trim();
+      if (first) initialSpecialtyRef.current = first;
+    }
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
@@ -78,33 +92,31 @@ export function usePhysicians() {
         lat:    site.lat,
         lng:    site.lng,
         radius,
-        ...(specialty?.trim()      ? { specialty: specialty.trim() } : {}),
-        ...(userSpecialty?.trim()  ? { user_specialty: userSpecialty.trim() } : {}),
+        ...(specialty?.trim()                   ? { specialty:         specialty.trim()                   } : {}),
+        ...(initialSpecialtyRef.current?.trim() ? { initial_specialty: initialSpecialtyRef.current.trim() } : {}),
+        ...(userSpecialty?.trim()               ? { user_specialty:    userSpecialty.trim()               } : {}),
       };
 
-      // FIX: pass controller.signal so the fetch is actually cancelled.
       const result = await fetchPhysicians(params, controller.signal);
-
       if (controller.signal.aborted) return;
 
       const firstPage = result.physicians.slice(0, PAGE_SIZE);
 
       setState({
-        allPhysicians: result.physicians,
-        physicians:    firstPage,
-        total:         result.total,
-        loading:       false,
-        error:         null,
-        searched:      true,
-        radiusMiles:   result.radius_miles,
-        zipsSearched:  result.zips_searched,
-        page:          1,
-        hasMore:       result.physicians.length > PAGE_SIZE,
+        allPhysicians:     result.physicians,
+        physicians:        firstPage,
+        total:             result.total,
+        loading:           false,
+        error:             null,
+        searched:          true,
+        radiusMiles:       result.radius_miles,
+        zipsSearched:      result.zips_searched,
+        page:              1,
+        hasMore:           result.physicians.length > PAGE_SIZE,
+        searchSpecialties: result.search_specialties ?? [],
       });
     } catch (err: unknown) {
-      // AbortError is intentional — silently swallow it.
       if ((err as Error).name === "AbortError") return;
-
       setState((prev) => ({
         ...prev,
         loading:  false,
@@ -115,17 +127,11 @@ export function usePhysicians() {
   }, []);
 
   // ── loadMore ─────────────────────────────────────────────────────────────
-  /**
-   * Reveal the next PAGE_SIZE physicians from the already-fetched dataset.
-   * No network request is made.
-   */
   const loadMore = useCallback(() => {
     setState((prev) => {
       if (!prev.hasMore) return prev;
-
       const nextPage  = prev.page + 1;
       const nextSlice = prev.allPhysicians.slice(0, nextPage * PAGE_SIZE);
-
       return {
         ...prev,
         physicians: nextSlice,
@@ -138,6 +144,7 @@ export function usePhysicians() {
   // ── reset ────────────────────────────────────────────────────────────────
   const reset = useCallback(() => {
     abortRef.current?.abort();
+    initialSpecialtyRef.current = undefined;
     setState(INITIAL);
   }, []);
 

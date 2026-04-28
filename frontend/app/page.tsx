@@ -66,6 +66,7 @@ function HomeInner() {
     search:      searchPhysicians,
     loadMore:    loadMorePhysicians,
     reset:       resetPhysicians,
+    searchSpecialties: physiciansSearchSpecialties,
   } = usePhysicians();
 
   const prevConditionRef = useRef(filtersFromUrl.condition);
@@ -191,15 +192,25 @@ function HomeInner() {
     searchPhysicians(site, 25, mappedSpecialty);
   }, [resetPhysicians, searchPhysicians]);
 
-  const handlePhysicianSearch = useCallback((radius: number, specialty: string) => {
-    if (!selectedSite) return;
-    
-    // CRITICAL FIX: If user-entered specialty differs from initial condition,
-    // pass it as user_specialty (not specialty). This allows the backend to
-    // search both mapped specialties AND user-entered specialty with OR logic.
-    const userEntered = specialty?.trim() && specialty !== selectedSite.condition?.trim() ? specialty.trim() : undefined;
-    searchPhysicians(selectedSite, radius, initialSpecialties || undefined, userEntered);
-  }, [searchPhysicians, selectedSite, initialSpecialties]);
+  // EDIT 1: Updated handlePhysicianSearch to accept and forward all four params
+  const handlePhysicianSearch = useCallback(
+    (
+      radius:           number,
+      specialty:        string,
+      userSpecialty:    string,
+      initialSpecialty: string,
+    ) => {
+      if (!selectedSite) return;
+      searchPhysicians(
+        selectedSite,
+        radius,
+        specialty        || undefined,
+        userSpecialty    || undefined,
+        initialSpecialty || undefined,
+      );
+    },
+    [selectedSite, searchPhysicians],
+  );
 
   const handleBackToSites = useCallback(() => {
     setSelectedSite(null);
@@ -625,6 +636,7 @@ function HomeInner() {
                     )}
 
                     {siteData && !sitesLoading && selectedSite && (
+                      /* EDIT 2: Added searchSpecialties prop */
                       <PhysicianPanel
                         site={selectedSite}
                         physicians={nearbyPhysicians}
@@ -633,6 +645,7 @@ function HomeInner() {
                         error={physiciansError}
                         searched={physiciansSearched}
                         hasMore={physiciansHasMore}
+                        searchSpecialties={physiciansSearchSpecialties}
                         onSearch={handlePhysicianSearch}
                         onLoadMore={loadMorePhysicians}
                         onBack={handleBackToSites}

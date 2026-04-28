@@ -1,13 +1,15 @@
 // lib/api.ts
 //
-// v3 changes:
-//  - getPhysiciansForTrial(): fixed bug where both trialCondition and
-//    userSpecialty were assigned to the `specialty` key — the second
-//    overwrote the first. They now use their correct distinct keys:
-//    `specialty` for the trial condition, `user_specialty` for the
-//    explicit user override. This ensures the backend receives both
-//    and applies OR logic across all resolved specialties.
-//  - getConditionSpecialties(): no functional changes; JSDoc updated.
+// v4 changes:
+//  - PhysicianSearchParams now has three specialty fields:
+//      specialty         — raw trial condition (backend maps via resolve_with_broader)
+//      initial_specialty — the specialty from the user's very first search;
+//                          forwarded on every subsequent search so it is always
+//                          OR-included even when the user edits the field.
+//      user_specialty    — any additional specialty explicitly typed by the user.
+//  - fetchPhysicians / getPhysiciansForTrial both forward all three fields.
+//  - PhysicianFetchResponse now includes search_specialties[] so the UI
+//    can display which specialties were actually searched.
 
 import type { TrialFetchParams, TrialFetchResponse, SiteData, Trial } from "@/types/trial";
 import type {
@@ -26,7 +28,6 @@ async function apiFetch<T>(
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
-    // signal must come after the options spread so it is never overwritten
     ...(signal ? { signal } : {}),
   });
 
@@ -108,22 +109,20 @@ export async function getConditionSpecialties(
 /**
  * Fire a physician search directly from a Trial object.
  *
- * Returns null when the trial has no geocoded location data (avoids a
- * pointless 400 from the backend).
+ * Passes all three specialty inputs to the backend so they are OR-combined:
+ *   specialty         — trial condition (mapped via resolve_with_broader)
+ *   initial_specialty — specialty from the user's first search (always included)
+ *   user_specialty    — any additional specialty the user typed explicitly
  *
- * FIX v3: `trialCondition` and `userSpecialty` previously both wrote to the
- * `specialty` key — the second assignment silently overwrote the first.
- * They now use distinct keys so the backend receives both:
- *   specialty      → trial condition string (backend maps via resolve_with_broader)
- *   user_specialty → explicit user override (OR'd with specialty results)
+ * Returns null when the trial has no geocoded location data.
  */
 export async function getPhysiciansForTrial(
-  trial:         Trial,
-  userSpecialty: string | null = null,
-  radius:        number        = 25,
-  signal?:       AbortSignal,
+  trial:            Trial,
+  userSpecialty:    string | null = null,
+  initialSpecialty: string | null = null,
+  radius:           number        = 25,
+  signal?:          AbortSignal,
 ): Promise<PhysicianFetchResponse | null> {
-  // Prefer the first site that has coordinates; fall back to the first site.
   const site =
     trial.locations?.find((s) => s.lat != null && s.lon != null) ??
     trial.locations?.[0];
@@ -141,10 +140,9 @@ export async function getPhysiciansForTrial(
     lat:    site.lat,
     lng:    site.lon,
     radius,
-    // specialty = trial condition — backend maps this via resolve_with_broader()
-    ...(trialCondition.trim()  ? { specialty:      trialCondition.trim()  } : {}),
-    // user_specialty = explicit user override — OR'd with specialty results
-    ...(userSpecialty?.trim()  ? { user_specialty: userSpecialty.trim()   } : {}),
+    ...(trialCondition.trim()    ? { specialty:          trialCondition.trim()    } : {}),
+    ...(initialSpecialty?.trim() ? { initial_specialty:  initialSpecialty.trim()  } : {}),
+    ...(userSpecialty?.trim()    ? { user_specialty:     userSpecialty.trim()     } : {}),
   };
 
   const qs = new URLSearchParams(

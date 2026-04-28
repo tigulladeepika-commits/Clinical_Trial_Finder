@@ -1,14 +1,15 @@
 // types/physician.ts
 
 export interface Physician {
-  npi:             string;
-  name:            string;
-  taxonomy_desc?:  string | null;
-  address?:        string | null;
-  phone?:          string | null;
-  lat?:            number | null;
-  lng?:            number | null;
-  distance_miles?: number | null;
+  npi:                string;
+  name:               string;
+  taxonomy_desc?:     string | null;
+  address?:           string | null;
+  phone?:             string | null;
+  lat?:               number | null;
+  lng?:               number | null;
+  distance_miles?:    number | null;
+  matched_specialty?: string | null;   // which specialty bucket this physician matched
 }
 
 export interface SelectedSite {
@@ -22,18 +23,20 @@ export interface SelectedSite {
 }
 
 export interface PhysicianSearchParams {
-  lat:             number;
-  lng:             number;
-  radius:          number;
-  specialty?:      string;  // Can be comma-separated for multiple mapped specialties
-  user_specialty?: string;  // User-entered specialty (explicit override)
+  lat:                number;
+  lng:                number;
+  radius:             number;
+  specialty?:         string;   // raw trial condition → backend maps via resolve_with_broader
+  initial_specialty?: string;   // specialty from the user's very first search (always OR-included)
+  user_specialty?:    string;   // additional specialty explicitly entered by user
 }
 
 export interface PhysicianFetchResponse {
-  physicians:    Physician[];
-  total:         number;
-  radius_miles:  number;
-  zips_searched: number;
+  physicians:         Physician[];
+  total:              number;
+  radius_miles:       number;
+  zips_searched:      number;
+  search_specialties: string[];  // resolved specialty list that was actually searched (for UI display)
 }
 
 export interface LeadPayload {
