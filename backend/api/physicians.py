@@ -6,29 +6,11 @@ Accepts a trial site's lat/lng (from ClinicalTrials.gov geoPoint),
 a search radius in miles, and optional specialty filters.
 Returns up to MAX_DISPLAY physicians geocoded and sorted by distance.
 
-Flow:
-  1. Validate lat / lng / radius
-  2. Resolve nearby ZIP codes from zip_database
-  3. Fan out NPPES queries per ZIP (+ optional taxonomy filter)
-  4. Parse, deduplicate, geocode, distance-filter
-  5. Return top MAX_DISPLAY results with full address + coords
-
 Changes:
-  - Change #4: Radius filtering now uses address-level geocoded coordinates
-    as the primary distance source. ZIP centroid coords are only used as a
-    pre-filter (cheap pass), and the final strict filter always uses the
-    most precise coords available.
-  - Change #1: lat/lng/radius are validated before any downstream calls.
-  - Change #SPECIALTY: Three specialty inputs are now accepted and combined
-    with OR logic:
-      specialty         — raw condition/specialty extracted from the trial;
-                          resolved via resolve_with_broader() to real NUCC codes.
-      initial_specialty — the specialty the user searched with originally;
-                          always included even when user edits the field.
-      user_specialty    — any additional specialty the user explicitly enters
-                          in the override field.
-    All three are resolved independently and merged (de-duplicated). NPPES
-    is queried once per unique resolved specialty string.
+  - v2: specialty / initial_specialty / user_specialty now accept repeated
+    query params (List[str]) so the frontend can send multiple values per
+    field without joining them into a comma string. Each value is resolved
+    independently via resolve_with_broader() and OR-combined.
 """
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -69,13 +51,16 @@ def _resolve_specialty_input(raw: Optional[str]) -> list[str]:
 @router.get("/search")
 async def search_physicians(
     request:           Request,
-    lat:               float          = Query(...,  description="Latitude of trial site"),
-    lng:               float          = Query(...,  description="Longitude of trial site"),
-    radius:            float          = Query(25.0, description="Search radius in miles (1–100)"),
-    specialty:         Optional[str]  = Query(None, description="Resolved from trial condition (raw condition text)"),
-    initial_specialty: Optional[str]  = Query(None, description="Specialty used in the user's very first search — always OR-included"),
-    user_specialty:    Optional[str]  = Query(None, description="Extra specialty explicitly entered by the user"),
-    response:          Response       = None,
+    lat:               float                   = Query(...,  description="Latitude of trial site"),
+    lng:               float                   = Query(...,  description="Longitude of trial site"),
+    radius:            float                   = Query(25.0, description="Search radius in miles (1–100)"),
+    # ── Each specialty field now accepts repeated params ──────────────────────
+    # Frontend sends: specialty=Thoracic+Surgery&specialty=Medical+Oncology
+    # FastAPI collects them into a List[str] automatically.
+    specialty:         Optional[List[str]]     = Query(None, description="Resolved from trial condition — multiple allowed"),
+    initial_specialty: Optional[List[str]]     = Query(None, description="Specialty from user's first search — multiple allowed"),
+    user_specialty:    Optional[List[str]]     = Query(None, description="Extra specialty entered by user — multiple allowed"),
+    response:          Response                = None,
 ):
     # ── HTTP Caching ──────────────────────────────────────────────────────────
     if response:
@@ -94,17 +79,17 @@ async def search_physicians(
 
     # ── 2. Resolve all specialty inputs → unified OR list ─────────────────────
     #
-    # Each of the three inputs is resolved independently via resolve_with_broader()
-    # which tries exact NUCC match → prefix → substring → token overlap.
-    # Results are merged with OR (de-duplicated, order preserved):
-    #   [specialty results] + [initial_specialty results] + [user_specialty results]
+    # Each field is now a List[str] (one entry per repeated param).
+    # Every string in every list is resolved independently via
+    # resolve_with_broader() and merged with OR (de-duplicated).
     #
-    # If NONE of the inputs produce a resolved specialty (e.g. unrecognised
-    # condition with no taxonomy mapping) we fall back to including the raw
-    # strings themselves so NPPES still gets something to query against.
+    # Example:
+    #   specialty=["Thoracic Surgery", "Medical Oncology"]
+    #   initial_specialty=["Medical Oncology", "Hematology & Oncology"]
+    #   → resolves each independently, deduplicates, unions all results
 
     descriptions: list[str] = []
-    seen_descs: set[str] = set()
+    seen_descs:   set[str]  = set()
 
     def _add_resolved(raw: Optional[str]) -> None:
         resolved = _resolve_specialty_input(raw)
@@ -113,14 +98,19 @@ async def search_physicians(
                 seen_descs.add(spec)
                 descriptions.append(spec)
 
-    _add_resolved(specialty)
-    _add_resolved(initial_specialty)
-    _add_resolved(user_specialty)
+    # Iterate over each list, resolve each item individually
+    for s in (specialty         or []):
+        _add_resolved(s)
+    for s in (initial_specialty or []):
+        _add_resolved(s)
+    for s in (user_specialty    or []):
+        _add_resolved(s)
 
-    # Fallback: if nothing resolved, include the raw strings so NPPES still
-    # receives something to search (better than returning zero results).
+    # Fallback: if nothing resolved, include raw strings so NPPES still gets
+    # something to query against (better than returning zero results).
     if not descriptions:
-        for raw in [specialty, initial_specialty, user_specialty]:
+        all_raw = (specialty or []) + (initial_specialty or []) + (user_specialty or [])
+        for raw in all_raw:
             if raw:
                 clean = sanitise(raw, cfg.MAX_DESC_LEN)
                 if clean and clean not in seen_descs:
@@ -130,7 +120,8 @@ async def search_physicians(
     logger.info(
         "Physician search | lat=%.4f lng=%.4f radius=%.1fmi "
         "specialty=%r initial_specialty=%r user_specialty=%r → descriptions=%s",
-        lat, lng, radius, specialty, initial_specialty, user_specialty,
+        lat, lng, radius,
+        specialty, initial_specialty, user_specialty,
         descriptions or "any",
     )
 
@@ -142,18 +133,18 @@ async def search_physicians(
 
     if not nearby_zips:
         return {
-            "physicians":        [],
-            "total":             0,
-            "radius_miles":      radius,
-            "zips_searched":     0,
+            "physicians":         [],
+            "total":              0,
+            "radius_miles":       radius,
+            "zips_searched":      0,
             "search_specialties": descriptions,
         }
 
     # ── 4. NPPES fan-out per ZIP × specialty ──────────────────────────────────
-    seen_npis: set[str] = set()
+    seen_npis:      set[str]  = set()
     raw_physicians: list[dict] = []
-    zip_batch = nearby_zips[: cfg.MAX_ZIP_QUERIES]
-    early_stop_threshold = cfg.MAX_DISPLAY * 2
+    zip_batch             = nearby_zips[: cfg.MAX_ZIP_QUERIES]
+    early_stop_threshold  = cfg.MAX_DISPLAY * 2
 
     for zipcode in zip_batch:
         if len(raw_physicians) >= early_stop_threshold:
@@ -182,10 +173,10 @@ async def search_physicians(
 
     if not raw_physicians:
         return {
-            "physicians":        [],
-            "total":             0,
-            "radius_miles":      radius,
-            "zips_searched":     len(zip_batch),
+            "physicians":         [],
+            "total":              0,
+            "radius_miles":       radius,
+            "zips_searched":      len(zip_batch),
             "search_specialties": descriptions,
         }
 
@@ -209,10 +200,10 @@ async def search_physicians(
 
     if not pre_filtered:
         return {
-            "physicians":        [],
-            "total":             0,
-            "radius_miles":      radius,
-            "zips_searched":     len(zip_batch),
+            "physicians":         [],
+            "total":              0,
+            "radius_miles":       radius,
+            "zips_searched":      len(zip_batch),
             "search_specialties": descriptions,
         }
 
@@ -243,5 +234,5 @@ async def search_physicians(
         "total":              len(precise),
         "radius_miles":       radius,
         "zips_searched":      len(zip_batch),
-        "search_specialties": descriptions,   # tell UI exactly what was searched
+        "search_specialties": descriptions,
     }
