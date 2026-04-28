@@ -1,17 +1,14 @@
 // components/physicians/PhysicianPanel.tsx
 //
-// v4 changes:
-//  - Tracks `initialSpecialty` (the value on the very first Search press)
-//    in a ref. Passed to onSearch so usePhysicians can forward it as
-//    `initial_specialty` on every subsequent search.
-//  - Separates "condition specialty" (pre-filled from trial, passed as
-//    `specialty`) from "user specialty" (anything the user types that
-//    differs from the trial condition, passed as `user_specialty`).
-//  - Displays a "Searching: X · Y · Z" breadcrumb using `searchSpecialties`
-//    returned from the backend, so the user can see which resolved NUCC
-//    specialties were actually queried.
-//  - onSearch callback signature updated:
-//      onSearch(radius, specialty, userSpecialty, initialSpecialty)
+// v5 changes:
+//  - Map is now the dominant element — fills the top ~45% of the panel
+//  - Controls (specialty input + radius + search button) collapsed into a
+//    single compact toolbar above the map, not stacked below a header
+//  - Specialty breadcrumb chips sit inline in the toolbar row (no extra banner)
+//  - Physician list scrolls below the map; card height tightened
+//  - "Back to Sites" moved to a small icon button in the toolbar so it
+//    doesn't consume its own row
+//  - onSearch callback signature: (radius, specialty, userSpecialty, initialSpecialty)
 
 "use client";
 
@@ -29,7 +26,7 @@ interface Props {
   error:             string | null;
   searched:          boolean;
   hasMore:           boolean;
-  searchSpecialties: string[];   // resolved specialties from the backend
+  searchSpecialties: string[];
   onSearch:          (
     radius:           number,
     specialty:        string,
@@ -60,27 +57,16 @@ export default function PhysicianPanel({
   const [leadPhys,  setLeadPhys]  = useState<Physician | null>(null);
   const [selectedNpi, setSelectedNpi] = useState<string | null>(null);
 
-  /**
-   * The specialty value from the very first Search press.
-   * Captured once; forwarded on every subsequent search as initialSpecialty
-   * so the backend always OR-includes it even when the user edits the field.
-   */
   const initialSpecialtyRef = useRef<string>("");
 
   const handleSearch = useCallback(() => {
-    // Capture initial specialty on the first press only
     if (!initialSpecialtyRef.current) {
       initialSpecialtyRef.current = specialty.trim();
     }
-
-    // Determine whether the current field value differs from the trial condition.
-    // If so, treat the current value as a `user_specialty` override to OR in.
     const isConditionOverridden =
       specialty.trim().toLowerCase() !== (site.condition ?? "").trim().toLowerCase();
-
     const trialSpecialty = site.condition?.trim() ?? "";
     const userSpecialty  = isConditionOverridden ? specialty.trim() : "";
-
     onSearch(radius, trialSpecialty, userSpecialty, initialSpecialtyRef.current);
   }, [radius, specialty, site.condition, onSearch]);
 
@@ -95,225 +81,360 @@ export default function PhysicianPanel({
   }, [onLoadMore]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <>
+      <style>{`
+        .pp-shell {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          overflow: hidden;
+          font-family: 'DM Sans', system-ui, sans-serif;
+        }
 
-      {/* ── Header ── */}
-      <div style={{
-        padding: "12px 20px", borderBottom: "1px solid #e4e8f0",
-        background: "#fff", flexShrink: 0,
-        display: "flex", alignItems: "center", gap: 10,
-      }}>
-        <button
-          onClick={onBack}
-          style={{
-            height: 32, padding: "0 12px", background: "transparent",
-            border: "1px solid #e4e8f0", borderRadius: 8,
-            fontSize: 12, fontWeight: 500, color: "#4b5563",
-            cursor: "pointer", fontFamily: "inherit",
-            display: "flex", alignItems: "center", gap: 4,
-            flexShrink: 0, transition: "all 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            const b = e.currentTarget as HTMLButtonElement;
-            b.style.background = "#f6f7fb"; b.style.borderColor = "#cdd3e0"; b.style.color = "#0d1117";
-          }}
-          onMouseLeave={(e) => {
-            const b = e.currentTarget as HTMLButtonElement;
-            b.style.background = "transparent"; b.style.borderColor = "#e4e8f0"; b.style.color = "#4b5563";
-          }}
-        >
-          ← Back to Sites
-        </button>
-        <div style={{ flex: 1, overflow: "hidden" }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#0d1117", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {site.facility || "Site"}
+        /* ── Toolbar ── */
+        .pp-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          padding: 8px 14px;
+          background: #fff;
+          border-bottom: 1px solid #e4e8f0;
+          flex-shrink: 0;
+          flex-wrap: wrap;
+        }
+        .pp-back-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 30px;
+          width: 30px;
+          background: transparent;
+          border: 1px solid #e4e8f0;
+          border-radius: 7px;
+          cursor: pointer;
+          font-size: 14px;
+          color: #4b5563;
+          flex-shrink: 0;
+          transition: all 0.15s;
+        }
+        .pp-back-btn:hover {
+          background: #f1f5f9;
+          border-color: #cbd5e1;
+          color: #0d1117;
+        }
+        .pp-site-label {
+          flex: 1;
+          min-width: 0;
+        }
+        .pp-site-name {
+          font-size: 12px;
+          font-weight: 700;
+          color: #0d1117;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .pp-site-sub {
+          font-size: 10px;
+          color: #94a3b8;
+          font-weight: 500;
+        }
+        .pp-specialty-input {
+          flex: 2 1 130px;
+          height: 30px;
+          padding: 0 10px;
+          border: 1px solid #e4e8f0;
+          border-radius: 7px;
+          font-size: 11px;
+          color: #0d1117;
+          background: #f8fafc;
+          outline: none;
+          font-family: inherit;
+          min-width: 0;
+          transition: border-color 0.15s;
+        }
+        .pp-specialty-input:focus { border-color: #2563eb; background: #fff; }
+        .pp-radius-select {
+          flex: 0 0 90px;
+          height: 30px;
+          padding: 0 6px;
+          border: 1px solid #e4e8f0;
+          border-radius: 7px;
+          font-size: 11px;
+          color: #0d1117;
+          background: #f8fafc;
+          outline: none;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .pp-search-btn {
+          height: 30px;
+          padding: 0 13px;
+          background: #2563eb;
+          color: #fff;
+          border: none;
+          border-radius: 7px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          font-family: inherit;
+          flex-shrink: 0;
+          letter-spacing: 0.2px;
+          transition: background 0.15s;
+        }
+        .pp-search-btn:hover:not(:disabled) { background: #1d4ed8; }
+        .pp-search-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+        /* ── Specialty chips row ── */
+        .pp-chips-row {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 14px;
+          background: #f0f9ff;
+          border-bottom: 1px solid #bae6fd;
+          flex-shrink: 0;
+          flex-wrap: wrap;
+        }
+        .pp-chips-label {
+          font-size: 10px;
+          font-weight: 700;
+          color: #0369a1;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+          flex-shrink: 0;
+        }
+        .pp-chip {
+          display: inline-flex;
+          align-items: center;
+          background: #0284c7;
+          color: #fff;
+          border-radius: 20px;
+          padding: 2px 9px;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.1px;
+        }
+
+        /* ── Map — dominant ── */
+        .pp-map-wrap {
+          flex: 0 0 42%;
+          min-height: 200px;
+          max-height: 380px;
+          position: relative;
+          overflow: hidden;
+          background: #e2e8f0;
+        }
+        .pp-map-empty {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          font-size: 12px;
+          color: #94a3b8;
+          font-weight: 500;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .pp-map-empty-icon { font-size: 28px; opacity: 0.4; }
+
+        /* ── List ── */
+        .pp-list {
+          flex: 1;
+          overflow-y: auto;
+          padding: 10px 14px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+        }
+        .pp-count-bar {
+          font-size: 11px;
+          color: #64748b;
+          font-weight: 600;
+          padding: 2px 0 4px;
+          letter-spacing: 0.2px;
+        }
+        .pp-count-bar strong { color: #0d1117; }
+
+        /* ── States ── */
+        .pp-center {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 36px 20px;
+          color: #94a3b8;
+          text-align: center;
+        }
+        .pp-spinner {
+          width: 24px; height: 24px;
+          border: 2.5px solid #e4e8f0;
+          border-top-color: #2563eb;
+          border-radius: 50%;
+          animation: ppSpin 0.7s linear infinite;
+        }
+        @keyframes ppSpin { to { transform: rotate(360deg); } }
+        .pp-state-msg { font-size: 13px; font-weight: 500; }
+        .pp-empty-icon { font-size: 30px; opacity: 0.5; }
+        .pp-empty-title { font-size: 13px; font-weight: 600; color: #4b5563; }
+        .pp-empty-sub   { font-size: 11px; }
+
+        .pp-error {
+          margin: 4px 0;
+          padding: 10px 12px;
+          border-radius: 9px;
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          color: #dc2626;
+          font-size: 12px;
+        }
+        .pp-error-label {
+          font-size: 9px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          margin-bottom: 3px;
+        }
+
+        .pp-load-more {
+          width: 100%;
+          padding: 9px;
+          border: 1px dashed #cbd5e1;
+          border-radius: 8px;
+          background: transparent;
+          font-size: 12px;
+          font-weight: 500;
+          color: #4b5563;
+          cursor: pointer;
+          font-family: inherit;
+          transition: all 0.15s;
+        }
+        .pp-load-more:hover {
+          background: #f1f5f9;
+          border-color: #2563eb;
+          color: #2563eb;
+        }
+      `}</style>
+
+      <div className="pp-shell">
+
+        {/* ── Compact toolbar: back · site info · specialty · radius · search ── */}
+        <div className="pp-toolbar">
+          <button className="pp-back-btn" onClick={onBack} title="Back to sites">←</button>
+
+          <div className="pp-site-label">
+            <div className="pp-site-name">{site.facility || "Site"}</div>
+            <div className="pp-site-sub">
+              {[site.city, site.state].filter(Boolean).join(", ")} · nearby physicians
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: "#8b95a1", marginTop: 1 }}>
-            {[site.city, site.state].filter(Boolean).join(", ")} · Nearby physicians
-          </div>
-        </div>
-      </div>
 
-      {/* ── Filter controls ── */}
-      <div style={{
-        padding: "10px 20px", borderBottom: "1px solid #e4e8f0",
-        background: "#fff", flexShrink: 0,
-        display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
-      }}>
-        {/*
-          The specialty field is pre-filled from the trial condition.
-          If the user leaves it unchanged → the backend maps it via resolve_with_broader().
-          If the user edits it           → treated as user_specialty (OR-combined on top
-          of the mapped condition results AND the initial specialty).
-        */}
-        <input
-          value={specialty}
-          onChange={(e) => setSpecialty(e.target.value)}
-          placeholder="Override specialty (optional)"
-          title={
-            site.condition
-              ? `Pre-filled from trial condition "${site.condition}". Edit to add an additional specialty (OR logic).`
-              : "Enter a specialty or condition to filter physicians"
-          }
-          style={{
-            flex: "2 1 140px", height: 32, padding: "0 10px",
-            border: "1px solid #e4e8f0", borderRadius: 8,
-            fontSize: 12, color: "#0d1117", background: "#f6f7fb",
-            outline: "none", fontFamily: "inherit",
-          }}
-          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-        />
-        <select
-          value={radius}
-          onChange={(e) => setRadius(Number(e.target.value))}
-          style={{
-            flex: "0 0 100px", height: 32, padding: "0 8px",
-            border: "1px solid #e4e8f0", borderRadius: 8,
-            fontSize: 12, color: "#0d1117", background: "#f6f7fb",
-            outline: "none", cursor: "pointer", fontFamily: "inherit",
-          }}
-        >
-          {RADIUS_OPTIONS.map((r) => (
-            <option key={r} value={r}>{r} mi radius</option>
-          ))}
-        </select>
-        <button
-          onClick={handleSearch}
-          disabled={loading}
-          style={{
-            height: 32, padding: "0 14px",
-            background: loading ? "#cdd3e0" : "#2563eb",
-            color: "#fff", border: "none", borderRadius: 8,
-            fontSize: 12, fontWeight: 600,
-            cursor: loading ? "not-allowed" : "pointer",
-            fontFamily: "inherit", flexShrink: 0, transition: "background 0.15s",
-          }}
-        >
-          {loading ? "…" : "Search"}
-        </button>
-      </div>
-
-      {/* ── Specialty breadcrumb ── */}
-      {searchSpecialties.length > 0 && (
-        <div style={{
-          padding: "7px 20px", borderBottom: "1px solid #e4e8f0",
-          background: "#f0f9ff", flexShrink: 0,
-          display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6,
-          fontSize: 11,
-        }}>
-          <span style={{ color: "#0369a1", fontWeight: 600, marginRight: 2 }}>Searching:</span>
-          {searchSpecialties.map((s) => (
-            <span
-              key={s}
-              style={{
-                background: "#0284c7", color: "#fff",
-                borderRadius: 20, padding: "2px 9px",
-                fontWeight: 500, fontSize: 11,
-              }}
-            >
-              {s}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* ── Map (shown once we have results) ── */}
-      {searched && physicians.length > 0 && (
-        <div style={{ flexShrink: 0, padding: "12px 16px 0" }}>
-          <PhysicianMap
-            physicians={physicians}
-            selectedSite={site}
-            selectedNpi={selectedNpi}
-            onSelect={(p) => setSelectedNpi(p.npi)}
+          <input
+            className="pp-specialty-input"
+            value={specialty}
+            onChange={(e) => setSpecialty(e.target.value)}
+            placeholder="Specialty / condition"
+            title={
+              site.condition
+                ? `Pre-filled from "${site.condition}". Edit to add an additional specialty.`
+                : "Enter a specialty or condition"
+            }
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
           />
-        </div>
-      )}
 
-      {/* ── Physician list ── */}
-      <div style={{
-        flex: 1, overflowY: "auto",
-        padding: "12px 16px",
-        display: "flex", flexDirection: "column", gap: 8,
-      }}>
-        {loading && (
-          <div style={{
-            display: "flex", flexDirection: "column", alignItems: "center",
-            justifyContent: "center", gap: 10, padding: "48px 20px", color: "#8b95a1",
-          }}>
-            <div style={{
-              width: 26, height: 26, border: "2.5px solid #e4e8f0",
-              borderTopColor: "#2563eb", borderRadius: "50%",
-              animation: "ppSpin 0.7s linear infinite",
-            }} />
-            <p style={{ fontSize: 13, fontWeight: 500 }}>Finding physicians…</p>
-            <style>{`@keyframes ppSpin { to { transform: rotate(360deg); } }`}</style>
-          </div>
-        )}
-
-        {!loading && error && (
-          <div style={{
-            margin: "4px 0", padding: "12px 14px", borderRadius: 10,
-            background: "#fef2f2", border: "1px solid #fecaca",
-            color: "#dc2626", fontSize: 13,
-          }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 4 }}>
-              Error
-            </div>
-            {error}
-          </div>
-        )}
-
-        {!loading && searched && !error && physicians.length === 0 && (
-          <div style={{
-            display: "flex", flexDirection: "column", alignItems: "center",
-            justifyContent: "center", gap: 8, padding: "48px 20px",
-            textAlign: "center", color: "#8b95a1",
-          }}>
-            <div style={{ fontSize: 32 }}>👨‍⚕️</div>
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: "#4b5563" }}>No physicians found</h3>
-            <p style={{ fontSize: 12 }}>Try increasing the search radius or changing the specialty.</p>
-          </div>
-        )}
-
-        {!loading && physicians.length > 0 && (
-          <>
-            <div style={{ fontSize: 12, color: "#8b95a1", fontWeight: 500, marginBottom: 4 }}>
-              Showing {physicians.length} of {total} physicians
-            </div>
-
-            {physicians.map((p) => (
-              <PhysicianCard
-                key={p.npi}
-                physician={p}
-                onContact={(phys) => setLeadPhys(phys)}
-              />
+          <select
+            className="pp-radius-select"
+            value={radius}
+            onChange={(e) => setRadius(Number(e.target.value))}
+          >
+            {RADIUS_OPTIONS.map((r) => (
+              <option key={r} value={r}>{r} mi</option>
             ))}
+          </select>
 
-            {hasMore && (
-              <button
-                onClick={handleLoadMore}
-                style={{
-                  width: "100%", padding: 10,
-                  border: "1px dashed #cdd3e0", borderRadius: 8,
-                  background: "transparent", fontSize: 13,
-                  fontWeight: 500, color: "#4b5563",
-                  cursor: "pointer", fontFamily: "inherit",
-                  marginTop: 4, transition: "all 0.15s",
-                }}
-                onMouseEnter={(e) => {
-                  const b = e.currentTarget as HTMLButtonElement;
-                  b.style.background = "#f6f7fb"; b.style.borderColor = "#2563eb"; b.style.color = "#2563eb";
-                }}
-                onMouseLeave={(e) => {
-                  const b = e.currentTarget as HTMLButtonElement;
-                  b.style.background = "transparent"; b.style.borderColor = "#cdd3e0"; b.style.color = "#4b5563";
-                }}
-              >
-                Load more physicians
-              </button>
-            )}
-          </>
+          <button
+            className="pp-search-btn"
+            onClick={handleSearch}
+            disabled={loading}
+          >
+            {loading ? "…" : "Search"}
+          </button>
+        </div>
+
+        {/* ── Specialty chips — only shown after a search resolves specialties ── */}
+        {searchSpecialties.length > 0 && (
+          <div className="pp-chips-row">
+            <span className="pp-chips-label">Searching</span>
+            {searchSpecialties.map((s) => (
+              <span key={s} className="pp-chip">{s}</span>
+            ))}
+          </div>
         )}
+
+        {/* ── Map — always rendered at top, dominant height ── */}
+        <div className="pp-map-wrap">
+          {searched && physicians.length > 0 ? (
+            <PhysicianMap
+              physicians={physicians}
+              selectedSite={site}
+              selectedNpi={selectedNpi}
+              onSelect={(p) => setSelectedNpi(p.npi)}
+            />
+          ) : (
+            <div className="pp-map-empty">
+              <span className="pp-map-empty-icon">🗺️</span>
+              <span>{loading ? "Finding physicians…" : "Run a search to see physicians on the map"}</span>
+            </div>
+          )}
+        </div>
+
+        {/* ── Physician list ── */}
+        <div className="pp-list">
+          {loading && (
+            <div className="pp-center">
+              <div className="pp-spinner" />
+              <p className="pp-state-msg">Finding physicians…</p>
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="pp-error">
+              <div className="pp-error-label">Error</div>
+              {error}
+            </div>
+          )}
+
+          {!loading && searched && !error && physicians.length === 0 && (
+            <div className="pp-center">
+              <span className="pp-empty-icon">👨‍⚕️</span>
+              <span className="pp-empty-title">No physicians found</span>
+              <span className="pp-empty-sub">Try increasing the radius or changing the specialty.</span>
+            </div>
+          )}
+
+          {!loading && physicians.length > 0 && (
+            <>
+              <div className="pp-count-bar">
+                Showing <strong>{physicians.length}</strong> of <strong>{total}</strong> physicians
+              </div>
+
+              {physicians.map((p) => (
+                <PhysicianCard
+                  key={p.npi}
+                  physician={p}
+                  onContact={(phys) => setLeadPhys(phys)}
+                />
+              ))}
+
+              {hasMore && (
+                <button className="pp-load-more" onClick={handleLoadMore}>
+                  Load more physicians
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {leadPhys && (
@@ -324,6 +445,6 @@ export default function PhysicianPanel({
           onClose={handleLeadClose}
         />
       )}
-    </div>
+    </>
   );
 }

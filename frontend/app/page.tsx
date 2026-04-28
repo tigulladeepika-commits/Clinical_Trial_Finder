@@ -172,9 +172,8 @@ function HomeInner() {
   const handleFindPhysicians = useCallback(async (site: SelectedSite) => {
     setSelectedSite(site);
     resetPhysicians();
-    
-    // CRITICAL FIX: Fetch mapped specialties for the condition
-    // e.g., "High Grade Sarcoma" → ["Medical Oncology", "Surgical Oncology"]
+
+    // Fetch NUCC-mapped specialties for the condition from the backend
     let specialtyList: string[] = [];
     if (site.condition) {
       try {
@@ -183,13 +182,21 @@ function HomeInner() {
         console.warn("Could not fetch condition specialties:", err);
       }
     }
-    
-    // Combine mapped specialties into a comma-separated string for the API
-    const mappedSpecialty = specialtyList.length > 0 ? specialtyList.join(", ") : undefined;
+
+    // If backend mapped specialties, use those.
+    // Otherwise fall back to the raw condition string so the backend always
+    // has something to filter on — prevents unfiltered geo results
+    // (physical therapists, dentists, acupuncturists, etc.) from appearing.
+    const mappedSpecialty =
+      specialtyList.length > 0
+        ? specialtyList.join(", ")
+        : (site.condition?.trim() || undefined);
+
     setInitialSpecialties(mappedSpecialty || null);
-    
-    // Pass mapped specialties, defaulting to 25 mile radius
-    searchPhysicians(site, 25, mappedSpecialty);
+
+    // Pass specialty for both `specialty` and `initial_specialty` args so it
+    // is always OR-included on every subsequent re-search in this session.
+    searchPhysicians(site, 25, mappedSpecialty, undefined, mappedSpecialty);
   }, [resetPhysicians, searchPhysicians]);
 
   // EDIT 1: Updated handlePhysicianSearch to accept and forward all four params
