@@ -9,9 +9,9 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import SearchForm    from "@/components/trials/SearchForm";
-import TrialList     from "@/components/trials/TrialList";
-import TrialSiteMap  from "@/components/trials/TrialSiteMap";
+import SearchForm     from "@/components/trials/SearchForm";
+import TrialList      from "@/components/trials/TrialList";
+import TrialSiteMap   from "@/components/trials/TrialSiteMap";
 import PhysicianPanel from "@/components/physicians/PhysicianPanel";
 
 import { useTrials, fetchTrialSites } from "@/hooks/useTrials";
@@ -22,15 +22,9 @@ import { initializeCityStateValidation } from "@/lib/validation";
 import type { Trial, TrialSearchFilters, SiteData } from "@/types/trial";
 import type { SelectedSite }                         from "@/types/physician";
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Constants
-// ─────────────────────────────────────────────────────────────────────────────
-const HEADER_H  = 56;
-const SEARCH_H  = 68;
+const HEADER_H = 56;
+const SEARCH_H = 68;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Inner component (needs useSearchParams, so it must be inside <Suspense>)
-// ─────────────────────────────────────────────────────────────────────────────
 function HomeInner() {
   const router       = useRouter();
   const searchParams = useSearchParams();
@@ -44,28 +38,30 @@ function HomeInner() {
   };
   const hasResults = Boolean(filtersFromUrl.condition.trim());
 
-  // ── Local state ──────────────────────────────────────────────────────────
   const [selectedTrial, setSelectedTrial] = useState<Trial | null>(null);
   const [siteData,      setSiteData]      = useState<SiteData | null>(null);
   const [sitesLoading,  setSitesLoading]  = useState(false);
   const [sitesError,    setSitesError]    = useState<string | null>(null);
   const [selectedSite,  setSelectedSite]  = useState<SelectedSite | null>(null);
-  const [initialSpecialties, setInitialSpecialties] = useState<string | null>(null); // Mapped specialties from condition
-  
-  // CRITICAL FIX for issue #5: Track AbortController for trial sites fetches
-  // so quickly clicking different trials cancels the in-flight request.
+
+  // Stores the resolved specialty strings from BOTH the user's search
+  // condition AND the trial condition, kept for the lifetime of the
+  // physician session so every re-search still OR-includes them.
+  const pinnedTrialSpecialtyRef = useRef<string | undefined>(undefined);
+  const pinnedUserSpecialtyRef  = useRef<string | undefined>(undefined);
+
   const sitesFetchAbortRef = useRef<AbortController | null>(null);
 
   const {
-    physicians:  nearbyPhysicians,
-    total:       physicianTotal,
-    loading:     physiciansLoading,
-    error:       physiciansError,
-    searched:    physiciansSearched,
-    hasMore:     physiciansHasMore,
-    search:      searchPhysicians,
-    loadMore:    loadMorePhysicians,
-    reset:       resetPhysicians,
+    physicians:        nearbyPhysicians,
+    total:             physicianTotal,
+    loading:           physiciansLoading,
+    error:             physiciansError,
+    searched:          physiciansSearched,
+    hasMore:           physiciansHasMore,
+    search:            searchPhysicians,
+    loadMore:          loadMorePhysicians,
+    reset:             resetPhysicians,
     searchSpecialties: physiciansSearchSpecialties,
   } = usePhysicians();
 
@@ -78,20 +74,16 @@ function HomeInner() {
       setSitesError(null);
       setSelectedSite(null);
       resetPhysicians();
+      pinnedTrialSpecialtyRef.current = undefined;
+      pinnedUserSpecialtyRef.current  = undefined;
       prevConditionRef.current = filtersFromUrl.condition;
     }
   }, [filtersFromUrl.condition, resetPhysicians]);
 
-  // CRITICAL FIX for issue #5: Cancel any in-flight sites fetch on unmount
   useEffect(() => {
-    return () => {
-      sitesFetchAbortRef.current?.abort();
-    };
+    return () => { sitesFetchAbortRef.current?.abort(); };
   }, []);
 
-  // CRITICAL FIX: Initialize city/state validation data on mount
-  // This loads the cities-by-state mapping from the backend (30-day cached)
-  // and caches it locally for O(1) validation during trial searches
   useEffect(() => {
     initializeCityStateValidation();
   }, []);
@@ -106,13 +98,11 @@ function HomeInner() {
     loadMore,
   } = useTrials(
     hasResults ? filtersFromUrl.condition : null,
-    filtersFromUrl.city  || null,
-    filtersFromUrl.state || null,
-    filtersFromUrl.status  || undefined,
-    filtersFromUrl.phase   || undefined,
+    filtersFromUrl.city   || null,
+    filtersFromUrl.state  || null,
+    filtersFromUrl.status || undefined,
+    filtersFromUrl.phase  || undefined,
   );
-
-  // ── Handlers ─────────────────────────────────────────────────────────────
 
   const handleSearch = useCallback((nextFilters: TrialSearchFilters) => {
     const params = new URLSearchParams();
@@ -128,6 +118,8 @@ function HomeInner() {
     setSitesError(null);
     setSelectedSite(null);
     resetPhysicians();
+    pinnedTrialSpecialtyRef.current = undefined;
+    pinnedUserSpecialtyRef.current  = undefined;
   }, [resetPhysicians, router]);
 
   const handleSelectTrial = useCallback(async (trial: Trial) => {
@@ -136,10 +128,11 @@ function HomeInner() {
       setSiteData(null);
       setSelectedSite(null);
       resetPhysicians();
+      pinnedTrialSpecialtyRef.current = undefined;
+      pinnedUserSpecialtyRef.current  = undefined;
       return;
     }
 
-    // Cancel any in-flight sites fetch before starting a new one
     sitesFetchAbortRef.current?.abort();
     const controller = new AbortController();
     sitesFetchAbortRef.current = controller;
@@ -149,71 +142,143 @@ function HomeInner() {
     setSitesError(null);
     setSelectedSite(null);
     resetPhysicians();
+    pinnedTrialSpecialtyRef.current = undefined;
+    pinnedUserSpecialtyRef.current  = undefined;
     setSitesLoading(true);
 
     try {
       const data = await fetchTrialSites(trial.nctId, controller.signal);
-      // Only set data if this request wasn't aborted
-      if (!controller.signal.aborted) {
-        setSiteData(data);
-      }
+      if (!controller.signal.aborted) setSiteData(data);
     } catch (err) {
-      // Ignore abort errors; only show real errors
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted)
         setSitesError("Could not load site locations. Please try again.");
-      }
     } finally {
-      if (!controller.signal.aborted) {
-        setSitesLoading(false);
-      }
+      if (!controller.signal.aborted) setSitesLoading(false);
     }
   }, [resetPhysicians, selectedTrial]);
 
+  // ── handleFindPhysicians ─────────────────────────────────────────────────
+  //
+  // Three OR conditions sent to backend independently:
+  //
+  //   specialty          → trial's own condition  (e.g. "Non-Small Cell Lung Carcinoma")
+  //   initial_specialty  → user's search bar input (e.g. "Lung Cancer")  ← always pinned
+  //   user_specialty     → extra specialty user types in the panel later
+  //
+  // Backend resolves each via resolve_with_broader() and unions the results.
+  // A physician matching ANY ONE of the three makes it into the result set.
+  //
   const handleFindPhysicians = useCallback(async (site: SelectedSite) => {
     setSelectedSite(site);
     resetPhysicians();
+    pinnedTrialSpecialtyRef.current = undefined;
+    pinnedUserSpecialtyRef.current  = undefined;
 
-    // Fetch NUCC-mapped specialties for the condition from the backend
-    let specialtyList: string[] = [];
-    if (site.condition) {
+    const userSearchCondition = filtersFromUrl.condition.trim();
+    const trialCondition      = site.condition?.trim() ?? "";
+
+    // Resolve trial condition → NUCC specialties
+    let trialSpecialty: string | undefined;
+    if (trialCondition) {
       try {
-        specialtyList = await getConditionSpecialties(site.condition);
-      } catch (err) {
-        console.warn("Could not fetch condition specialties:", err);
+        const list = await getConditionSpecialties(trialCondition);
+        trialSpecialty = list.length > 0
+          ? list.join(", ")
+          : trialCondition;
+      } catch {
+        trialSpecialty = trialCondition;
       }
     }
 
-    // If backend mapped specialties, use those.
-    // Otherwise fall back to the raw condition string so the backend always
-    // has something to filter on — prevents unfiltered geo results
-    // (physical therapists, dentists, acupuncturists, etc.) from appearing.
-    const mappedSpecialty =
-      specialtyList.length > 0
-        ? specialtyList.join(", ")
-        : (site.condition?.trim() || undefined);
+    // Resolve user's search bar condition → NUCC specialties
+    // Only fetch if it's actually different from the trial condition
+    // (same condition would just duplicate results already covered above)
+    let userSpecialty: string | undefined;
+    if (
+      userSearchCondition &&
+      userSearchCondition.toLowerCase() !== trialCondition.toLowerCase()
+    ) {
+      try {
+        const list = await getConditionSpecialties(userSearchCondition);
+        userSpecialty = list.length > 0
+          ? list.join(", ")
+          : userSearchCondition;
+      } catch {
+        userSpecialty = userSearchCondition;
+      }
+    }
 
-    setInitialSpecialties(mappedSpecialty || null);
+    // Pin both for the lifetime of this physician session.
+    // Every subsequent re-search in the panel will include these.
+    pinnedTrialSpecialtyRef.current = trialSpecialty;
+    pinnedUserSpecialtyRef.current  = userSpecialty;
 
-    // Pass specialty for both `specialty` and `initial_specialty` args so it
-    // is always OR-included on every subsequent re-search in this session.
-    searchPhysicians(site, 25, mappedSpecialty, undefined, mappedSpecialty);
-  }, [resetPhysicians, searchPhysicians]);
+    // initial_specialty = whichever is more specific (prefer user's input
+    // since it's what they actually typed; fall back to trial condition)
+    const initialSpecialty = userSpecialty ?? trialSpecialty;
 
-  // EDIT 1: Updated handlePhysicianSearch to accept and forward all four params
+    // usePhysicians.search signature:
+    //   search(site, radius, specialty, userSpecialty, initialSpecialty)
+    //
+    // specialty        → trial condition  (backend slot: specialty)
+    // userSpecialty    → user search bar  (backend slot: user_specialty)
+    // initialSpecialty → pinned anchor    (backend slot: initial_specialty)
+    //
+    // Backend OR-combines all three independently via _add_resolved().
+    searchPhysicians(
+      site,
+      25,
+      trialSpecialty,   // specialty        — trial condition
+      userSpecialty,    // user_specialty   — user's search bar condition
+      initialSpecialty, // initial_specialty — pinned; always OR-included
+    );
+  }, [resetPhysicians, searchPhysicians, filtersFromUrl.condition]);
+
+  // ── handlePhysicianSearch ────────────────────────────────────────────────
+  //
+  // Called when user hits Search inside PhysicianPanel (changes radius or
+  // types a new specialty in the panel input).
+  //
+  // The panel sends back:
+  //   specialty        — trial condition (site.condition, unchanged)
+  //   userSpecialty    — whatever the user typed in the panel input box
+  //   initialSpecialty — the pinned value from the first search
+  //
+  // We ALWAYS re-inject the two pinned values from refs so they are
+  // never lost when the user types a third specialty in the panel.
+  // Result: backend receives up to THREE independent OR conditions:
+  //   1. pinnedTrialSpecialtyRef  (trial condition, always)
+  //   2. pinnedUserSpecialtyRef   (user search bar, always)
+  //   3. panelUserSpecialty       (new panel input, when present)
+  //
   const handlePhysicianSearch = useCallback(
     (
       radius:           number,
-      specialty:        string,
-      userSpecialty:    string,
-      initialSpecialty: string,
+      _specialty:       string, // trial condition forwarded by panel — we use our ref instead
+      panelUserSpecialty: string, // new specialty user typed in panel input
+      _initialSpecialty:  string, // panel's pinned value — we use our ref instead
     ) => {
       if (!selectedSite) return;
+
+      const trialSpecialty   = pinnedTrialSpecialtyRef.current;
+      const userBarSpecialty = pinnedUserSpecialtyRef.current;
+
+      // If the user typed something new in the panel AND it differs from
+      // both pinned values, it becomes a genuine third OR condition.
+      const panelInput = panelUserSpecialty.trim() || undefined;
+
+      // initial_specialty = whichever anchor is most specific
+      const initialSpecialty = userBarSpecialty ?? trialSpecialty;
+
+      // When user typed in panel: pass as user_specialty so backend adds it
+      // as a third OR bucket on top of the two pinned ones.
+      // When panel input matches a pinned value: no-op, backend deduplicates.
       searchPhysicians(
         selectedSite,
         radius,
-        specialty        || undefined,
-        userSpecialty    || undefined,
-        initialSpecialty || undefined,
+        trialSpecialty,   // specialty        — trial condition (always)
+        panelInput,       // user_specialty   — panel input (3rd OR condition)
+        initialSpecialty, // initial_specialty — pinned anchor (always)
       );
     },
     [selectedSite, searchPhysicians],
@@ -232,7 +297,6 @@ function HomeInner() {
     filtersFromUrl.phase,
   ].join("|");
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
       <style>{`
@@ -243,8 +307,6 @@ function HomeInner() {
           overflow: hidden;
           background: #f6f7fb;
         }
-
-        /* ── Header ── */
         .site-header {
           height: ${HEADER_H}px;
           flex-shrink: 0;
@@ -282,8 +344,6 @@ function HomeInner() {
           font-weight: 500; font-style: italic;
         }
         @media (max-width: 640px) { .header-tagline { display: none; } }
-
-        /* ── Compact search bar (results view) ── */
         .search-card {
           height: ${SEARCH_H}px;
           flex-shrink: 0;
@@ -293,19 +353,14 @@ function HomeInner() {
           display: flex;
           align-items: center;
         }
-
-        /* ── Hero (landing) — full viewport, form centered and large ── */
         .hero-wrap {
           flex: 1;
           overflow-y: auto;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #dbeafe;   /* light blue — matches the form's outer band */
+          background: #dbeafe;
         }
-
-
-        /* ── Results layout ── */
         .results-layout {
           flex: 1;
           min-height: 0;
@@ -325,7 +380,6 @@ function HomeInner() {
           from { opacity: 0; transform: translateY(5px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-
         .trials-panel {
           border-right: 1px solid #e4e8f0;
           overflow-y: auto;
@@ -334,7 +388,6 @@ function HomeInner() {
           flex-direction: column;
           min-width: 0;
         }
-
         .detail-panel {
           display: flex;
           flex-direction: column;
@@ -342,8 +395,6 @@ function HomeInner() {
           min-width: 0;
           overflow: hidden;
         }
-
-        /* ── Trial detail header ── */
         .trial-detail-header {
           padding: 14px 20px;
           border-bottom: 1px solid #e4e8f0;
@@ -369,8 +420,6 @@ function HomeInner() {
         }
         .tdh-sponsor { font-size: 11px; color: #8b95a1; }
         .tdh-sponsor strong { color: #4b5563; font-weight: 500; }
-
-        /* ── KPI row ── */
         .kpi-row {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
@@ -393,15 +442,11 @@ function HomeInner() {
           font-size: 9px; font-weight: 600; letter-spacing: 0.07em;
           text-transform: uppercase; color: #8b95a1; margin-top: 4px;
         }
-
-        /* ── Map / content area ── */
         .detail-content {
           flex: 1;
           min-height: 0;
           overflow-y: auto;
         }
-
-        /* ── Badge ── */
         .badge {
           display: inline-flex; align-items: center; gap: 4px;
           padding: 2px 8px; border-radius: 20px;
@@ -416,19 +461,11 @@ function HomeInner() {
         .b-default    { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
         .b-phase      { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-family: 'DM Mono', monospace; }
         .b-na {
-          background: #f1f5f9;
-          color: #64748b;
-          border: 1px solid #e2e8f0;
-          font-size: 10px;
-          font-weight: 500;
-          padding: 2px 7px;
-          border-radius: 20px;
-          letter-spacing: 0.3px;
-          white-space: nowrap;
+          background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0;
+          font-size: 10px; font-weight: 500; padding: 2px 7px;
+          border-radius: 20px; letter-spacing: 0.3px; white-space: nowrap;
           font-family: inherit;
         }
-
-        /* ── States ── */
         .state-box {
           display: flex; flex-direction: column; align-items: center;
           justify-content: center; gap: 10px; padding: 48px 20px; color: #8b95a1;
@@ -440,7 +477,6 @@ function HomeInner() {
         }
         @keyframes spinAnim { to { transform: rotate(360deg); } }
         .state-msg { font-size: 13px; font-weight: 500; }
-
         .error-box {
           margin: 14px; padding: 12px 14px; border-radius: 10px;
           background: #fef2f2; border: 1px solid #fecaca;
@@ -448,7 +484,6 @@ function HomeInner() {
           display: flex; flex-direction: column; gap: 8px;
         }
         .err-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
-
         .no-results {
           display: flex; flex-direction: column; align-items: center;
           justify-content: center; gap: 8px;
@@ -456,7 +491,6 @@ function HomeInner() {
         }
         .no-results h3 { font-size: 14px; font-weight: 600; color: #4b5563; margin-top: 4px; }
         .no-results p  { font-size: 12px; }
-
         .detail-empty {
           display: flex; flex-direction: column; align-items: center;
           justify-content: center; gap: 14px;
@@ -467,7 +501,6 @@ function HomeInner() {
           font-size: 14px; font-weight: 500; color: #4b5563;
           max-width: 220px; line-height: 1.6;
         }
-
         .btn-primary {
           padding: 9px 20px; background: #2563eb; color: #fff;
           border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
@@ -478,7 +511,6 @@ function HomeInner() {
 
       <div className="app-shell">
 
-        {/* ── Top header ── */}
         <header className="site-header">
           <div className="header-inner">
             <div className="logo-group">
@@ -489,7 +521,6 @@ function HomeInner() {
           </div>
         </header>
 
-        {/* ── Hero: just the form, full-width, no text or stats ── */}
         {!hasResults && (
           <div className="hero-wrap">
             <div className="hero-form-only">
@@ -504,7 +535,6 @@ function HomeInner() {
           </div>
         )}
 
-        {/* ── Compact search bar (results active) ── */}
         {hasResults && (
           <div className="search-card">
             <SearchForm
@@ -517,11 +547,9 @@ function HomeInner() {
           </div>
         )}
 
-        {/* ── Results layout ── */}
         {hasResults && (
           <div className="results-layout">
 
-            {/* LEFT: Trial list */}
             <div className="trials-panel">
               {loading && (
                 <div className="state-box">
@@ -556,7 +584,6 @@ function HomeInner() {
               )}
             </div>
 
-            {/* RIGHT: Detail panel */}
             <div className="detail-panel">
 
               {!selectedTrial && (
@@ -707,35 +734,20 @@ function HomeInner() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Root page — wraps HomeInner in Suspense (required for useSearchParams)
-// ─────────────────────────────────────────────────────────────────────────────
 export default function Home() {
   return (
     <Suspense
       fallback={
-        <div
-          style={{
-            display:        "flex",
-            alignItems:     "center",
-            justifyContent: "center",
-            height:         "100vh",
-            flexDirection:  "column",
-            gap:            12,
-            fontFamily:     "'DM Sans', sans-serif",
-            color:          "#94a3b8",
-          }}
-        >
-          <div
-            style={{
-              width:           32,
-              height:          32,
-              border:          "3px solid #f1f5f9",
-              borderTopColor:  "#2563eb",
-              borderRadius:    "50%",
-              animation:       "spinAnim 0.75s linear infinite",
-            }}
-          />
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          height: "100vh", flexDirection: "column", gap: 12,
+          fontFamily: "'DM Sans', sans-serif", color: "#94a3b8",
+        }}>
+          <div style={{
+            width: 32, height: 32,
+            border: "3px solid #f1f5f9", borderTopColor: "#2563eb",
+            borderRadius: "50%", animation: "spinAnim 0.75s linear infinite",
+          }} />
           <span style={{ fontSize: 14, fontWeight: 500 }}>Loading…</span>
           <style>{`@keyframes spinAnim { to { transform: rotate(360deg); } }`}</style>
         </div>

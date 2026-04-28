@@ -52,18 +52,27 @@ export default function PhysicianPanel({
 
   const initialSpecialtyRef = useRef<string>("");
 
+  // PhysicianPanel.tsx — replace handleSearch
+
   const handleSearch = useCallback(() => {
-    if (!initialSpecialtyRef.current) {
-      initialSpecialtyRef.current = specialty.trim();
-    }
-    const isOverridden =
-      specialty.trim().toLowerCase() !== (site.condition ?? "").trim().toLowerCase();
-    onSearch(
-      radius,
-      site.condition?.trim() ?? "",
-      isOverridden ? specialty.trim() : "",
-      initialSpecialtyRef.current,
-    );
+  if (!initialSpecialtyRef.current) {
+    initialSpecialtyRef.current = specialty.trim();
+  }
+
+  const trialCondition  = site.condition?.trim() ?? "";
+  const currentInput    = specialty.trim();
+
+  // userSpecialty = whatever extra the user typed beyond the trial condition
+  const userSpecialty = currentInput.toLowerCase() !== trialCondition.toLowerCase()
+    ? currentInput
+    : "";
+
+  onSearch(
+    radius,
+    trialCondition,                    // specialty  → trial condition
+    userSpecialty,                     // user_specialty → panel input override
+    initialSpecialtyRef.current,       // initial_specialty → always pinned
+  );
   }, [radius, specialty, site.condition, onSearch]);
 
   // Load More → open LeadCaptureModal
