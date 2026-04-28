@@ -202,7 +202,7 @@ async def get_cities_by_state(response: Response = None) -> dict[str, list[str]]
     HTTP Caching: 30 days — city lists change rarely.
     """
     if response:
-        response.headers["Cache-Control"] = "public, max-age=2592000"
+        response.headers["Cache-Control"] = "public, max-age=3600"
 
     try:
         from services import zip_database
