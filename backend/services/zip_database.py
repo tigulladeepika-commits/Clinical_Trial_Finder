@@ -15,6 +15,20 @@ Fix v2.1.2:
 Fix v2.1.3:
   - Cast local_cache (PosixPath) to str before concatenating ".tmp" suffix
     to fix: unsupported operand type(s) for +: 'PosixPath' and 'str'
+
+Fix v2.1.4:
+  - BUG FIX: GeoNames US.txt column layout is:
+      [0] country_code  [1] postal_code  [2] place_name  [3] admin_name1
+      [4] admin_code1   [5] admin_name2  [6] admin_code2 ...
+      [9] latitude      [10] longitude
+    Previously parts[3] was used for the state, which is admin_name1 (full
+    state name, e.g. "Massachusetts"). The city/state lookup must store the
+    2-letter state abbreviation (admin_code1 = parts[4]) so that
+    get_cities_by_state() returns {"MA": [...]} rather than
+    {"Massachusetts": [...]}, matching the 2-letter codes the frontend sends.
+    This was the root cause of "Boston is not a city in massachusetts" — the
+    lookup cities_by_state.get("MA") always returned [] because the data was
+    keyed by full state name.
 """
 
 import io
@@ -24,7 +38,7 @@ import math
 import os
 import threading
 import zipfile
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 from core.config import cfg
 
 logger = logging.getLogger(__name__)
@@ -40,7 +54,8 @@ _zip_db_lock = threading.Lock()
 _zip_index: Dict[Tuple[int, int], List] = {}
 _zip_index_lock = threading.Lock()
 
-# City/State lookup: ZIP code -> (city, state)
+# City/State lookup: ZIP code -> (city, state_code)
+# state_code is the 2-letter abbreviation (e.g. "MA"), NOT the full name.
 _zip_location: Dict[str, Tuple[str, str]] = {}
 _zip_location_lock = threading.Lock()
 
@@ -119,14 +134,17 @@ def _load_zip_database() -> None:
         locations: Dict[str, Tuple[str, str]] = {}
         for line in content.splitlines():
             parts = line.split("\t")
-            if len(parts) >= 4:
+            if len(parts) >= 10:
                 try:
                     zipcode = parts[1].strip()
-                    city = parts[2].strip() if len(parts) > 2 else ""
-                    state = parts[3].strip() if len(parts) > 3 else ""
-                    lat = float(parts[9]) if len(parts) > 9 else 0.0
-                    lng = float(parts[10]) if len(parts) > 10 else 0.0
-                    
+                    city    = parts[2].strip()   # admin_name (place name)
+                    # FIX v2.1.4: use parts[4] (admin_code1) for the 2-letter
+                    # state abbreviation, NOT parts[3] (admin_name1) which is
+                    # the full state name like "Massachusetts".
+                    state   = parts[4].strip()   # admin_code1 = 2-letter state code
+                    lat     = float(parts[9])
+                    lng     = float(parts[10])
+
                     if zipcode and lat and lng:
                         db[zipcode] = (lat, lng)
                         if city and state:
@@ -245,7 +263,7 @@ def find_zips_in_radius(
 
 
 def get_zip_location(zipcode: str) -> Tuple[Optional[str], Optional[str]]:
-    """Get city and state for a ZIP code."""
+    """Get city and state code for a ZIP code."""
     z = str(zipcode or "")[:5].strip()
     with _zip_location_lock:
         v = _zip_location.get(z)
@@ -253,12 +271,21 @@ def get_zip_location(zipcode: str) -> Tuple[Optional[str], Optional[str]]:
 
 
 def get_cities_by_state() -> Dict[str, List[str]]:
-    """Get all cities grouped by state for validation."""
+    """
+    Get all cities grouped by 2-letter state code for frontend validation.
+
+    Returns e.g. {"MA": ["Boston", "Cambridge", ...], "CA": [...], ...}
+
+    Keys are always uppercase 2-letter state abbreviations (admin_code1 from
+    GeoNames) so they match the state codes the frontend sends to
+    /api/trials/validate-city-state.
+    """
     cities_by_state: Dict[str, Set[str]] = {}
     with _zip_location_lock:
-        for zipcode, (city, state) in _zip_location.items():
-            if state and city:
-                if state not in cities_by_state:
-                    cities_by_state[state] = set()
-                cities_by_state[state].add(city)
+        for zipcode, (city, state_code) in _zip_location.items():
+            if state_code and city:
+                key = state_code.strip().upper()   # always 2-letter e.g. "MA"
+                if key not in cities_by_state:
+                    cities_by_state[key] = set()
+                cities_by_state[key].add(city)
     return {state: sorted(list(cities)) for state, cities in cities_by_state.items()}
