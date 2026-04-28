@@ -12,7 +12,7 @@
 
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import PhysicianCard                      from "@/components/physicians/PhysicianCard";
 import PhysicianMap                       from "@/components/physicians/PhysicianMap";
 import LeadCaptureModal                   from "@/components/shared/LeadCaptureModal";
@@ -20,6 +20,7 @@ import type { Physician, SelectedSite }   from "@/types/physician";
 
 interface Props {
   site:              SelectedSite;
+  kpiBar?:           React.ReactNode;  // KPI stats row rendered above toolbar
   physicians:        Physician[];
   total:             number;
   loading:           boolean;
@@ -48,6 +49,7 @@ export default function PhysicianPanel({
   searched,
   hasMore,
   searchSpecialties,
+  kpiBar,
   onSearch,
   onLoadMore,
   onBack,
@@ -96,7 +98,7 @@ export default function PhysicianPanel({
           display: flex;
           align-items: center;
           gap: 7px;
-          padding: 8px 14px;
+          padding: 6px 12px;
           background: #fff;
           border-bottom: 1px solid #e4e8f0;
           flex-shrink: 0;
@@ -190,7 +192,7 @@ export default function PhysicianPanel({
           display: flex;
           align-items: center;
           gap: 5px;
-          padding: 5px 14px;
+          padding: 4px 12px;
           background: #f0f9ff;
           border-bottom: 1px solid #bae6fd;
           flex-shrink: 0;
@@ -218,9 +220,9 @@ export default function PhysicianPanel({
 
         /* ── Map — dominant ── */
         .pp-map-wrap {
-          flex: 0 0 42%;
-          min-height: 200px;
-          max-height: 380px;
+          flex: 0 0 55%;
+          min-height: 260px;
+          max-height: 500px;
           position: relative;
           overflow: hidden;
           background: #e2e8f0;
@@ -242,7 +244,7 @@ export default function PhysicianPanel({
         .pp-list {
           flex: 1;
           overflow-y: auto;
-          padding: 10px 14px 14px;
+          padding: 8px 12px 12px;
           display: flex;
           flex-direction: column;
           gap: 7px;
@@ -318,6 +320,9 @@ export default function PhysicianPanel({
       `}</style>
 
       <div className="pp-shell">
+
+        {/* ── KPI bar slot (passed from parent) ── */}
+        {kpiBar}
 
         {/* ── Compact toolbar: back · site info · specialty · radius · search ── */}
         <div className="pp-toolbar">

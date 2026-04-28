@@ -599,33 +599,6 @@ function HomeInner() {
                     )}
                   </div>
 
-                  {siteData && !sitesLoading && (
-                    <div className="kpi-row">
-                      <div className="kpi-cell">
-                        <div className="kpi-num">{siteData.sites.length}</div>
-                        <div className="kpi-label">Total Sites</div>
-                      </div>
-                      <div className="kpi-cell">
-                        <div className="kpi-num green">
-                          {siteData.sites.filter(s => s.status?.toLowerCase() === "recruiting").length}
-                        </div>
-                        <div className="kpi-label">Recruiting</div>
-                      </div>
-                      <div className="kpi-cell">
-                        <div className="kpi-num">
-                          {siteData.sites.filter(s => s.lat != null && s.lon != null).length}
-                        </div>
-                        <div className="kpi-label">On Map</div>
-                      </div>
-                      <div className="kpi-cell">
-                        <div className="kpi-num">
-                          {new Set(siteData.sites.map(s => s.country).filter(Boolean)).size || 1}
-                        </div>
-                        <div className="kpi-label">Countries</div>
-                      </div>
-                    </div>
-                  )}
-
                   <div className="detail-content">
 
                     {sitesLoading && (
@@ -643,7 +616,6 @@ function HomeInner() {
                     )}
 
                     {siteData && !sitesLoading && selectedSite && (
-                      /* EDIT 2: Added searchSpecialties prop */
                       <PhysicianPanel
                         site={selectedSite}
                         physicians={nearbyPhysicians}
@@ -656,7 +628,60 @@ function HomeInner() {
                         onSearch={handlePhysicianSearch}
                         onLoadMore={loadMorePhysicians}
                         onBack={handleBackToSites}
+                        kpiBar={
+                          <div className="kpi-row">
+                            <div className="kpi-cell">
+                              <div className="kpi-num">{siteData.sites.length}</div>
+                              <div className="kpi-label">Total Sites</div>
+                            </div>
+                            <div className="kpi-cell">
+                              <div className="kpi-num green">
+                                {siteData.sites.filter(s => s.status?.toLowerCase() === "recruiting").length}
+                              </div>
+                              <div className="kpi-label">Recruiting</div>
+                            </div>
+                            <div className="kpi-cell">
+                              <div className="kpi-num">
+                                {siteData.sites.filter(s => s.lat != null && s.lon != null).length}
+                              </div>
+                              <div className="kpi-label">On Map</div>
+                            </div>
+                            <div className="kpi-cell">
+                              <div className="kpi-num">
+                                {new Set(siteData.sites.map(s => s.country).filter(Boolean)).size || 1}
+                              </div>
+                              <div className="kpi-label">Countries</div>
+                            </div>
+                          </div>
+                        }
                       />
+                    )}
+
+                    {siteData && !sitesLoading && !selectedSite && (
+                      <div className="kpi-row">
+                        <div className="kpi-cell">
+                          <div className="kpi-num">{siteData.sites.length}</div>
+                          <div className="kpi-label">Total Sites</div>
+                        </div>
+                        <div className="kpi-cell">
+                          <div className="kpi-num green">
+                            {siteData.sites.filter(s => s.status?.toLowerCase() === "recruiting").length}
+                          </div>
+                          <div className="kpi-label">Recruiting</div>
+                        </div>
+                        <div className="kpi-cell">
+                          <div className="kpi-num">
+                            {siteData.sites.filter(s => s.lat != null && s.lon != null).length}
+                          </div>
+                          <div className="kpi-label">On Map</div>
+                        </div>
+                        <div className="kpi-cell">
+                          <div className="kpi-num">
+                            {new Set(siteData.sites.map(s => s.country).filter(Boolean)).size || 1}
+                          </div>
+                          <div className="kpi-label">Countries</div>
+                        </div>
+                      </div>
                     )}
 
                     {siteData && !sitesLoading && !selectedSite && (
