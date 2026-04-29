@@ -162,6 +162,11 @@ async def get_condition_specialties(
           "specialties": ["Medical Oncology", "General Surgery"],
           "count": 2
         }
+
+    v4 changes:
+      - Now handles multiple conditions separated by commas or "and" (e.g.
+        "Neurology, Interventional Cardiology, Cardiovascular Disease").
+        Each condition is resolved independently and results are merged.
     """
     if response:
         response.headers["Cache-Control"] = "public, max-age=86400"
@@ -171,13 +176,31 @@ async def get_condition_specialties(
 
     clean = condition.strip()
 
-    # Use the taxonomy service's full 4-pass lookup.
-    # Try the original case first, then lowercase as fallback.
-    hits = tax_service._condition_map_lookup(clean)
-    if not hits:
-        hits = tax_service._condition_map_lookup(clean.lower())
+    # Split on common delimiters: commas, " and ", " & "
+    # This handles cases like "Neurology, Interventional Cardiology, Cardiovascular Disease"
+    import re
+    parts = re.split(r',\s*|\s+and\s+|\s+&\s+', clean, flags=re.IGNORECASE)
 
-    specialties: list[str] = hits or []
+    all_specialties: list[str] = []
+    seen: set[str] = set()
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+
+        # Try original case first, then lowercase as fallback
+        hits = tax_service._condition_map_lookup(part)
+        if not hits:
+            hits = tax_service._condition_map_lookup(part.lower())
+
+        if hits:
+            for specialty in hits:
+                if specialty not in seen:
+                    seen.add(specialty)
+                    all_specialties.append(specialty)
+
+    specialties = all_specialties
 
     logger.info(
         "Condition specialties | condition=%r → specialties=%s",

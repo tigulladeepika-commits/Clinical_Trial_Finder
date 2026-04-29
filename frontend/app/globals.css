@@ -65,11 +65,15 @@ button, input, select, textarea {
   font-family: var(--font-sans);
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar           { width: 5px; height: 5px; }
-::-webkit-scrollbar-track     { background: transparent; }
-::-webkit-scrollbar-thumb     { background: #e2e8f0; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover{ background: #cbd5e1; }
+/* ── Invisible scrollbar (works in Salesforce webview too) ─────────────────── */
+/* All elements: scrollable but no visible bar */
+* {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE / Edge / Salesforce Trident */
+}
+*::-webkit-scrollbar {
+  display: none;                /* Chrome / Safari / Salesforce Lightning webview */
+}
 
 /* Focus-visible only */
 :focus-visible {

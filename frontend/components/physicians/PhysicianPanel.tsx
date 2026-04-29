@@ -49,41 +49,45 @@ export default function PhysicianPanel({
   const [leadPhys,    setLeadPhys]    = useState<Physician | null>(null);
   const [selectedNpi, setSelectedNpi] = useState<string | null>(null);
   const [detailPhys,  setDetailPhys]  = useState<Physician | null>(null);
+  // Controls whether the modal was triggered by "Load More" (true) or "Add as Lead" (false)
+  const [loadMoreModal, setLoadMoreModal] = useState(false);
 
   const initialSpecialtyRef = useRef<string>("");
 
-  // PhysicianPanel.tsx — replace handleSearch
-
   const handleSearch = useCallback(() => {
-  if (!initialSpecialtyRef.current) {
-    initialSpecialtyRef.current = specialty.trim();
-  }
+    if (!initialSpecialtyRef.current) {
+      initialSpecialtyRef.current = specialty.trim();
+    }
 
-  const trialCondition  = site.condition?.trim() ?? "";
-  const currentInput    = specialty.trim();
+    const trialCondition = site.condition?.trim() ?? "";
+    const currentInput   = specialty.trim();
 
-  // userSpecialty = whatever extra the user typed beyond the trial condition
-  const userSpecialty = currentInput.toLowerCase() !== trialCondition.toLowerCase()
-    ? currentInput
-    : "";
+    const userSpecialty = currentInput.toLowerCase() !== trialCondition.toLowerCase()
+      ? currentInput
+      : "";
 
-  onSearch(
-    radius,
-    trialCondition,                    // specialty  → trial condition
-    userSpecialty,                     // user_specialty → panel input override
-    initialSpecialtyRef.current,       // initial_specialty → always pinned
-  );
+    onSearch(
+      radius,
+      trialCondition,
+      userSpecialty,
+      initialSpecialtyRef.current,
+    );
   }, [radius, specialty, site.condition, onSearch]);
 
-  // Load More → open LeadCaptureModal
-  const handleLoadMore = useCallback(() => {
+  // "Load More" button at top-right opens the lead form;
+  // on close it triggers the actual onLoadMore data fetch.
+  const handleLoadMoreClick = useCallback(() => {
+    setLoadMoreModal(true);
     setLeadPhys(physicians[0] ?? null);
   }, [physicians]);
 
   const handleLeadClose = useCallback(() => {
     setLeadPhys(null);
-    onLoadMore();
-  }, [onLoadMore]);
+    if (loadMoreModal) {
+      setLoadMoreModal(false);
+      onLoadMore();
+    }
+  }, [onLoadMore, loadMoreModal]);
 
   // ── Physician detail view ────────────────────────────────────────────────
   if (detailPhys) {
@@ -94,7 +98,10 @@ export default function PhysicianPanel({
           physician={detailPhys}
           site={site}
           onBack={() => setDetailPhys(null)}
-          onAddAsLead={(phys: Physician) => setLeadPhys(phys)}
+          onAddAsLead={(phys: Physician) => {
+            setLoadMoreModal(false);
+            setLeadPhys(phys);
+          }}
         />
         {leadPhys && (
           <LeadCaptureModal
@@ -169,8 +176,11 @@ export default function PhysicianPanel({
           color: #fff; border-radius: 20px; padding: 2px 9px;
           font-size: 10px; font-weight: 600;
         }
+
+        /* Map wrapper — fixed height, no scrollbar */
         .pp-map-wrap {
-          flex: 0 0 55%; min-height: 260px; max-height: 500px;
+          flex: 0 0 auto;
+          height: 300px;
           position: relative; overflow: hidden; background: #e2e8f0;
         }
         .pp-map-empty {
@@ -179,14 +189,44 @@ export default function PhysicianPanel({
           font-weight: 500; flex-direction: column; gap: 8px;
         }
         .pp-map-empty-icon { font-size: 28px; opacity: 0.4; }
+
+        /* List section — takes remaining height, single scroll zone */
+        .pp-list-section {
+          flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        /* Count bar row — sticky inside list section, never scrolls */
+        .pp-count-row {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 6px 12px 4px; flex-shrink: 0;
+          border-bottom: 1px solid #f1f5f9;
+          background: #fff;
+        }
+        .pp-count-bar {
+          font-size: 11px; color: #64748b; font-weight: 600;
+        }
+        .pp-count-bar strong { color: #0d1117; }
+
+        /* "Load More" button — lives in the count row, top-right of list */
+        .pp-load-more-top {
+          display: inline-flex; align-items: center; gap: 5px;
+          padding: 5px 12px;
+          background: #2563eb; color: #fff;
+          border: none; border-radius: 7px;
+          font-size: 11px; font-weight: 700;
+          cursor: pointer; font-family: inherit;
+          transition: background 0.15s, opacity 0.15s;
+          white-space: nowrap; flex-shrink: 0;
+        }
+        .pp-load-more-top:hover { background: #1d4ed8; }
+        .pp-load-more-top:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        /* Scrollable cards area — the ONE scroll zone for the list */
         .pp-list {
           flex: 1; overflow-y: auto; padding: 8px 12px 12px;
           display: flex; flex-direction: column; gap: 7px;
         }
-        .pp-count-bar {
-          font-size: 11px; color: #64748b; font-weight: 600; padding: 2px 0 4px;
-        }
-        .pp-count-bar strong { color: #0d1117; }
+
         .pp-center {
           display: flex; flex-direction: column; align-items: center;
           justify-content: center; gap: 10px; padding: 36px 20px;
@@ -211,20 +251,12 @@ export default function PhysicianPanel({
           font-size: 9px; font-weight: 800; text-transform: uppercase;
           letter-spacing: 0.8px; margin-bottom: 3px;
         }
-        .pp-load-more {
-          width: 100%; padding: 9px; border: 1px dashed #cbd5e1;
-          border-radius: 8px; background: transparent; font-size: 12px;
-          font-weight: 500; color: #4b5563; cursor: pointer;
-          font-family: inherit; transition: all 0.15s;
-        }
-        .pp-load-more:hover {
-          background: #f1f5f9; border-color: #2563eb; color: #2563eb;
-        }
       `}</style>
 
       <div className="pp-shell">
         {kpiBar}
 
+        {/* ── Toolbar ── */}
         <div className="pp-toolbar">
           <button className="pp-back-btn" onClick={onBack} title="Back to sites">←</button>
           <div className="pp-site-label">
@@ -259,6 +291,7 @@ export default function PhysicianPanel({
           </button>
         </div>
 
+        {/* ── Specialty chips ── */}
         {searchSpecialties.length > 0 && (
           <div className="pp-chips-row">
             <span className="pp-chips-label">Searching</span>
@@ -268,6 +301,7 @@ export default function PhysicianPanel({
           </div>
         )}
 
+        {/* ── Map (fixed height, no scroll) ── */}
         <div className="pp-map-wrap">
           {searched && physicians.length > 0 ? (
             <PhysicianMap
@@ -288,56 +322,68 @@ export default function PhysicianPanel({
           )}
         </div>
 
-        <div className="pp-list">
-          {loading && (
-            <div className="pp-center">
-              <div className="pp-spinner" />
-              <p className="pp-state-msg">Finding physicians…</p>
-            </div>
-          )}
+        {/* ── List section (flex column, single scroll zone) ── */}
+        <div className="pp-list-section">
 
-          {!loading && error && (
-            <div className="pp-error">
-              <div className="pp-error-label">Error</div>
-              {error}
-            </div>
-          )}
-
-          {!loading && searched && !error && physicians.length === 0 && (
-            <div className="pp-center">
-              <span className="pp-empty-icon">👨‍⚕️</span>
-              <span className="pp-empty-title">No physicians found</span>
-              <span className="pp-empty-sub">
-                Try increasing the radius or changing the specialty.
-              </span>
-            </div>
-          )}
-
+          {/* Count bar row with "Load More" button pinned top-right */}
           {!loading && physicians.length > 0 && (
-            <>
-              <div className="pp-count-bar">
+            <div className="pp-count-row">
+              <span className="pp-count-bar">
                 Showing <strong>{physicians.length}</strong> of{" "}
                 <strong>{total}</strong> physicians
-              </div>
-
-              {physicians.map((p) => (
-                <PhysicianCard
-                  key={p.npi}
-                  physician={p}
-                  onClick={(phys: Physician) => setDetailPhys(phys)}
-                />
-              ))}
-
+              </span>
               {hasMore && (
-                <button className="pp-load-more" onClick={handleLoadMore}>
-                  Load more physicians
+                <button
+                  className="pp-load-more-top"
+                  onClick={handleLoadMoreClick}
+                  disabled={loading}
+                  title="Load more physicians"
+                >
+                  + Load More
                 </button>
               )}
-            </>
+            </div>
           )}
+
+          {/* Scrollable card list — the single scroll zone */}
+          <div className="pp-list">
+            {loading && (
+              <div className="pp-center">
+                <div className="pp-spinner" />
+                <p className="pp-state-msg">Finding physicians…</p>
+              </div>
+            )}
+
+            {!loading && error && (
+              <div className="pp-error">
+                <div className="pp-error-label">Error</div>
+                {error}
+              </div>
+            )}
+
+            {!loading && searched && !error && physicians.length === 0 && (
+              <div className="pp-center">
+                <span className="pp-empty-icon">👨‍⚕️</span>
+                <span className="pp-empty-title">No physicians found</span>
+                <span className="pp-empty-sub">
+                  Try increasing the radius or changing the specialty.
+                </span>
+              </div>
+            )}
+
+            {!loading && physicians.length > 0 && physicians.map((p) => (
+              <PhysicianCard
+                key={p.npi}
+                physician={p}
+                onClick={(phys: Physician) => setDetailPhys(phys)}
+              />
+            ))}
+          </div>
+
         </div>
       </div>
 
+      {/* ── Lead capture modal (triggered by Load More button) ── */}
       {leadPhys && (
         <LeadCaptureModal
           npi={leadPhys.npi}

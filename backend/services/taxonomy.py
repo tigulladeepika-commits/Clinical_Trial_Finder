@@ -42,6 +42,67 @@ _taxonomy_lock = threading.Lock()
 # ─────────────────────────────────────────────
 
 CONDITION_MAP: Dict[str, List[str]] = {
+    # ── Direct specialty matches (user searches for specialty names) ──────────
+    "neurology":                     ["Neurology"],
+    "interventional cardiology":     ["Interventional Cardiology"],
+    "cardiovascular disease":        ["Cardiovascular Disease"],
+    "cardiology":                     ["Cardiovascular Disease"],
+    "diagnostic radiology":           ["Diagnostic Radiology"],
+    "radiology":                      ["Diagnostic Radiology"],
+    "psychiatry":                     ["Psychiatry"],
+    "psychiatry & neurology":         ["Psychiatry & Neurology"],
+    "medical oncology":               ["Medical Oncology"],
+    "surgical oncology":              ["Surgical Oncology"],
+    "radiation oncology":             ["Radiation Oncology"],
+    "hematology":                     ["Hematology & Oncology"],
+    "hematology & oncology":          ["Hematology & Oncology"],
+    "orthopedic surgery":            ["Orthopaedic Surgery"],
+    "orthopaedic surgery":            ["Orthopaedic Surgery"],
+    "orthopedics":                    ["Orthopaedic Surgery"],
+    "gastroenterology":               ["Gastroenterology"],
+    "gi":                             ["Gastroenterology"],
+    "pulmonology":                    ["Pulmonary Disease"],
+    "pulmonary disease":             ["Pulmonary Disease"],
+    "pulmonology":                    ["Pulmonary Disease"],
+    "endocrinology":                  ["Endocrinology, Diabetes & Metabolism"],
+    "nephrology":                     ["Nephrology"],
+    "urology":                        ["Urology"],
+    "obstetrics":                     ["Obstetrics & Gynecology"],
+    "obstetrics & gynecology":        ["Obstetrics & Gynecology"],
+    "gynecology":                      ["Obstetrics & Gynecology"],
+    "dermatology":                    ["Dermatology"],
+    "ophthalmology":                  ["Ophthalmology"],
+    "otolaryngology":                 ["Otolaryngology"],
+    "ent":                            ["Otolaryngology"],
+    "allergy":                        ["Allergy & Immunology"],
+    "allergy & immunology":           ["Allergy & Immunology"],
+    "immunology":                     ["Allergy & Immunology"],
+    "rheumatology":                   ["Rheumatology"],
+    "geriatric medicine":            ["Geriatric Medicine"],
+    "geriatrics":                     ["Geriatric Medicine"],
+    "pediatrics":                     ["Pediatrics"],
+    "pediatric":                      ["Pediatrics"],
+    "neonatology":                    ["Neonatal-Perinatal Medicine"],
+    "internal medicine":             ["Internal Medicine"],
+    "family medicine":               ["Family Medicine"],
+    "general surgery":                ["General Surgery"],
+    "surgery":                        ["General Surgery"],
+    "neurosurgery":                   ["Neurosurgery"],
+    "thoracic surgery":              ["Thoracic Surgery"],
+    "cardiac surgery":                ["Cardiac Surgery"],
+    "vascular surgery":              ["Vascular Surgery"],
+    "colon & rectal surgery":        ["Colon & Rectal Surgery"],
+    "proctology":                     ["Colon & Rectal Surgery"],
+    "pain medicine":                  ["Pain Medicine"],
+    "pain":                           ["Pain Medicine"],
+    "addiction medicine":            ["Addiction Medicine"],
+    "sleep medicine":                ["Sleep Medicine"],
+    "sports medicine":               ["Sports Medicine"],
+    "physical medicine":              ["Physical Medicine & Rehabilitation"],
+    "rehabilitation":                ["Physical Medicine & Rehabilitation"],
+    "infectious disease":             ["Infectious Disease"],
+    "infectious diseases":            ["Infectious Disease"],
+
     # ── Neurological ──────────────────────────────────────────────────────────
     "alzheimer":              ["Geriatric Medicine", "Neurology"],
     "alzheimers":             ["Geriatric Medicine", "Neurology"],
@@ -1048,9 +1109,18 @@ def resolve_with_broader(q: str) -> List[str]:
       4. Fallback to fuzzy taxonomy matching only.
 
     Returns a deduplicated list preserving priority order.
+
+    v4 changes:
+      - Now handles multiple conditions separated by commas or "and" (e.g.
+        "Neurology, Interventional Cardiology, Cardiovascular Disease").
+        Each condition is resolved independently and results are merged.
     """
     if not q:
         return []
+
+    import re
+    # Split on common delimiters: commas, " and ", " & "
+    parts = re.split(r',\s*|\s+and\s+|\s+&\s+', q, flags=re.IGNORECASE)
 
     all_specialties: List[str] = []
 
@@ -1062,29 +1132,38 @@ def resolve_with_broader(q: str) -> List[str]:
         if resolved not in all_specialties:
             all_specialties.append(resolved)
 
-    direct = _find_direct_taxonomy_match(q)
-    if direct:
-        exact = direct["display"]
-        all_specialties.append(exact)
-        for broader in SPECIALTY_HIERARCHY.get(exact, []):
-            _add_if_valid(broader)
-        return all_specialties
+    # Process each part independently and merge results
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
 
-    condition_hits = _condition_map_lookup(q)
-    if condition_hits:
-        for specialty_name in condition_hits:
-            _add_if_valid(specialty_name)
-            for broader in SPECIALTY_HIERARCHY.get(specialty_name, []):
+        # Try direct taxonomy match first
+        direct = _find_direct_taxonomy_match(part)
+        if direct:
+            exact = direct["display"]
+            if exact not in all_specialties:
+                all_specialties.append(exact)
+            for broader in SPECIALTY_HIERARCHY.get(exact, []):
                 _add_if_valid(broader)
-        if all_specialties:
-            return all_specialties
+            continue
 
-    matches = search(q, limit=1)
-    if matches:
-        exact = matches[0]["display"]
-        _add_if_valid(exact)
-        for broader in SPECIALTY_HIERARCHY.get(exact, []):
-            _add_if_valid(broader)
+        # Try condition map lookup
+        condition_hits = _condition_map_lookup(part)
+        if condition_hits:
+            for specialty_name in condition_hits:
+                _add_if_valid(specialty_name)
+                for broader in SPECIALTY_HIERARCHY.get(specialty_name, []):
+                    _add_if_valid(broader)
+            continue
+
+        # Fallback to fuzzy taxonomy matching
+        matches = search(part, limit=1)
+        if matches:
+            exact = matches[0]["display"]
+            _add_if_valid(exact)
+            for broader in SPECIALTY_HIERARCHY.get(exact, []):
+                _add_if_valid(broader)
 
     return all_specialties
 

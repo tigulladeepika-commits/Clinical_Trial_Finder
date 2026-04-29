@@ -1,6 +1,7 @@
 // components/physicians/PhysicianMap.tsx
 // Updated: doctor SVG markers for physicians, hospital icon for trial site,
 // improved tooltip/popup styling, haversine distance note in popup.
+// Salesforce-safe: no overflow scroll on map container.
 
 "use client";
 
@@ -251,9 +252,9 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
   if (!mapKey) {
     return (
       <div style={{
-        height: 340, display: "flex", alignItems: "center", justifyContent: "center",
+        height: "100%", display: "flex", alignItems: "center", justifyContent: "center",
         flexDirection: "column", gap: 10, background: "#f8fafc",
-        color: "#94a3b8", borderRadius: 12,
+        color: "#94a3b8",
       }}>
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
@@ -265,8 +266,12 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
   }
 
   return (
-    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden" }}>
-      <div ref={mapDivRef} style={{ height: 340, width: "100%", background: "#e8edf2" }} />
+    /* Fills the .pp-map-wrap container completely — no inner scroll */
+    <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
+      <div
+        ref={mapDivRef}
+        style={{ width: "100%", height: "100%", background: "#e8edf2" }}
+      />
 
       {/* Zoom controls */}
       <div style={{
@@ -296,7 +301,6 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
         padding: "9px 13px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
         display: "flex", flexDirection: "column", gap: 7,
       }}>
-        {/* Site legend */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <svg width="14" height="14" viewBox="0 0 30 30">
             <circle cx="15" cy="15" r="14" fill="#ef4444"/>
@@ -305,7 +309,6 @@ export default function PhysicianMap({ physicians, selectedSite, selectedNpi, on
           </svg>
           <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>Trial Site</span>
         </div>
-        {/* Physician legend */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <svg width="14" height="14" viewBox="0 0 30 30">
             <circle cx="15" cy="15" r="14" fill="#2563eb"/>
