@@ -12,15 +12,9 @@ BASE_URL = "https://clinicaltrials.gov/api/v2/studies"
 USER_AGENT = "ClinicalTrialLocator/1.0"
 DEFAULT_PAGE_SIZE = 100
 
-# Change #9: Removed MAX_PAGES cap entirely — we now exhaust all pages from
-# ClinicalTrials.gov so the full dataset is available for client-side
-# pagination. The UI controls how many results are shown at a time.
-# A hard safety ceiling is kept only to prevent infinite loops on
-# pathological responses (e.g. a malformed nextPageToken loop).
 _ABSOLUTE_PAGE_CEILING = 200  # 200 × 100 = 20,000 studies max
 
 # Maps 2-letter abbreviations (lowercased, stripped) → full state name (lowercased, stripped)
-# The ClinicalTrials.gov API returns full state names like "Connecticut", "New York", etc.
 STATE_ABBREV_TO_FULL = {
     "al": "alabama",           "ak": "alaska",          "az": "arizona",
     "ar": "arkansas",          "ca": "california",      "co": "colorado",
@@ -41,17 +35,203 @@ STATE_ABBREV_TO_FULL = {
     "wi": "wisconsin",         "wy": "wyoming",         "dc": "districtofcolumbia",
 }
 
-# Change #1: Set of known full state names (lowercased, stripped of spaces) for
-# city/state validation — rejects nonsense values before hitting the API.
 _VALID_STATES_NORMALIZED: frozenset[str] = frozenset(STATE_ABBREV_TO_FULL.values())
-
-# Change #1: City must contain only letters, spaces, hyphens, apostrophes, and
-# periods (handles names like "St. Paul", "Winston-Salem", "O'Fallon").
 _CITY_RE = re.compile(r"^[A-Za-z\s\-\'\.\,]+$")
 
 
+# ── Relevance scoring ──────────────────────────────────────────────────────────
+#
+# Problem: ClinicalTrials.gov's query.cond is a full-text search that matches
+# the condition token anywhere in the study record (title, description,
+# eligibility text, keywords).  This causes false positives like:
+#   - "Improving Sleep in the Neurology In-Patient Population" appearing when
+#     searching for "neurology" — the word appears in the title but the study
+#     is about sleep, not a neurological condition.
+#   - "Load Carriage on Upper Limb Performance" — no neurological relevance at
+#     all, but matched a keyword in the eligibility criteria.
+#
+# Fix: after fetching each page we score every trial against the search term.
+# Trials below MIN_RELEVANCE_SCORE are dropped before they reach the frontend.
+#
+# Scoring strategy (additive, capped at 100):
+#   +50  The search term appears in the trial's conditions[] list
+#   +30  The search term appears in the title (briefTitle)
+#   +15  A domain-synonym of the search term appears in conditions[]
+#   +10  The search term appears in the description (briefSummary)
+#    -20  The search term appears ONLY in the title as an incidental word
+#         (e.g. "Neurology" as a ward/department name, not a disease)
+#
+# MIN_RELEVANCE_SCORE = 30 means we require at least one strong signal
+# (condition list hit) OR two weaker signals (title + description).
+
+MIN_RELEVANCE_SCORE = 30
+
+# Domain synonym groups: if the search term maps to any of these condition
+# families, we boost trials whose conditions[] contain related terms.
+# Keys are lowercased search terms (or common aliases); values are sets of
+# condition tokens that confirm domain relevance.
+_DOMAIN_SYNONYMS: dict[str, set[str]] = {
+    "neurology": {
+        "neurology", "neurological", "neurodegenerative", "alzheimer",
+        "parkinson", "epilepsy", "seizure", "multiple sclerosis", "stroke",
+        "dementia", "neuropathy", "brain", "spinal cord", "cerebral",
+        "meningitis", "encephalitis", "migraine", "ataxia", "glioma",
+        "glioblastoma", "als", "amyotrophic", "tremor", "dystonia",
+        "myasthenia", "guillain", "hydrocephalus", "concussion",
+        "neuromuscular", "peripheral nerve", "tbi", "vertigo", "dizziness",
+    },
+    "cardiology": {
+        "cardiology", "cardiovascular", "cardiac", "heart", "coronary",
+        "arrhythmia", "atrial fibrillation", "heart failure", "hypertension",
+        "myocardial", "angina", "pacemaker", "valve", "aortic", "ventricular",
+    },
+    "oncology": {
+        "cancer", "tumor", "carcinoma", "sarcoma", "lymphoma", "leukemia",
+        "myeloma", "neoplasm", "malignant", "metastatic", "glioblastoma",
+        "melanoma", "adenocarcinoma", "squamous cell",
+    },
+    "psychiatry": {
+        "psychiatry", "depression", "anxiety", "bipolar", "schizophrenia",
+        "mental health", "ptsd", "adhd", "ocd", "psychosis", "borderline",
+        "personality disorder", "eating disorder",
+    },
+    "gastroenterology": {
+        "gastroenterology", "gastrointestinal", "ibs", "crohn", "colitis",
+        "ulcerative", "liver", "hepatitis", "cirrhosis", "gerd", "colonoscopy",
+        "esophageal", "pancreatitis", "gallbladder",
+    },
+    "pulmonology": {
+        "pulmonary", "respiratory", "asthma", "copd", "lung", "emphysema",
+        "pneumonia", "fibrosis", "bronchitis", "sleep apnea",
+    },
+    "rheumatology": {
+        "rheumatology", "arthritis", "lupus", "fibromyalgia", "sjogren",
+        "scleroderma", "vasculitis", "gout", "autoimmune",
+    },
+    "dermatology": {
+        "dermatology", "skin", "psoriasis", "eczema", "melanoma",
+        "acne", "vitiligo", "alopecia",
+    },
+    "endocrinology": {
+        "endocrinology", "diabetes", "thyroid", "obesity", "metabolic",
+        "adrenal", "pituitary", "insulin", "hormones",
+    },
+    "nephrology": {
+        "nephrology", "kidney", "renal", "dialysis", "proteinuria",
+        "glomerular", "ckd",
+    },
+    "urology": {
+        "urology", "bladder", "prostate", "urinary", "kidney stone",
+        "erectile", "testicular",
+    },
+    "ophthalmology": {
+        "ophthalmology", "eye", "vision", "glaucoma", "cataract", "retina",
+        "macular degeneration",
+    },
+    "otolaryngology": {
+        "otolaryngology", "ear", "nose", "throat", "sinus", "hearing",
+        "tinnitus", "vertigo", "larynx",
+    },
+    "pediatrics": {
+        "pediatric", "children", "infant", "neonatal", "childhood",
+        "developmental", "congenital",
+    },
+    "geriatrics": {
+        "geriatric", "elderly", "aging", "dementia", "fall prevention",
+        "frailty", "older adults",
+    },
+    "infectious disease": {
+        "infectious", "infection", "hiv", "tuberculosis", "sepsis",
+        "hepatitis", "covid", "influenza", "malaria", "bacterial", "viral",
+    },
+}
+
+
+def _norm_lower(text: str) -> str:
+    """Lowercase and collapse whitespace for comparison."""
+    return " ".join((text or "").lower().split())
+
+
+def _score_trial_relevance(trial: dict[str, Any], search_term: str) -> int:
+    """
+    Return a relevance score in [0, 100] for how well *trial* matches
+    *search_term* as a clinical domain.
+
+    High score  → trial is genuinely about the searched domain.
+    Low score   → trial only incidentally mentions the term.
+    """
+    term = _norm_lower(search_term)
+    if not term:
+        return 100  # no term → pass everything through
+
+    score = 0
+
+    # ── Gather text fields ─────────────────────────────────────────────────────
+    conditions_raw: list[str] = [_norm_lower(c) for c in (trial.get("conditions") or [])]
+    title     = _norm_lower(trial.get("title") or "")
+    desc      = _norm_lower(trial.get("description") or "")
+    sponsor   = _norm_lower(trial.get("sponsor") or "")
+
+    # ── Pass 1: exact condition match (+50) ────────────────────────────────────
+    # The term appears as (or inside) one of the trial's listed conditions.
+    # This is the strongest signal — conditions[] is curated by the study team.
+    if any(term in c or c in term for c in conditions_raw):
+        score += 50
+
+    # ── Pass 2: title match (+30) ──────────────────────────────────────────────
+    # Term appears in the brief title.
+    if term in title:
+        score += 30
+
+    # ── Pass 3: domain synonym match in conditions (+15) ──────────────────────
+    # The search term maps to a known clinical domain and the trial's conditions
+    # contain a term from that domain — confirms genuine clinical relevance.
+    synonyms = _DOMAIN_SYNONYMS.get(term, set())
+    if not synonyms:
+        # Try partial synonym key match (e.g. "alzheimer" → neurology synonyms)
+        for key, syn_set in _DOMAIN_SYNONYMS.items():
+            if term in key or key in term or term in syn_set:
+                synonyms = syn_set
+                break
+
+    if synonyms:
+        conditions_text = " ".join(conditions_raw)
+        if any(syn in conditions_text for syn in synonyms):
+            if score < 50:  # only add if conditions match didn't already score
+                score += 15
+
+    # ── Pass 4: description match (+10) ───────────────────────────────────────
+    # Term appears in the brief summary.
+    if term in desc and score < 50:
+        score += 10
+
+    # ── Penalty: incidental title-only mentions (-20) ─────────────────────────
+    # The term appears in the title but NOT in conditions[] and the title
+    # strongly suggests the term is used as a setting/department name rather
+    # than a disease domain (e.g. "Neurology In-Patient Population",
+    # "Neurology Measures in FA Children").
+    #
+    # Heuristic: if score is entirely from title (+30) and not from conditions,
+    # and the title contains department-style phrases, apply penalty.
+    DEPARTMENT_PHRASES = {
+        "in-patient", "inpatient", "outpatient", "ward", "unit",
+        "department", "population", "measures in", "service",
+    }
+    if score == 30 and term in title:
+        if any(phrase in title for phrase in DEPARTMENT_PHRASES):
+            score -= 20
+
+    return max(score, 0)
+
+
+def _is_relevant(trial: dict[str, Any], search_term: str) -> bool:
+    """Return True if the trial clears the minimum relevance threshold."""
+    return _score_trial_relevance(trial, search_term) >= MIN_RELEVANCE_SCORE
+
+
+# ── Existing helpers (unchanged) ──────────────────────────────────────────────
+
 def _normalize_value(value: str | None) -> str:
-    """Strip all non-alphanumeric characters and lowercase."""
     if not value:
         return ""
     return re.sub(r"[^a-z0-9]+", "", value.lower())
@@ -122,17 +302,9 @@ def _map_trial(study: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# ── Change #1 & #2: Validation helpers ───────────────────────────────────────
+# ── Validation helpers (unchanged) ────────────────────────────────────────────
 
 def validate_city(city: str | None) -> tuple[bool, str]:
-    """
-    Validate a city filter value.
-
-    Returns (is_valid, reason). A blank/None city is valid (means "no filter").
-    Rejects values that contain digits or look like SQL/script injections.
-
-    Change #1: city values are validated before being used in filter logic.
-    """
     if not city or not city.strip():
         return True, ""
     stripped = city.strip()
@@ -146,60 +318,28 @@ def validate_city(city: str | None) -> tuple[bool, str]:
 
 
 def validate_state(state: str | None) -> tuple[bool, str]:
-    """
-    Validate a state filter value (2-letter abbreviation OR full name).
-
-    Returns (is_valid, reason). A blank/None state is valid (means "no filter").
-
-    Change #1: state values are validated and rejected early if unrecognised,
-    rather than silently producing zero results.
-    """
     if not state or not state.strip():
         return True, ""
     norm = _normalize_value(state.strip())
-    # Accept known 2-letter abbreviations
     if norm in STATE_ABBREV_TO_FULL:
         return True, ""
-    # Accept known full state names (after stripping spaces/punctuation)
     if norm in _VALID_STATES_NORMALIZED:
         return True, ""
     return False, f"Unrecognised state: {state!r}"
 
 
-# ── Change #2: Revised filter matching ───────────────────────────────────────
-
 def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
-    """
-    Return True if *trial* satisfies all active filters.
-
-    Change #2 improvements:
-    - Status filter now does a case-insensitive substring match (not exact),
-      so "RECRUITING" matches "Recruiting", "Active, not recruiting", etc.
-      Exact matches are still prioritised by being checked first.
-    - Phase filter normalises both sides identically — strips all non-alnum
-      chars and lowercases — so "PHASE1", "Phase 1", "phase1" all match.
-    - City filter now checks all locations instead of requiring the first one
-      to match (pre-existing behaviour was already correct but the guard is
-      now explicit with a clear comment).
-    - State filter expands both 2-letter abbreviations AND full state names
-      entered by the user, ensuring bi-directional matching.
-    - us_only filter normalises country strings more broadly to catch
-      "United States", "US", "USA", "U.S.A." etc.
-    """
     normalized_status = _normalize_value(filters.get("status"))
     normalized_phase  = _normalize_value(filters.get("phase"))
     normalized_city   = _normalize_value(filters.get("city"))
     normalized_state  = _normalize_value(filters.get("state"))
 
-    # ── Status ────────────────────────────────────────────────────────────────
     if normalized_status:
         trial_status_norm = _normalize_value(trial.get("status"))
-        # Exact match first, then substring (e.g. "active" matches "activenotrecruiting")
         if (trial_status_norm != normalized_status
                 and normalized_status not in trial_status_norm):
             return False
 
-    # ── Phase ─────────────────────────────────────────────────────────────────
     if normalized_phase:
         trial_phases = [_normalize_value(p) for p in trial.get("phases", [])]
         if normalized_phase not in trial_phases:
@@ -207,20 +347,13 @@ def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
 
     locations = trial.get("locations", [])
 
-    # ── City ──────────────────────────────────────────────────────────────────
-    # Change #2: city must match ANY location, not just the first one.
     if normalized_city and not any(
         _normalize_value(loc.get("city")) == normalized_city
         for loc in locations
     ):
         return False
 
-    # ── State ─────────────────────────────────────────────────────────────────
-    # Change #2: resolve both 2-letter abbreviations (e.g. "CT" → "connecticut")
-    # AND accept full-name inputs (e.g. "connecticut" already normalised).
-    # The API returns full names; the frontend may send either form.
     if normalized_state:
-        # Attempt abbreviation lookup first
         resolved_state = STATE_ABBREV_TO_FULL.get(normalized_state, normalized_state)
         if not any(
             _normalize_value(loc.get("state")) == resolved_state
@@ -228,9 +361,6 @@ def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
         ):
             return False
 
-    # ── US-only ───────────────────────────────────────────────────────────────
-    # Change #2: broaden country matching — normalise away spaces, dots, etc.
-    # "United States", "US", "USA", "U.S.A." all normalise to "unitedstates" / "us" / "usa".
     _US_NORMS = {"us", "usa", "unitedstates", "unitedstatesofamerica"}
     if filters.get("us_only"):
         if locations and not any(
@@ -266,28 +396,25 @@ def fetch_trials_with_filters(
     filters: dict[str, Any], limit: int, offset: int
 ) -> tuple[list[dict[str, Any]], int]:
     """
-    Fetch and filter trials from ClinicalTrials.gov with server-side pagination.
+    Fetch, filter, and relevance-score trials from ClinicalTrials.gov.
 
-    CRITICAL FIX: Instead of fetching ALL pages before returning, we now fetch
-    only enough pages to satisfy (offset + limit). This dramatically reduces
-    backend work on every search and load-more click.
-    
-    Strategy:
-      1. Fetch pages from ClinicalTrials.gov one at a time
-      2. Filter each page on-the-fly
-      3. Stop as soon as we have (offset + limit) results
-      4. Return total_count from API metadata (or estimate conservatively)
-    
-    This ensures:
-      - Initial search (limit=10, offset=0): fetch ~1 page, not 200
-      - Load more (limit=10, offset=10): fetch ~1-2 pages, not rescan all 200
-      - Memory usage stays constant; no accumulating result lists
+    Pipeline per page:
+      1. Fetch page from ClinicalTrials.gov (query.cond = raw condition string)
+      2. Apply hard filters (status, phase, city, state, us_only)
+      3. Apply relevance scoring — drop trials below MIN_RELEVANCE_SCORE
+         This removes false positives where the search term appears incidentally
+         in the study title/description but the trial is not clinically relevant
+         to the searched domain (e.g. "Improving Sleep in the Neurology
+         In-Patient Population" when searching for "neurology").
+      4. Accumulate until we have (offset + limit) relevant results or exhaust
+         all pages.
+
+    Relevance scoring details — see _score_trial_relevance() above.
     """
     condition = (filters.get("condition") or "").strip()
     if not condition:
         return [], 0
 
-    # Change #1: Validate city and state before touching the API
     city_ok,  city_reason  = validate_city(filters.get("city"))
     state_ok, state_reason = validate_state(filters.get("state"))
     if not city_ok:
@@ -302,42 +429,45 @@ def fetch_trials_with_filters(
     pages_fetched = 0
     total_count_estimate = 0
 
-    # Fetch pages incrementally until we have enough results.
-    # We stop early once we've collected (offset + limit) results.
     needed = offset + limit
-    
+
     while pages_fetched < _ABSOLUTE_PAGE_CEILING and len(matched_trials) < needed:
         payload = _fetch_study_page(condition, page_token)
         studies = payload.get("studies") or []
-        
-        # Capture total count from API metadata (used for "total results" display)
+
         if pages_fetched == 0:
-            # NB: ClinicalTrials.gov's totalCount may be inflated (includes non-matching).
-            # We use it as an estimate; actual total is revealed incrementally as we page.
             total_count_estimate = payload.get("totalCount", 0)
-        
+
         if not studies:
             break
 
         for study in studies:
             mapped_trial = _map_trial(study)
-            if _matches_filters(mapped_trial, filters):
-                matched_trials.append(mapped_trial)
+
+            # Hard filters first (cheap)
+            if not _matches_filters(mapped_trial, filters):
+                continue
+
+            # Relevance scoring (drops incidental matches)
+            if not _is_relevant(mapped_trial, condition):
+                rel_score = _score_trial_relevance(mapped_trial, condition)
+                logger.debug(
+                    "Filtered out low-relevance trial %s (score=%d): %s",
+                    mapped_trial.get("nctId"), rel_score, mapped_trial.get("title"),
+                )
+                continue
+
+            matched_trials.append(mapped_trial)
 
         page_token = payload.get("nextPageToken")
         pages_fetched += 1
 
         if not page_token:
-            # No more pages from API — we've hit the end.
             break
 
-    # Slice to return only the requested page.
     paged = matched_trials[offset: offset + limit]
-    
-    # Return the realistic count: either we've hit the API end, or estimate
-    # based on metadata (will be refined as user pages through results).
     total_count = len(matched_trials) if not page_token else total_count_estimate
-    
+
     return paged, total_count
 
 
