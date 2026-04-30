@@ -25,10 +25,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from api.leads import lead_validation_error_handler
- 
-app.add_exception_handler(RequestValidationError, lead_validation_error_handler)
+
 # Load .env before importing anything that reads cfg
 load_dotenv(Path(__file__).with_name(".env"))
 
@@ -93,18 +90,23 @@ app.add_middleware(
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """
-    Catches Pydantic validation errors (HTTP 422) and logs the exact fields
-    that failed so they appear in server logs instead of silently returning
-    a raw FastAPI error body.
+    Catches Pydantic validation errors (HTTP 422) and logs the raw body +
+    exact fields that failed so they appear in Render logs instead of
+    silently returning a raw FastAPI error body.
     """
+    body_bytes = await request.body()
+    try:
+        body_text = body_bytes.decode("utf-8")
+    except Exception:
+        body_text = repr(body_bytes)
+
     errors = exc.errors()
     logger.error(
-        "422 Validation error | path=%s | errors=%s",
+        "422 Validation error | path=%s | body=%s | errors=%s",
         request.url.path,
+        body_text,
         errors,
     )
-    # Return the standard FastAPI 422 shape — nothing changes for the client,
-    # but the server now logs the exact failing fields.
     return JSONResponse(
         status_code=422,
         content={"detail": errors},
