@@ -19,7 +19,7 @@ from services.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
-_PLACEHOLDER_EMAIL_DOMAINS = (".local",)
+_PLACEHOLDER_EMAIL_DOMAINS = (".com",)
 
 
 def _is_placeholder_email(email: str) -> bool:
