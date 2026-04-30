@@ -1,18 +1,18 @@
 // hooks/usePhysicians.ts
 // Manages all state for physician search triggered by a selected trial site.
 //
-// v4 changes:
-//  - Tracks `initialSpecialtyRef`: the specialty string from the user's very
-//    first search is captured once and forwarded on every subsequent search as
-//    `initial_specialty`, so it is always OR-included even when the user edits
-//    the specialty field or runs a follow-up search with a different value.
-//  - Exposes `searchSpecialties: string[]` — the resolved specialty list
-//    returned by the backend — so the UI (PhysicianPanel) can display a
-//    "Searching: Medical Oncology · Orthopedic Surgery" breadcrumb.
-//  - `search` signature extended: accepts `initialSpecialty?` (the value to
-//    pin) and `userSpecialty?` (the additional explicit override).
-//  - AbortController signal is properly forwarded to fetchPhysicians.
-//  - loadMore reveals next PAGE_SIZE results from the already-fetched dataset.
+// v5 changes:
+//  - Fixed hasMore: was comparing result.physicians.length > PAGE_SIZE which
+//    is always false because the backend caps results at MAX_DISPLAY (10).
+//    Now correctly computes hasMore = total > physicians_returned, where
+//    `total` is the full count of matching physicians in the search radius.
+//  - loadMore now re-fetches from the backend with an increased radius
+//    (stepping up through RADIUS_STEPS) rather than paginating a local slice,
+//    because the backend only returns MAX_DISPLAY physicians per call.
+//    This means "Load More" genuinely loads more physicians, not just
+//    re-reveals ones already fetched.
+//  - Retained all v4 behaviour: initialSpecialtyRef pinning, searchSpecialties
+//    breadcrumb, AbortController signal forwarding.
 
 "use client";
 
@@ -26,6 +26,10 @@ import type {
 
 export const PAGE_SIZE = 10;
 
+// Radius steps used when "Load More" expands the search area.
+// Starts from whatever radius the user last searched, then steps up.
+const RADIUS_STEPS = [25, 50, 75, 100];
+
 export interface PhysicianState {
   allPhysicians:     Physician[];
   physicians:        Physician[];
@@ -35,7 +39,6 @@ export interface PhysicianState {
   searched:          boolean;
   radiusMiles:       number;
   zipsSearched:      number;
-  page:              number;
   hasMore:           boolean;
   /** Resolved specialty strings that were actually searched (for UI display). */
   searchSpecialties: string[];
@@ -50,69 +53,78 @@ const INITIAL: PhysicianState = {
   searched:          false,
   radiusMiles:       25,
   zipsSearched:      0,
-  page:              1,
   hasMore:           false,
   searchSpecialties: [],
 };
 
 export function usePhysicians() {
-  const [state, setState]   = useState<PhysicianState>(INITIAL);
-  const abortRef            = useRef<AbortController | null>(null);
+  const [state, setState] = useState<PhysicianState>(INITIAL);
+  const abortRef          = useRef<AbortController | null>(null);
 
-  /**
-   * Captures the specialty string from the user's very first search.
-   * This ref persists across re-searches so `initial_specialty` is always
-   * forwarded to the backend, even when the user later edits the field.
-   */
+  // Pinned refs — persist across re-searches for the lifetime of this session
   const initialSpecialtyRef = useRef<string | undefined>(undefined);
+  const lastParamsRef       = useRef<PhysicianSearchParams | null>(null);
+  const lastSiteRef         = useRef<SelectedSite | null>(null);
+  const radiusStepRef       = useRef<number>(0); // index into RADIUS_STEPS
 
-  // ── search ──────────────────────────────────────────────────────────────
+  // ── search ────────────────────────────────────────────────────────────────
   const search = useCallback(async (
     site:              SelectedSite,
     radius:            number  = 25,
-    specialty?:        string,   // raw trial condition (mapped by backend)
-    userSpecialty?:    string,   // additional specialty explicitly entered by user
-    initialSpecialty?: string,   // specialty from the user's first search (captured once)
+    specialty?:        string,
+    userSpecialty?:    string,
+    initialSpecialty?: string,
   ) => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
     // Capture the initial specialty once — first non-empty value wins.
-    // Priority: explicit initialSpecialty arg → userSpecialty → specialty
     if (!initialSpecialtyRef.current) {
       const first = (initialSpecialty ?? userSpecialty ?? specialty ?? "").trim();
       if (first) initialSpecialtyRef.current = first;
     }
 
+    // Reset radius step on a fresh search
+    radiusStepRef.current = RADIUS_STEPS.indexOf(radius);
+    if (radiusStepRef.current === -1) radiusStepRef.current = 0;
+
+    // Persist site + params for loadMore re-fetches
+    lastSiteRef.current = site;
+
+    const params: PhysicianSearchParams = {
+      lat:    site.lat,
+      lng:    site.lng,
+      radius,
+      ...(specialty?.trim()                   ? { specialty:         specialty.trim()                   } : {}),
+      ...(initialSpecialtyRef.current?.trim() ? { initial_specialty: initialSpecialtyRef.current.trim() } : {}),
+      ...(userSpecialty?.trim()               ? { user_specialty:    userSpecialty.trim()               } : {}),
+    };
+    lastParamsRef.current = params;
+
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const params: PhysicianSearchParams = {
-        lat:    site.lat,
-        lng:    site.lng,
-        radius,
-        ...(specialty?.trim()                   ? { specialty:         specialty.trim()                   } : {}),
-        ...(initialSpecialtyRef.current?.trim() ? { initial_specialty: initialSpecialtyRef.current.trim() } : {}),
-        ...(userSpecialty?.trim()               ? { user_specialty:    userSpecialty.trim()               } : {}),
-      };
-
       const result = await fetchPhysicians(params, controller.signal);
       if (controller.signal.aborted) return;
 
-      const firstPage = result.physicians.slice(0, PAGE_SIZE);
+      // FIX: hasMore must compare total (all matching physicians in radius)
+      // against how many the backend actually returned this call.
+      // result.total  = full count of physicians found in search area
+      // result.physicians.length = how many were returned (capped at MAX_DISPLAY)
+      const returned = result.physicians.length;
+      const hasMore  = result.total > returned || radiusStepRef.current < RADIUS_STEPS.length - 1;
 
       setState({
         allPhysicians:     result.physicians,
-        physicians:        firstPage,
+        physicians:        result.physicians,
         total:             result.total,
         loading:           false,
         error:             null,
         searched:          true,
         radiusMiles:       result.radius_miles,
         zipsSearched:      result.zips_searched,
-        page:              1,
-        hasMore:           result.physicians.length > PAGE_SIZE,
+        hasMore,
         searchSpecialties: result.search_specialties ?? [],
       });
     } catch (err: unknown) {
@@ -126,25 +138,73 @@ export function usePhysicians() {
     }
   }, []);
 
-  // ── loadMore ─────────────────────────────────────────────────────────────
-  const loadMore = useCallback(() => {
-    setState((prev) => {
-      if (!prev.hasMore) return prev;
-      const nextPage  = prev.page + 1;
-      const nextSlice = prev.allPhysicians.slice(0, nextPage * PAGE_SIZE);
-      return {
-        ...prev,
-        physicians: nextSlice,
-        page:       nextPage,
-        hasMore:    nextSlice.length < prev.allPhysicians.length,
-      };
-    });
-  }, []);
+  // ── loadMore ──────────────────────────────────────────────────────────────
+  // Re-fetches from the backend with an expanded radius so new physicians
+  // are genuinely loaded (not just re-revealing an already-fetched slice).
+  const loadMore = useCallback(async () => {
+    const site       = lastSiteRef.current;
+    const prevParams = lastParamsRef.current;
+    if (!site || !prevParams || state.loading) return;
 
-  // ── reset ────────────────────────────────────────────────────────────────
+    // Step up to next radius
+    const nextStepIdx = Math.min(radiusStepRef.current + 1, RADIUS_STEPS.length - 1);
+    const nextRadius  = RADIUS_STEPS[nextStepIdx];
+    radiusStepRef.current = nextStepIdx;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const params: PhysicianSearchParams = {
+      ...prevParams,
+      radius: nextRadius,
+    };
+    lastParamsRef.current = params;
+
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const result = await fetchPhysicians(params, controller.signal);
+      if (controller.signal.aborted) return;
+
+      const returned = result.physicians.length;
+      const hasMore  = (result.total > returned) || (nextStepIdx < RADIUS_STEPS.length - 1);
+
+      setState((prev) => {
+        // Merge: keep previous physicians, append new ones not already shown
+        const existingNpis = new Set(prev.allPhysicians.map((p) => p.npi));
+        const newOnes = result.physicians.filter((p) => !existingNpis.has(p.npi));
+        const merged  = [...prev.allPhysicians, ...newOnes];
+        return {
+          ...prev,
+          allPhysicians:     merged,
+          physicians:        merged,
+          total:             result.total,
+          loading:           false,
+          error:             null,
+          radiusMiles:       result.radius_miles,
+          zipsSearched:      result.zips_searched,
+          hasMore,
+          searchSpecialties: result.search_specialties ?? prev.searchSpecialties,
+        };
+      });
+    } catch (err: unknown) {
+      if ((err as Error).name === "AbortError") return;
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error:   "Could not load more physicians. Please try again.",
+      }));
+    }
+  }, [state.loading]);
+
+  // ── reset ─────────────────────────────────────────────────────────────────
   const reset = useCallback(() => {
     abortRef.current?.abort();
     initialSpecialtyRef.current = undefined;
+    lastParamsRef.current       = null;
+    lastSiteRef.current         = null;
+    radiusStepRef.current       = 0;
     setState(INITIAL);
   }, []);
 
