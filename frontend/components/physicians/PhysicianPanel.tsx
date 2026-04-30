@@ -46,10 +46,8 @@ export default function PhysicianPanel({
 }: Props) {
   const [radius,            setRadius]            = useState<number>(25);
   const [specialty,         setSpecialty]         = useState(site.condition ?? "");
-  const [leadPhys,          setLeadPhys]          = useState<Physician | null>(null);
   const [selectedNpi,       setSelectedNpi]       = useState<string | null>(null);
   const [detailPhys,        setDetailPhys]        = useState<Physician | null>(null);
-  // NEW: controls the "Load More" lead-gate modal
   const [showLoadMoreModal, setShowLoadMoreModal] = useState(false);
 
   const initialSpecialtyRef = useRef<string>("");
@@ -66,13 +64,8 @@ export default function PhysicianPanel({
     onSearch(radius, trialCondition, userSpecialty, initialSpecialtyRef.current);
   }, [radius, specialty, site.condition, onSearch]);
 
-  // CHANGED: opens the lead modal instead of calling onLoadMore directly
   const handleLoadMoreClick = useCallback(() => {
     setShowLoadMoreModal(true);
-  }, []);
-
-  const handleLeadClose = useCallback(() => {
-    setLeadPhys(null);
   }, []);
 
   // ── Physician detail view ────────────────────────────────────────────────
@@ -84,16 +77,8 @@ export default function PhysicianPanel({
           physician={detailPhys}
           site={site}
           onBack={() => setDetailPhys(null)}
-          onAddAsLead={(phys: Physician) => setLeadPhys(phys)}
+          onAddAsLead={() => { /* detail panel handles submission internally */ }}
         />
-        {leadPhys && (
-          <LeadCaptureModal
-            npi={leadPhys.npi}
-            nctId={site.nct_id}
-            siteName={site.facility}
-            onClose={handleLeadClose}
-          />
-        )}
       </div>
     );
   }
@@ -321,7 +306,6 @@ export default function PhysicianPanel({
                   className="pp-load-more-top"
                   onClick={handleLoadMoreClick}
                   disabled={loading}
-                  title="Load more physicians"
                 >
                   + Load More
                 </button>
@@ -354,7 +338,6 @@ export default function PhysicianPanel({
               </div>
             )}
 
-            {/* CHANGED: pass nctId + siteName so PhysicianCard can auto-submit leads */}
             {!loading && physicians.length > 0 && physicians.map((p) => (
               <PhysicianCard
                 key={p.npi}
@@ -385,17 +368,7 @@ export default function PhysicianPanel({
         </div>
       </div>
 
-      {/* Lead modal from PhysicianDetailPanel's "Add as Lead" */}
-      {leadPhys && (
-        <LeadCaptureModal
-          npi={leadPhys.npi}
-          nctId={site.nct_id}
-          siteName={site.facility}
-          onClose={handleLeadClose}
-        />
-      )}
-
-      {/* NEW: Lead modal gate for "Load More" — user fills form, then physicians load */}
+      {/* Lead-gate modal for "Load More" only */}
       {showLoadMoreModal && (
         <LeadCaptureModal
           nctId={site.nct_id}

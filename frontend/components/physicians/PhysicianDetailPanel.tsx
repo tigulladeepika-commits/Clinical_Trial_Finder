@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import LeadCaptureModal          from "@/components/shared/LeadCaptureModal";
+import { submitLead }            from "@/lib/api";
 import type { Physician, SelectedSite } from "@/types/physician";
 
 interface Props {
@@ -23,17 +23,46 @@ function initials(name: string): string {
 }
 
 export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsLead }: Props) {
-  const [modalOpen, setModalOpen] = useState(false);
+  const [leadState, setLeadState] = useState<"idle" | "loading" | "done" | "error">("idle");
 
-  const handleAddAsLead = useCallback(() => {
-    setModalOpen(true);
-  }, []);
+  // Auto-submits physician details directly — no form, no modal.
+  // Company and email are hardcoded; all other fields come from the physician.
+  const handleAddAsLead = useCallback(async () => {
+    if (leadState !== "idle") return;
+    setLeadState("loading");
 
-  const handleModalClose = useCallback(() => {
-    setModalOpen(false);
-    // Notify parent so it can sync state / analytics if needed
-    onAddAsLead(physician);
-  }, [physician, onAddAsLead]);
+    try {
+      await submitLead({
+        name:           physician.name,
+        email:          `${physician.npi}@npi.local`,   // hardcoded placeholder
+        company:        "Individual Physicians",          // hardcoded
+        lead_source:    "Clinical Trial",
+        npi:            physician.npi,
+        nct_id:         site.nct_id,
+        ...(site.facility           ? { site:           site.facility           } : {}),
+        ...(physician.taxonomy_desc ? { title:          physician.taxonomy_desc } : {}),
+        ...(physician.phone         ? { phone:          physician.phone         } : {}),
+        physician_name: physician.name,
+        auto:           true,
+      });
+      setLeadState("done");
+      onAddAsLead(physician);            // notify parent (analytics / state sync)
+    } catch {
+      setLeadState("error");
+      setTimeout(() => setLeadState("idle"), 3000);
+    }
+  }, [leadState, physician, site, onAddAsLead]);
+
+  const btnLabel =
+    leadState === "loading" ? "Adding…"      :
+    leadState === "done"    ? "✓ Lead Added" :
+    leadState === "error"   ? "⚠ Retry"      :
+    "⭐ Add as Lead";
+
+  const btnBg =
+    leadState === "done"  ? "#16a34a" :
+    leadState === "error" ? "#dc2626" :
+    "#16a34a";
 
   const phoneStyle: React.CSSProperties = {
     color:          "#2563eb",
@@ -70,12 +99,11 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           padding: 7px 16px; color: #fff; border: none;
           border-radius: 8px; font-size: 12px; font-weight: 700;
           cursor: pointer; font-family: inherit; letter-spacing: 0.3px;
-          background: #16a34a;
-          transition: background 0.2s;
+          transition: background 0.2s, opacity 0.2s;
           display: flex; align-items: center; gap: 6px; white-space: nowrap;
-          min-width: 120px; justify-content: center;
+          min-width: 130px; justify-content: center;
         }
-        .pdp-add-lead-btn:hover { background: #15803d; }
+        .pdp-add-lead-btn:disabled { opacity: 0.65; cursor: not-allowed; }
         .pdp-body {
           flex: 1; overflow-y: auto; padding: 16px;
           display: flex; flex-direction: column; gap: 14px;
@@ -94,10 +122,10 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           font-family: 'DM Mono', monospace; flex-shrink: 0;
           box-shadow: 0 4px 12px rgba(37,99,235,0.3);
         }
-        .pdp-name     { font-size: 16px; font-weight: 700; color: #0d1117; line-height: 1.3; }
-        .pdp-specialty{ font-size: 12px; color: #2563eb; font-weight: 600; margin-top: 3px; }
-        .pdp-npi      { font-size: 10px; color: #94a3b8; font-family: 'DM Mono', monospace; margin-top: 4px; }
-        .pdp-section  { padding: 14px 16px; }
+        .pdp-name      { font-size: 16px; font-weight: 700; color: #0d1117; line-height: 1.3; }
+        .pdp-specialty { font-size: 12px; color: #2563eb; font-weight: 600; margin-top: 3px; }
+        .pdp-npi       { font-size: 10px; color: #94a3b8; font-family: 'DM Mono', monospace; margin-top: 4px; }
+        .pdp-section   { padding: 14px 16px; }
         .pdp-section + .pdp-section { border-top: 1px solid #f1f5f9; }
         .pdp-section-label {
           font-size: 9px; font-weight: 800; text-transform: uppercase;
@@ -120,6 +148,29 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           font-size: 12px; font-weight: 700; color: #2563eb;
           font-family: 'DM Mono', monospace; margin-top: 10px;
         }
+        /* Success banner shown below header after lead is added */
+        .pdp-lead-banner {
+          margin: 0 16px;
+          padding: 9px 14px;
+          background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 9px;
+          display: flex; align-items: center; gap: 8px;
+          font-size: 12px; font-weight: 600; color: #15803d;
+          flex-shrink: 0;
+        }
+        .pdp-lead-banner-dot {
+          width: 8px; height: 8px; border-radius: 50%; background: #16a34a; flex-shrink: 0;
+          box-shadow: 0 0 0 3px rgba(22,163,74,0.15);
+        }
+
+        /* Button spinner */
+        .pdp-btn-spinner {
+          width: 12px; height: 12px;
+          border: 2px solid rgba(255,255,255,0.35);
+          border-top-color: #fff;
+          border-radius: 50%;
+          animation: pdpSpin 0.65s linear infinite;
+        }
+        @keyframes pdpSpin { to { transform: rotate(360deg); } }
       `}</style>
 
       <div className="pdp-shell">
@@ -130,10 +181,25 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
             &#8592;
           </button>
           <div className="pdp-header-title">Physician Details</div>
-          <button className="pdp-add-lead-btn" onClick={handleAddAsLead}>
-            &#11088; Add as Lead
+          <button
+            className="pdp-add-lead-btn"
+            onClick={handleAddAsLead}
+            disabled={leadState === "loading" || leadState === "done"}
+            style={{ background: btnBg }}
+          >
+            {leadState === "loading"
+              ? <><div className="pdp-btn-spinner" /> Adding…</>
+              : btnLabel}
           </button>
         </div>
+
+        {/* Success banner — shown after lead is added */}
+        {leadState === "done" && (
+          <div className="pdp-lead-banner" style={{ marginTop: 12 }}>
+            <div className="pdp-lead-banner-dot" />
+            Lead captured for {physician.name} — saved locally &amp; queued for CRM.
+          </div>
+        )}
 
         <div className="pdp-body">
 
@@ -204,16 +270,6 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
 
         </div>
       </div>
-
-      {/* Lead capture modal — opens when "Add as Lead" is clicked */}
-      {modalOpen && (
-        <LeadCaptureModal
-          npi={physician.npi}
-          nctId={site.nct_id}
-          siteName={site.facility}
-          onClose={handleModalClose}
-        />
-      )}
     </>
   );
 }
