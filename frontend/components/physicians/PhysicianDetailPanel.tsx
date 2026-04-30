@@ -2,17 +2,15 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { submitAutoLead }        from "@/lib/api";
+import LeadCaptureModal          from "@/components/shared/LeadCaptureModal";
 import type { Physician, SelectedSite } from "@/types/physician";
 
 interface Props {
   physician:   Physician;
   site:        SelectedSite;
   onBack:      () => void;
-  onAddAsLead: (physician: Physician) => void; // kept for parent compatibility
+  onAddAsLead: (physician: Physician) => void;
 }
-
-type ToastState = "idle" | "loading" | "success" | "error";
 
 function initials(name: string): string {
   return name
@@ -25,41 +23,23 @@ function initials(name: string): string {
 }
 
 export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsLead }: Props) {
-  const [toast, setToast] = useState<ToastState>("idle");
+  const [modalOpen, setModalOpen] = useState(false);
 
-  const handleAddAsLead = useCallback(async () => {
-    if (toast === "loading" || toast === "success") return;
-    setToast("loading");
-    try {
-      await submitAutoLead(physician, site);
-      setToast("success");
-      onAddAsLead(physician); // notify parent (e.g. for analytics / state sync)
-      // Reset button after 3 s so user can see the confirmation
-      setTimeout(() => setToast("idle"), 3000);
-    } catch (err) {
-      console.error("[AddAsLead]", err);
-      setToast("error");
-      setTimeout(() => setToast("idle"), 3000);
-    }
-  }, [physician, site, toast, onAddAsLead]);
+  const handleAddAsLead = useCallback(() => {
+    setModalOpen(true);
+  }, []);
+
+  const handleModalClose = useCallback(() => {
+    setModalOpen(false);
+    // Notify parent so it can sync state / analytics if needed
+    onAddAsLead(physician);
+  }, [physician, onAddAsLead]);
 
   const phoneStyle: React.CSSProperties = {
     color:          "#2563eb",
     fontWeight:     600,
     textDecoration: "none",
   };
-
-  const btnLabel =
-    toast === "loading" ? "Saving…"  :
-    toast === "success" ? "✓ Saved!" :
-    toast === "error"   ? "✗ Failed — Retry" :
-                          "⭐ Add as Lead";
-
-  const btnBg =
-    toast === "success" ? "#15803d" :
-    toast === "error"   ? "#dc2626" :
-    toast === "loading" ? "#16a34a" :
-                          "#16a34a";
 
   return (
     <>
@@ -90,11 +70,12 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           padding: 7px 16px; color: #fff; border: none;
           border-radius: 8px; font-size: 12px; font-weight: 700;
           cursor: pointer; font-family: inherit; letter-spacing: 0.3px;
-          transition: background 0.2s, opacity 0.2s;
+          background: #16a34a;
+          transition: background 0.2s;
           display: flex; align-items: center; gap: 6px; white-space: nowrap;
           min-width: 120px; justify-content: center;
         }
-        .pdp-add-lead-btn:disabled { opacity: 0.75; cursor: not-allowed; }
+        .pdp-add-lead-btn:hover { background: #15803d; }
         .pdp-body {
           flex: 1; overflow-y: auto; padding: 16px;
           display: flex; flex-direction: column; gap: 14px;
@@ -149,13 +130,8 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
             &#8592;
           </button>
           <div className="pdp-header-title">Physician Details</div>
-          <button
-            className="pdp-add-lead-btn"
-            style={{ background: btnBg }}
-            onClick={handleAddAsLead}
-            disabled={toast === "loading" || toast === "success"}
-          >
-            {btnLabel}
+          <button className="pdp-add-lead-btn" onClick={handleAddAsLead}>
+            &#11088; Add as Lead
           </button>
         </div>
 
@@ -228,6 +204,16 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
 
         </div>
       </div>
+
+      {/* Lead capture modal — opens when "Add as Lead" is clicked */}
+      {modalOpen && (
+        <LeadCaptureModal
+          npi={physician.npi}
+          nctId={site.nct_id}
+          siteName={site.facility}
+          onClose={handleModalClose}
+        />
+      )}
     </>
   );
 }

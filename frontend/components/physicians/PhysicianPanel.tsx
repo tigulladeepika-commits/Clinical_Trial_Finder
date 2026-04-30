@@ -49,8 +49,6 @@ export default function PhysicianPanel({
   const [leadPhys,    setLeadPhys]    = useState<Physician | null>(null);
   const [selectedNpi, setSelectedNpi] = useState<string | null>(null);
   const [detailPhys,  setDetailPhys]  = useState<Physician | null>(null);
-  // Controls whether the modal was triggered by "Load More" (true) or "Add as Lead" (false)
-  const [loadMoreModal, setLoadMoreModal] = useState(false);
 
   const initialSpecialtyRef = useRef<string>("");
 
@@ -74,20 +72,14 @@ export default function PhysicianPanel({
     );
   }, [radius, specialty, site.condition, onSearch]);
 
-  // "Load More" button opens the lead form;
-  // on close it triggers the actual onLoadMore data fetch.
+  // Load More simply fetches more data — no lead modal gate.
   const handleLoadMoreClick = useCallback(() => {
-    setLoadMoreModal(true);
-    setLeadPhys(physicians[0] ?? null);
-  }, [physicians]);
+    onLoadMore();
+  }, [onLoadMore]);
 
   const handleLeadClose = useCallback(() => {
     setLeadPhys(null);
-    if (loadMoreModal) {
-      setLoadMoreModal(false);
-      onLoadMore();
-    }
-  }, [onLoadMore, loadMoreModal]);
+  }, []);
 
   // ── Physician detail view ────────────────────────────────────────────────
   if (detailPhys) {
@@ -99,7 +91,6 @@ export default function PhysicianPanel({
           site={site}
           onBack={() => setDetailPhys(null)}
           onAddAsLead={(phys: Physician) => {
-            setLoadMoreModal(false);
             setLeadPhys(phys);
           }}
         />
@@ -108,7 +99,7 @@ export default function PhysicianPanel({
             npi={leadPhys.npi}
             nctId={site.nct_id}
             siteName={site.facility}
-            onClose={() => setLeadPhys(null)}
+            onClose={handleLeadClose}
           />
         )}
       </div>
@@ -177,7 +168,6 @@ export default function PhysicianPanel({
           font-size: 10px; font-weight: 600;
         }
 
-        /* Map wrapper — fixed height, no scrollbar */
         .pp-map-wrap {
           flex: 0 0 auto;
           height: 300px;
@@ -190,12 +180,10 @@ export default function PhysicianPanel({
         }
         .pp-map-empty-icon { font-size: 28px; opacity: 0.4; }
 
-        /* List section — takes remaining height, single scroll zone */
         .pp-list-section {
           flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
         }
 
-        /* Count bar row — sticky inside list section, never scrolls */
         .pp-count-row {
           display: flex; align-items: center; justify-content: space-between;
           padding: 6px 12px 4px; flex-shrink: 0;
@@ -207,7 +195,6 @@ export default function PhysicianPanel({
         }
         .pp-count-bar strong { color: #0d1117; }
 
-        /* "Load More" button — top-right of count row (compact) */
         .pp-load-more-top {
           display: inline-flex; align-items: center; gap: 5px;
           padding: 5px 12px;
@@ -221,13 +208,11 @@ export default function PhysicianPanel({
         .pp-load-more-top:hover { background: #1d4ed8; }
         .pp-load-more-top:disabled { opacity: 0.55; cursor: not-allowed; }
 
-        /* Scrollable cards area — the ONE scroll zone for the list */
         .pp-list {
           flex: 1; overflow-y: auto; padding: 8px 12px 12px;
           display: flex; flex-direction: column; gap: 7px;
         }
 
-        /* "Load More" button — bottom of card list, full width, prominent */
         .pp-load-more-bottom-wrap {
           margin-top: 4px;
           padding: 10px 2px 4px;
@@ -362,10 +347,9 @@ export default function PhysicianPanel({
           )}
         </div>
 
-        {/* ── List section (flex column, single scroll zone) ── */}
+        {/* ── List section ── */}
         <div className="pp-list-section">
 
-          {/* Count bar row with compact "Load More" pinned top-right */}
           {!loading && physicians.length > 0 && (
             <div className="pp-count-row">
               <span className="pp-count-bar">
@@ -385,7 +369,6 @@ export default function PhysicianPanel({
             </div>
           )}
 
-          {/* Scrollable card list — the single scroll zone */}
           <div className="pp-list">
             {loading && (
               <div className="pp-center">
@@ -419,7 +402,6 @@ export default function PhysicianPanel({
               />
             ))}
 
-            {/* ── Bottom "Load More" — appears after all cards when more exist ── */}
             {!loading && hasMore && physicians.length > 0 && (
               <div className="pp-load-more-bottom-wrap">
                 <button
@@ -440,7 +422,7 @@ export default function PhysicianPanel({
         </div>
       </div>
 
-      {/* ── Lead capture modal (triggered by either Load More button) ── */}
+      {/* Lead modal — only opened from PhysicianDetailPanel's Add as Lead */}
       {leadPhys && (
         <LeadCaptureModal
           npi={leadPhys.npi}

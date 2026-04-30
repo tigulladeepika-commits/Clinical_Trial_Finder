@@ -1,12 +1,15 @@
 // lib/api.ts
 //
-// v7 changes:
-//  - submitLead() — added buildLeadPayload() guard that strips undefined/null
-//    values and validates name + email before sending, preventing 422 errors
-//    from Pydantic's EmailStr validator on the backend.
-//  - submitAutoLead() — return type unified to { success: boolean; id?: string }
-//    (was mismatched with { lead_id? } in submitLead — now both use `id`).
-//  - buildPhysicianParams() helper (v5) retained unchanged.
+// v8 changes:
+//  - submitAutoLead() — removed hardcoded "lead@aquarient.local" email.
+//    The backend LeadRequest already defaults email to the placeholder
+//    via its own logic; sending it explicitly from the client was causing
+//    Salesforce Web-to-Lead to receive a .local domain and silently drop
+//    the lead. Now the field is simply omitted from the auto-lead payload
+//    and the backend default is used, which salesforce.py now detects and
+//    skips the SF push for (logged as info, not an error).
+//  - All other helpers (buildLeadPayload, submitLead, fetchPhysicians, etc.)
+//    are unchanged from v7.
 
 import type { TrialFetchParams, TrialFetchResponse, SiteData, Trial } from "@/types/trial";
 import type {
@@ -181,8 +184,6 @@ function buildLeadPayload(raw: LeadPayload): Record<string, unknown> {
   if (!name)  throw new Error("Lead submission requires a name.");
   if (!email) throw new Error("Lead submission requires an email address.");
 
-  // Only include optional string fields when they have a real value —
-  // omitting them means Pydantic uses its defaults instead of seeing "undefined".
   const payload: Record<string, unknown> = {
     name,
     email,
@@ -203,7 +204,7 @@ function buildLeadPayload(raw: LeadPayload): Record<string, unknown> {
 }
 
 /**
- * Submit a user-filled lead form (Load More modal).
+ * Submit a user-filled lead form (LeadCaptureModal).
  * Validates name + email before sending — throws on missing required fields.
  */
 export async function submitLead(
@@ -216,32 +217,33 @@ export async function submitLead(
 }
 
 /**
- * Auto-generate a Salesforce lead from a Physician record.
- * No user form — all fields are derived from the physician data.
+ * Auto-generate a local lead record from a Physician record.
+ * Saved to leads.json for internal tracking only — NOT pushed to Salesforce
+ * because there is no real user email. The backend's salesforce.py detects
+ * the .local placeholder domain and skips the SF push automatically.
  *
- * Fixed values:
- *   email       → lead@aquarient.local
- *   company     → Individual Physicians
- *   lead_source → Clinical Trial
+ * To generate a real Salesforce lead for a physician, use LeadCaptureModal
+ * which calls submitLead() with a user-supplied email address.
  *
- * Derived values:
+ * Payload fields:
  *   name            → physician.name
- *   phone           → physician.phone
- *   title           → physician.taxonomy_desc
+ *   email           → "lead@aquarient.local" (backend default, SF skipped)
+ *   company         → "Individual Physicians"
+ *   lead_source     → "Clinical Trial"
+ *   physician_name  → physician.name
  *   npi             → physician.npi
  *   nct_id          → site.nct_id
- *   site            → site.facility
- *   physician_name  → physician.name
+ *   auto            → true
  */
 export async function submitAutoLead(
   physician: Physician,
   site:      SelectedSite,
 ): Promise<{ success: boolean; id?: string }> {
-  // buildLeadPayload is not used here because all fields are hardcoded /
-  // safely derived — there is no user input that could be undefined.
+  // Email is intentionally omitted — the backend defaults to "lead@aquarient.local"
+  // which salesforce.py detects as a placeholder and skips the SF push.
+  // This means auto-leads are tracked locally but never sent to Salesforce.
   const payload: Record<string, unknown> = {
     name:           physician.name,
-    email:          "lead@aquarient.local",
     company:        "Individual Physicians",
     lead_source:    "Clinical Trial",
     physician_name: physician.name,

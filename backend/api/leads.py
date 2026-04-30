@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
 from core.config import cfg
@@ -108,6 +110,35 @@ def _push_to_salesforce(lead: dict) -> None:
         logger.info("Lead %s pushed to Salesforce", lead["id"])
     except Exception as exc:
         logger.warning("Salesforce push failed for lead %s: %s", lead["id"], exc)
+
+
+# ---------------------------------------------------------------------------
+# Validation-error handler — logs the raw body + Pydantic errors so 422s
+# are visible in Render logs instead of being silent.
+# Register this on the FastAPI app instance in main.py:
+#
+#   from api.leads import lead_validation_error_handler
+#   from fastapi.exceptions import RequestValidationError
+#   app.add_exception_handler(RequestValidationError, lead_validation_error_handler)
+# ---------------------------------------------------------------------------
+
+async def lead_validation_error_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    body_bytes = await request.body()
+    try:
+        body_text = body_bytes.decode("utf-8")
+    except Exception:
+        body_text = repr(body_bytes)
+    logger.error(
+        "422 Validation error on %s %s | body=%s | errors=%s",
+        request.method,
+        request.url.path,
+        body_text,
+        exc.errors(),
+    )
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 
 @router.post("", response_model=LeadResponse, status_code=201)

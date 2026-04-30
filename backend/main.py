@@ -25,7 +25,10 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
+from fastapi.exceptions import RequestValidationError
+from api.leads import lead_validation_error_handler
+ 
+app.add_exception_handler(RequestValidationError, lead_validation_error_handler)
 # Load .env before importing anything that reads cfg
 load_dotenv(Path(__file__).with_name(".env"))
 

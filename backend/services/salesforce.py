@@ -19,6 +19,14 @@ from services.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
+_PLACEHOLDER_EMAIL_DOMAINS = (".local",)
+
+
+def _is_placeholder_email(email: str) -> bool:
+    """Return True for internal / placeholder emails that Salesforce will reject."""
+    lower = email.strip().lower()
+    return any(lower.endswith(d) for d in _PLACEHOLDER_EMAIL_DOMAINS)
+
 
 def push_lead(lead: Dict) -> None:
     """
@@ -48,6 +56,18 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         logger.warning(msg)
         return False, 0, "", msg
 
+    email = lead.get("email", "")
+
+    # Skip auto-leads that use placeholder emails — Salesforce rejects .local
+    # domains and the lead would be silently dropped or cause a 422 upstream.
+    if _is_placeholder_email(email):
+        msg = (
+            f"Skipping Salesforce push for lead {lead.get('id')} — "
+            f"placeholder email '{email}' not suitable for Salesforce."
+        )
+        logger.info(msg)
+        return True, 0, "", ""   # return success=True so caller doesn't log a warning
+
     # Build description from all available context
     physician_name = lead.get("physician_name", "")
     npi            = lead.get("npi", "")
@@ -71,7 +91,7 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         "retURL":      cfg.SF_RET_URL or "https://www.aquarient.com",
         "first_name":  sanitise(lead.get("first_name", ""),                  80),
         "last_name":   sanitise(lead.get("last_name",  "Unknown"),            80),
-        "email":       sanitise(lead.get("email",      "lead@aquarient.local"), 254),
+        "email":       sanitise(email,                                       254),
         "phone":       sanitise(lead.get("phone",      ""),                   40),
         "company":     sanitise(lead.get("company")    or "Individual Physicians", 120),
         "title":       sanitise(lead.get("title",      ""),                   80),
@@ -85,7 +105,7 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
 
     logger.info(
         "Pushing to SF | OID=%s | email=%s | auto=%s",
-        cfg.SF_OID, lead.get("email"), lead.get("auto"),
+        cfg.SF_OID, email, lead.get("auto"),
     )
 
     try:
@@ -98,7 +118,7 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         snippet    = (resp.text or "")[:500]
         body_lower = snippet.lower()
         has_error  = (
-            "error"        in body_lower
+            "error"            in body_lower
             and "debugEmail"   not in snippet
             and "successfully" not in body_lower
         )
@@ -108,7 +128,7 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         success = resp.status_code in (200, 301, 302) and not has_error
         logger.info(
             "SF HTTP %d | success=%s | email=%s",
-            resp.status_code, success, lead.get("email"),
+            resp.status_code, success, email,
         )
         return success, resp.status_code, snippet, ""
 
