@@ -74,15 +74,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — locked to FRONTEND_URL in production, open in dev
-origins = [cfg.FRONTEND_URL] if cfg.FRONTEND_URL else ["*"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
-)
+# CORS — regex matches all Vercel preview and production deployments.
+# Locally (IS_RENDER=False) all origins are allowed for ease of development.
+if cfg.IS_RENDER:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"https://clinical-trial-finder[a-z0-9\-]*\.vercel\.app",
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+    )
 
 
 # ── Validation error handler ──────────────────────────────────────────────────
