@@ -74,7 +74,7 @@ export default function PhysicianPanel({
     );
   }, [radius, specialty, site.condition, onSearch]);
 
-  // "Load More" button at top-right opens the lead form;
+  // "Load More" button opens the lead form;
   // on close it triggers the actual onLoadMore data fetch.
   const handleLoadMoreClick = useCallback(() => {
     setLoadMoreModal(true);
@@ -207,7 +207,7 @@ export default function PhysicianPanel({
         }
         .pp-count-bar strong { color: #0d1117; }
 
-        /* "Load More" button — lives in the count row, top-right of list */
+        /* "Load More" button — top-right of count row (compact) */
         .pp-load-more-top {
           display: inline-flex; align-items: center; gap: 5px;
           padding: 5px 12px;
@@ -225,6 +225,46 @@ export default function PhysicianPanel({
         .pp-list {
           flex: 1; overflow-y: auto; padding: 8px 12px 12px;
           display: flex; flex-direction: column; gap: 7px;
+        }
+
+        /* "Load More" button — bottom of card list, full width, prominent */
+        .pp-load-more-bottom-wrap {
+          margin-top: 4px;
+          padding: 10px 2px 4px;
+          border-top: 1px solid #e4e8f0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+        }
+        .pp-load-more-bottom {
+          width: 100%;
+          padding: 11px 0;
+          background: #fff;
+          color: #2563eb;
+          border: 1.5px dashed #93c5fd;
+          border-radius: 10px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          font-family: inherit;
+          letter-spacing: 0.2px;
+          transition: background 0.15s, border-color 0.15s, color 0.15s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+        }
+        .pp-load-more-bottom:hover:not(:disabled) {
+          background: #eff6ff;
+          border-color: #2563eb;
+          color: #1d4ed8;
+        }
+        .pp-load-more-bottom:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pp-load-more-bottom-sub {
+          font-size: 10px;
+          color: #94a3b8;
+          font-weight: 500;
         }
 
         .pp-center {
@@ -325,7 +365,7 @@ export default function PhysicianPanel({
         {/* ── List section (flex column, single scroll zone) ── */}
         <div className="pp-list-section">
 
-          {/* Count bar row with "Load More" button pinned top-right */}
+          {/* Count bar row with compact "Load More" pinned top-right */}
           {!loading && physicians.length > 0 && (
             <div className="pp-count-row">
               <span className="pp-count-bar">
@@ -378,12 +418,29 @@ export default function PhysicianPanel({
                 onClick={(phys: Physician) => setDetailPhys(phys)}
               />
             ))}
+
+            {/* ── Bottom "Load More" — appears after all cards when more exist ── */}
+            {!loading && hasMore && physicians.length > 0 && (
+              <div className="pp-load-more-bottom-wrap">
+                <button
+                  className="pp-load-more-bottom"
+                  onClick={handleLoadMoreClick}
+                  disabled={loading}
+                >
+                  <span>＋</span>
+                  Load more physicians
+                </button>
+                <span className="pp-load-more-bottom-sub">
+                  Showing {physicians.length} of {total} · scroll up to see all
+                </span>
+              </div>
+            )}
           </div>
 
         </div>
       </div>
 
-      {/* ── Lead capture modal (triggered by Load More button) ── */}
+      {/* ── Lead capture modal (triggered by either Load More button) ── */}
       {leadPhys && (
         <LeadCaptureModal
           npi={leadPhys.npi}

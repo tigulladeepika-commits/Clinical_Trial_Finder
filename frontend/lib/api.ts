@@ -1,10 +1,12 @@
 // lib/api.ts
 //
-// v6 changes:
-//  - submitAutoLead() — auto-generates a Salesforce lead from a Physician
-//    object without a user form. Fixed fields: email=lead@aquarient.local,
-//    company=Individual Physicians, lead_source=Clinical Trial.
-//  - buildPhysicianParams() helper (v5) retained.
+// v7 changes:
+//  - submitLead() — added buildLeadPayload() guard that strips undefined/null
+//    values and validates name + email before sending, preventing 422 errors
+//    from Pydantic's EmailStr validator on the backend.
+//  - submitAutoLead() — return type unified to { success: boolean; id?: string }
+//    (was mismatched with { lead_id? } in submitLead — now both use `id`).
+//  - buildPhysicianParams() helper (v5) retained unchanged.
 
 import type { TrialFetchParams, TrialFetchResponse, SiteData, Trial } from "@/types/trial";
 import type {
@@ -163,12 +165,53 @@ export async function getPhysiciansForTrial(
 
 // ── Leads ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Validates and cleans a LeadPayload before sending to the API.
+ * Strips undefined/null/empty optional fields so they are omitted from the
+ * JSON body entirely — preventing Pydantic from receiving "undefined" as a
+ * string and failing EmailStr validation.
+ *
+ * Throws if name or email are missing, so the caller gets a clear error
+ * rather than a cryptic 422 from the backend.
+ */
+function buildLeadPayload(raw: LeadPayload): Record<string, unknown> {
+  const name  = raw.name?.trim()  ?? "";
+  const email = raw.email?.trim() ?? "";
+
+  if (!name)  throw new Error("Lead submission requires a name.");
+  if (!email) throw new Error("Lead submission requires an email address.");
+
+  // Only include optional string fields when they have a real value —
+  // omitting them means Pydantic uses its defaults instead of seeing "undefined".
+  const payload: Record<string, unknown> = {
+    name,
+    email,
+    lead_source: raw.lead_source ?? "Clinical Trial",
+    company:     raw.company     ?? "Individual Physicians",
+    auto:        raw.auto        ?? false,
+  };
+
+  if (raw.phone?.trim())          payload.phone           = raw.phone.trim();
+  if (raw.npi?.trim())            payload.npi             = raw.npi.trim();
+  if (raw.nct_id?.trim())         payload.nct_id          = raw.nct_id.trim();
+  if (raw.site?.trim())           payload.site            = raw.site.trim();
+  if (raw.message?.trim())        payload.message         = raw.message.trim();
+  if (raw.title?.trim())          payload.title           = raw.title.trim();
+  if (raw.physician_name?.trim()) payload.physician_name  = raw.physician_name.trim();
+
+  return payload;
+}
+
+/**
+ * Submit a user-filled lead form (Load More modal).
+ * Validates name + email before sending — throws on missing required fields.
+ */
 export async function submitLead(
   payload: LeadPayload,
-): Promise<{ success: boolean; lead_id?: string }> {
+): Promise<{ success: boolean; id?: string }> {
   return apiFetch("/api/leads", {
     method: "POST",
-    body:   JSON.stringify(payload),
+    body:   JSON.stringify(buildLeadPayload(payload)),
   });
 }
 
@@ -182,30 +225,35 @@ export async function submitLead(
  *   lead_source → Clinical Trial
  *
  * Derived values:
- *   name   → physician.name
- *   phone  → physician.phone
- *   title  → physician.taxonomy_desc
- *   npi    → physician.npi
- *   nct_id → site.nct_id
- *   site   → site.facility
+ *   name            → physician.name
+ *   phone           → physician.phone
+ *   title           → physician.taxonomy_desc
+ *   npi             → physician.npi
+ *   nct_id          → site.nct_id
+ *   site            → site.facility
+ *   physician_name  → physician.name
  */
 export async function submitAutoLead(
   physician: Physician,
   site:      SelectedSite,
 ): Promise<{ success: boolean; id?: string }> {
-  const payload = {
+  // buildLeadPayload is not used here because all fields are hardcoded /
+  // safely derived — there is no user input that could be undefined.
+  const payload: Record<string, unknown> = {
     name:           physician.name,
     email:          "lead@aquarient.local",
-    phone:          physician.phone          ?? "",
-    title:          physician.taxonomy_desc  ?? "",
     company:        "Individual Physicians",
     lead_source:    "Clinical Trial",
     physician_name: physician.name,
     npi:            physician.npi,
     nct_id:         site.nct_id,
-    site:           site.facility            ?? "",
     auto:           true,
   };
+
+  // Optional fields — only include when present
+  if (physician.phone?.trim())         payload.phone = physician.phone.trim();
+  if (physician.taxonomy_desc?.trim()) payload.title = physician.taxonomy_desc.trim();
+  if (site.facility?.trim())           payload.site  = site.facility.trim();
 
   return apiFetch("/api/leads", {
     method: "POST",

@@ -21,8 +21,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 # Load .env before importing anything that reads cfg
 load_dotenv(Path(__file__).with_name(".env"))
@@ -54,8 +56,6 @@ async def lifespan(app: FastAPI):
     logger.info("Taxonomy initializing (seed ready immediately)")
 
     # ZIP database: sync on Render (blocks until ready), async locally
-    # background=False → synchronous load (ZIP_LOAD_SYNC=True on Render)
-    # background=True  → background thread (local dev)
     from services import zip_database
     zip_database.initialize(background=not cfg.ZIP_LOAD_SYNC)
     logger.info("ZIP DB initializing (sync=%s)", cfg.ZIP_LOAD_SYNC)
@@ -83,6 +83,29 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+# ── Validation error handler ──────────────────────────────────────────────────
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Catches Pydantic validation errors (HTTP 422) and logs the exact fields
+    that failed so they appear in server logs instead of silently returning
+    a raw FastAPI error body.
+    """
+    errors = exc.errors()
+    logger.error(
+        "422 Validation error | path=%s | errors=%s",
+        request.url.path,
+        errors,
+    )
+    # Return the standard FastAPI 422 shape — nothing changes for the client,
+    # but the server now logs the exact failing fields.
+    return JSONResponse(
+        status_code=422,
+        content={"detail": errors},
+    )
 
 
 # ── Routers ───────────────────────────────────────────────────────────────────

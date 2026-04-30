@@ -40,6 +40,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Placeholder used by submitAutoLead() when no real user email is provided.
+# Pydantic's EmailStr accepts it, and Salesforce receives it as-is.
+_AUTO_LEAD_EMAIL = "lead@aquarient.local"
+
+# Values that JS may serialize for missing/undefined fields — all rejected.
+_FALSY_STRINGS = {"", "undefined", "null", "none", "n/a"}
+
 
 # ── Request / Response models ─────────────────────────────────────────────────
 
@@ -57,18 +64,40 @@ class LeadRequest(BaseModel):
     physician_name: str  = ""
     auto:           bool = False
 
-    @field_validator("name", "phone", "npi", "nct_id", "site", "message",
-                     "lead_source", "company", "title", "physician_name", mode="before")
+    @field_validator(
+        "name", "phone", "npi", "nct_id", "site", "message",
+        "lead_source", "company", "title", "physician_name",
+        mode="before",
+    )
     @classmethod
-    def sanitize_fields(cls, v: str) -> str:
-        return sanitise(str(v or ""), 500)
+    def sanitize_str_fields(cls, v: object) -> str:
+        """
+        Coerce to string, strip HTML/control chars, cap length.
+        Converts JS undefined → "" (None arrives as Python None here).
+        """
+        return sanitise(str(v) if v is not None else "", 500)
 
     @field_validator("name")
     @classmethod
     def name_required(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError("name is required")
+            raise ValueError("name is required and cannot be blank")
         return v
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def clean_email(cls, v: object) -> str:
+        """
+        Reject blank / JS-undefined / null values before EmailStr validates.
+        Also accepts the auto-lead placeholder so submitAutoLead() always works.
+        """
+        raw = str(v).strip().lower() if v is not None else ""
+        if raw in _FALSY_STRINGS:
+            raise ValueError(
+                "A valid email address is required. "
+                "Received an empty or invalid value."
+            )
+        return str(v).strip()  # return original casing for storage
 
 
 class LeadResponse(BaseModel):
@@ -160,13 +189,17 @@ async def capture_lead(request: Request, body: LeadRequest):
         _append_lead(lead)
     except OSError as exc:
         logger.error("Failed to persist lead %s: %s", lead_id, exc)
-        raise HTTPException(status_code=500, detail="Could not save lead. Please try again.")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save lead. Please try again.",
+        )
 
     _push_to_salesforce(lead)
 
     logger.info(
         "Lead captured | id=%s auto=%s name=%s email=%s npi=%s nct_id=%s",
-        lead_id, body.auto, body.name, str(body.email), body.npi or "—", body.nct_id or "—",
+        lead_id, body.auto, body.name, str(body.email),
+        body.npi or "—", body.nct_id or "—",
     )
 
     return LeadResponse(success=True, id=lead_id)
