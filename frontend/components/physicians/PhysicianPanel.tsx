@@ -44,11 +44,13 @@ export default function PhysicianPanel({
   onLoadMore,
   onBack,
 }: Props) {
-  const [radius,      setRadius]      = useState<number>(25);
-  const [specialty,   setSpecialty]   = useState(site.condition ?? "");
-  const [leadPhys,    setLeadPhys]    = useState<Physician | null>(null);
-  const [selectedNpi, setSelectedNpi] = useState<string | null>(null);
-  const [detailPhys,  setDetailPhys]  = useState<Physician | null>(null);
+  const [radius,            setRadius]            = useState<number>(25);
+  const [specialty,         setSpecialty]         = useState(site.condition ?? "");
+  const [leadPhys,          setLeadPhys]          = useState<Physician | null>(null);
+  const [selectedNpi,       setSelectedNpi]       = useState<string | null>(null);
+  const [detailPhys,        setDetailPhys]        = useState<Physician | null>(null);
+  // NEW: controls the "Load More" lead-gate modal
+  const [showLoadMoreModal, setShowLoadMoreModal] = useState(false);
 
   const initialSpecialtyRef = useRef<string>("");
 
@@ -56,26 +58,18 @@ export default function PhysicianPanel({
     if (!initialSpecialtyRef.current) {
       initialSpecialtyRef.current = specialty.trim();
     }
-
     const trialCondition = site.condition?.trim() ?? "";
     const currentInput   = specialty.trim();
-
-    const userSpecialty = currentInput.toLowerCase() !== trialCondition.toLowerCase()
+    const userSpecialty  = currentInput.toLowerCase() !== trialCondition.toLowerCase()
       ? currentInput
       : "";
-
-    onSearch(
-      radius,
-      trialCondition,
-      userSpecialty,
-      initialSpecialtyRef.current,
-    );
+    onSearch(radius, trialCondition, userSpecialty, initialSpecialtyRef.current);
   }, [radius, specialty, site.condition, onSearch]);
 
-  // Load More simply fetches more data — no lead modal gate.
+  // CHANGED: opens the lead modal instead of calling onLoadMore directly
   const handleLoadMoreClick = useCallback(() => {
-    onLoadMore();
-  }, [onLoadMore]);
+    setShowLoadMoreModal(true);
+  }, []);
 
   const handleLeadClose = useCallback(() => {
     setLeadPhys(null);
@@ -90,9 +84,7 @@ export default function PhysicianPanel({
           physician={detailPhys}
           site={site}
           onBack={() => setDetailPhys(null)}
-          onAddAsLead={(phys: Physician) => {
-            setLeadPhys(phys);
-          }}
+          onAddAsLead={(phys: Physician) => setLeadPhys(phys)}
         />
         {leadPhys && (
           <LeadCaptureModal
@@ -167,10 +159,8 @@ export default function PhysicianPanel({
           color: #fff; border-radius: 20px; padding: 2px 9px;
           font-size: 10px; font-weight: 600;
         }
-
         .pp-map-wrap {
-          flex: 0 0 auto;
-          height: 300px;
+          flex: 0 0 auto; height: 300px;
           position: relative; overflow: hidden; background: #e2e8f0;
         }
         .pp-map-empty {
@@ -179,26 +169,19 @@ export default function PhysicianPanel({
           font-weight: 500; flex-direction: column; gap: 8px;
         }
         .pp-map-empty-icon { font-size: 28px; opacity: 0.4; }
-
         .pp-list-section {
           flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
         }
-
         .pp-count-row {
           display: flex; align-items: center; justify-content: space-between;
           padding: 6px 12px 4px; flex-shrink: 0;
-          border-bottom: 1px solid #f1f5f9;
-          background: #fff;
+          border-bottom: 1px solid #f1f5f9; background: #fff;
         }
-        .pp-count-bar {
-          font-size: 11px; color: #64748b; font-weight: 600;
-        }
+        .pp-count-bar { font-size: 11px; color: #64748b; font-weight: 600; }
         .pp-count-bar strong { color: #0d1117; }
-
         .pp-load-more-top {
           display: inline-flex; align-items: center; gap: 5px;
-          padding: 5px 12px;
-          background: #2563eb; color: #fff;
+          padding: 5px 12px; background: #2563eb; color: #fff;
           border: none; border-radius: 7px;
           font-size: 11px; font-weight: 700;
           cursor: pointer; font-family: inherit;
@@ -207,51 +190,28 @@ export default function PhysicianPanel({
         }
         .pp-load-more-top:hover { background: #1d4ed8; }
         .pp-load-more-top:disabled { opacity: 0.55; cursor: not-allowed; }
-
         .pp-list {
           flex: 1; overflow-y: auto; padding: 8px 12px 12px;
           display: flex; flex-direction: column; gap: 7px;
         }
-
         .pp-load-more-bottom-wrap {
-          margin-top: 4px;
-          padding: 10px 2px 4px;
+          margin-top: 4px; padding: 10px 2px 4px;
           border-top: 1px solid #e4e8f0;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 6px;
+          display: flex; flex-direction: column; align-items: center; gap: 6px;
         }
         .pp-load-more-bottom {
-          width: 100%;
-          padding: 11px 0;
-          background: #fff;
-          color: #2563eb;
-          border: 1.5px dashed #93c5fd;
-          border-radius: 10px;
-          font-size: 12px;
-          font-weight: 700;
-          cursor: pointer;
-          font-family: inherit;
+          width: 100%; padding: 11px 0; background: #fff; color: #2563eb;
+          border: 1.5px dashed #93c5fd; border-radius: 10px;
+          font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
           letter-spacing: 0.2px;
           transition: background 0.15s, border-color 0.15s, color 0.15s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 7px;
+          display: flex; align-items: center; justify-content: center; gap: 7px;
         }
         .pp-load-more-bottom:hover:not(:disabled) {
-          background: #eff6ff;
-          border-color: #2563eb;
-          color: #1d4ed8;
+          background: #eff6ff; border-color: #2563eb; color: #1d4ed8;
         }
         .pp-load-more-bottom:disabled { opacity: 0.5; cursor: not-allowed; }
-        .pp-load-more-bottom-sub {
-          font-size: 10px;
-          color: #94a3b8;
-          font-weight: 500;
-        }
-
+        .pp-load-more-bottom-sub { font-size: 10px; color: #94a3b8; font-weight: 500; }
         .pp-center {
           display: flex; flex-direction: column; align-items: center;
           justify-content: center; gap: 10px; padding: 36px 20px;
@@ -326,7 +286,7 @@ export default function PhysicianPanel({
           </div>
         )}
 
-        {/* ── Map (fixed height, no scroll) ── */}
+        {/* ── Map ── */}
         <div className="pp-map-wrap">
           {searched && physicians.length > 0 ? (
             <PhysicianMap
@@ -394,10 +354,13 @@ export default function PhysicianPanel({
               </div>
             )}
 
+            {/* CHANGED: pass nctId + siteName so PhysicianCard can auto-submit leads */}
             {!loading && physicians.length > 0 && physicians.map((p) => (
               <PhysicianCard
                 key={p.npi}
                 physician={p}
+                nctId={site.nct_id}
+                siteName={site.facility}
                 onClick={(phys: Physician) => setDetailPhys(phys)}
               />
             ))}
@@ -422,13 +385,26 @@ export default function PhysicianPanel({
         </div>
       </div>
 
-      {/* Lead modal — only opened from PhysicianDetailPanel's Add as Lead */}
+      {/* Lead modal from PhysicianDetailPanel's "Add as Lead" */}
       {leadPhys && (
         <LeadCaptureModal
           npi={leadPhys.npi}
           nctId={site.nct_id}
           siteName={site.facility}
           onClose={handleLeadClose}
+        />
+      )}
+
+      {/* NEW: Lead modal gate for "Load More" — user fills form, then physicians load */}
+      {showLoadMoreModal && (
+        <LeadCaptureModal
+          nctId={site.nct_id}
+          siteName={site.facility}
+          onClose={() => setShowLoadMoreModal(false)}
+          onSuccess={() => {
+            setShowLoadMoreModal(false);
+            onLoadMore();
+          }}
         />
       )}
     </>

@@ -1,20 +1,50 @@
 // components/shared/LeadCaptureModal.tsx
+//
+// Used by the "Load More" button flow.
+// When `physician` prop is supplied the form is pre-filled with that
+// physician's details and the user can edit before submitting.
+// When no `physician` is supplied (generic modal) all fields are blank.
+//
+// After a successful submit `onSuccess` is called so the parent can
+// proceed with the actual "load more" network request.
 "use client";
 
 import { useState, useCallback } from "react";
 import { submitLead }            from "@/lib/api";
 import type { LeadPayload }      from "@/types/physician";
 
-interface Props {
-  npi:       string;
-  nctId:     string;
-  siteName?: string | null;
-  onClose:   () => void;
+interface PhysicianInfo {
+  name:          string;
+  npi:           string;
+  taxonomy_desc?: string | null;
 }
 
-export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Props) {
-  const [firstName, setFirstName] = useState("");
-  const [lastName,  setLastName]  = useState("");
+interface Props {
+  npi?:        string;
+  nctId:       string;
+  siteName?:   string | null;
+  /** When provided the form is pre-filled with this physician's info */
+  physician?:  PhysicianInfo;
+  onClose:     () => void;
+  /** Called after a successful lead submission (e.g. trigger loadMore) */
+  onSuccess?:  () => void;
+}
+
+export default function LeadCaptureModal({
+  npi,
+  nctId,
+  siteName,
+  physician,
+  onClose,
+  onSuccess,
+}: Props) {
+  // Pre-fill name from physician if available
+  const prefillParts = physician ? physician.name.trim().split(" ") : [];
+  const prefillFirst = prefillParts[0] ?? "";
+  const prefillLast  = prefillParts.slice(1).join(" ");
+
+  const [firstName, setFirstName] = useState(prefillFirst);
+  const [lastName,  setLastName]  = useState(prefillLast);
   const [email,     setEmail]     = useState("");
   const [phone,     setPhone]     = useState("");
   const [company,   setCompany]   = useState("");
@@ -22,6 +52,8 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
   const [loading,   setLoading]   = useState(false);
   const [success,   setSuccess]   = useState(false);
   const [error,     setError]     = useState<string | null>(null);
+
+  const resolvedNpi = npi ?? physician?.npi ?? "";
 
   const handleSubmit = useCallback(async () => {
     if (!firstName.trim() || !lastName.trim()) {
@@ -43,27 +75,34 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
     const fullName = `${firstName.trim()} ${lastName.trim()}`;
 
     const payload: LeadPayload = {
-      name:        fullName,
-      email:       email.trim(),
-      company:     company.trim(),
-      lead_source: "Clinical Trial",           // fixed for Salesforce
-      npi,
-      nct_id:      nctId,
+      name:           fullName,
+      email:          email.trim(),
+      company:        company.trim(),
+      lead_source:    "Clinical Trial",
+      npi:            resolvedNpi,
+      nct_id:         nctId,
+      physician_name: physician?.name ?? fullName,
+      ...(physician?.taxonomy_desc ? { title: physician.taxonomy_desc } : {}),
       ...(phone.trim()   ? { phone:   phone.trim()   } : {}),
       ...(siteName       ? { site:    siteName        } : {}),
       ...(message.trim() ? { message: message.trim() } : {}),
+      auto: false,
     };
 
     try {
       await submitLead(payload);
       setSuccess(true);
-      setTimeout(onClose, 2500);
+      // Notify parent (e.g. trigger loadMore) then close after 2 s
+      setTimeout(() => {
+        onSuccess?.();
+        onClose();
+      }, 2000);
     } catch (err: unknown) {
       setError((err as Error).message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
-  }, [firstName, lastName, email, phone, company, message, npi, nctId, siteName, onClose]);
+  }, [firstName, lastName, email, phone, company, message, resolvedNpi, nctId, siteName, physician, onClose, onSuccess]);
 
   return (
     <>
@@ -90,7 +129,6 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
           max-height: 90vh;
         }
 
-        /* Header */
         .lcm-hdr {
           padding: 18px 20px 14px;
           border-bottom: 1px solid #e4e8f0;
@@ -109,7 +147,6 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
         }
         .lcm-close-btn:hover { background: #e2e8f0; color: #0d1117; }
 
-        /* Salesforce badge */
         .lcm-sf-badge {
           display: flex; align-items: center; gap: 7px;
           padding: 8px 16px;
@@ -121,9 +158,7 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
           background: #16a34a; flex-shrink: 0;
           box-shadow: 0 0 0 3px rgba(22,163,74,0.15);
         }
-        .lcm-sf-text {
-          font-size: 11px; font-weight: 600; color: #15803d;
-        }
+        .lcm-sf-text { font-size: 11px; font-weight: 600; color: #15803d; }
         .lcm-sf-chip {
           margin-left: auto;
           background: #dcfce7; border-radius: 4px;
@@ -131,14 +166,28 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
           color: #15803d; letter-spacing: 0.3px;
         }
 
-        /* Scrollable body */
+        /* Physician info banner (shown when pre-filling from a physician) */
+        .lcm-physician-banner {
+          display: flex; align-items: center; gap: 10px;
+          padding: 10px 16px;
+          background: #eff6ff; border-bottom: 1px solid #bfdbfe;
+          flex-shrink: 0;
+        }
+        .lcm-physician-avatar {
+          width: 32px; height: 32px; border-radius: 50%;
+          background: linear-gradient(135deg,#eff6ff,#bfdbfe);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 11px; font-weight: 700; color: #2563eb; flex-shrink: 0;
+        }
+        .lcm-physician-name { font-size: 12px; font-weight: 700; color: #1e40af; }
+        .lcm-physician-spec { font-size: 10px; color: #3b82f6; margin-top: 1px; }
+
         .lcm-body {
           flex: 1; overflow-y: auto;
           padding: 18px 20px;
           display: flex; flex-direction: column; gap: 12px;
         }
 
-        /* Row helpers */
         .lcm-row   { display: flex; gap: 12px; }
         .lcm-field { display: flex; flex-direction: column; gap: 4px; flex: 1; }
 
@@ -157,8 +206,7 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
           font-family: inherit; width: 100%;
         }
         .lcm-input:focus {
-          border-color: #2563eb;
-          background: #fff;
+          border-color: #2563eb; background: #fff;
           box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
         }
         .lcm-input::placeholder { color: #c0c8d4; }
@@ -172,13 +220,11 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
           font-family: inherit; width: 100%; line-height: 1.5;
         }
         .lcm-textarea:focus {
-          border-color: #2563eb;
-          background: #fff;
+          border-color: #2563eb; background: #fff;
           box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
         }
         .lcm-textarea::placeholder { color: #c0c8d4; }
 
-        /* Error */
         .lcm-error {
           margin: 0 20px;
           padding: 9px 12px;
@@ -188,7 +234,6 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
           flex-shrink: 0;
         }
 
-        /* Footer */
         .lcm-footer {
           padding: 12px 20px;
           border-top: 1px solid #e4e8f0;
@@ -210,10 +255,9 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
           transition: background 0.15s, opacity 0.15s;
           display: flex; align-items: center; gap: 6px;
         }
-        .lcm-submit:hover:not(:disabled)  { background: #1d4ed8; }
+        .lcm-submit:hover:not(:disabled) { background: #1d4ed8; }
         .lcm-submit:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* Success state */
         .lcm-success {
           display: flex; flex-direction: column;
           align-items: center; gap: 12px;
@@ -228,7 +272,6 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
           border-radius: 20px; padding: 4px 14px;
         }
 
-        /* Spinner inside submit button */
         .lcm-btn-spinner {
           width: 14px; height: 14px;
           border: 2px solid rgba(255,255,255,0.35);
@@ -245,10 +288,12 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
       >
         <div className="lcm-box">
 
-          {/* ── Header ── */}
+          {/* Header */}
           <div className="lcm-hdr">
             <div className="lcm-hdr-text">
-              <div className="lcm-title">Generate Salesforce Lead</div>
+              <div className="lcm-title">
+                {physician ? "Add Physician as Lead" : "Generate Salesforce Lead"}
+              </div>
               <div className="lcm-sub">
                 {nctId}{siteName ? ` · ${siteName}` : ""}
               </div>
@@ -256,29 +301,44 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
             <button className="lcm-close-btn" onClick={onClose} title="Close">✕</button>
           </div>
 
-          {/* ── Salesforce live badge ── */}
+          {/* Salesforce badge */}
           <div className="lcm-sf-badge">
             <div className="lcm-sf-dot" />
             <span className="lcm-sf-text">Lead will be added to Salesforce</span>
             <span className="lcm-sf-chip">Clinical Trial</span>
           </div>
 
+          {/* Physician banner (only when pre-filling) */}
+          {physician && (
+            <div className="lcm-physician-banner">
+              <div className="lcm-physician-avatar">
+                {physician.name.replace(/^Dr\.\s*/i,"").split(" ").filter(Boolean).slice(0,2).map(n=>n[0].toUpperCase()).join("")}
+              </div>
+              <div>
+                <div className="lcm-physician-name">{physician.name}</div>
+                {physician.taxonomy_desc && (
+                  <div className="lcm-physician-spec">{physician.taxonomy_desc}</div>
+                )}
+              </div>
+            </div>
+          )}
+
           {success ? (
-            /* ── Success state ── */
             <div className="lcm-success">
               <div className="lcm-success-icon">✅</div>
               <div className="lcm-success-title">Lead submitted to Salesforce!</div>
               <div className="lcm-success-sub">
-                The lead has been created. Our team will follow up shortly.
+                {onSuccess
+                  ? "Lead created. Loading more physicians now…"
+                  : "The lead has been created. Our team will follow up shortly."}
               </div>
               <div className="lcm-success-sf">Lead Source: Clinical Trial</div>
             </div>
           ) : (
             <>
-              {/* ── Form body ── */}
               <div className="lcm-body">
 
-                {/* Name row */}
+                {/* Name row — pre-filled when physician is supplied */}
                 <div className="lcm-row">
                   <div className="lcm-field">
                     <label className="lcm-label">
@@ -323,7 +383,7 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
                   />
                 </div>
 
-                {/* Phone + Company row */}
+                {/* Phone + Company */}
                 <div className="lcm-row">
                   <div className="lcm-field">
                     <label className="lcm-label">Phone</label>
@@ -365,10 +425,8 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
 
               </div>
 
-              {/* Error */}
               {error && <p className="lcm-error">{error}</p>}
 
-              {/* Footer */}
               <div className="lcm-footer">
                 <button className="lcm-cancel" onClick={onClose}>Cancel</button>
                 <button
@@ -378,7 +436,7 @@ export default function LeadCaptureModal({ npi, nctId, siteName, onClose }: Prop
                 >
                   {loading
                     ? <><div className="lcm-btn-spinner" /> Submitting…</>
-                    : "Add to Salesforce"}
+                    : onSuccess ? "Submit & Load More" : "Add to Salesforce"}
                 </button>
               </div>
             </>
