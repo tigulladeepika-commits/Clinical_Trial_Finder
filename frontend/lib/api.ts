@@ -1,20 +1,17 @@
 // lib/api.ts
 //
-// v8 changes:
-//  - submitAutoLead() — removed hardcoded "lead@aquarient.local" email.
-//    The backend LeadRequest already defaults email to the placeholder
-//    via its own logic; sending it explicitly from the client was causing
-//    Salesforce Web-to-Lead to receive a .local domain and silently drop
-//    the lead. Now the field is simply omitted from the auto-lead payload
-//    and the backend default is used, which salesforce.py now detects and
-//    skips the SF push for (logged as info, not an error).
-//  - All other helpers (buildLeadPayload, submitLead, fetchPhysicians, etc.)
-//    are unchanged from v7.
+// v9 changes:
+//  - Added fetchSuggestedPhysicians() — calls GET /api/physicians/suggested
+//    with the trial condition and a list of NPIs to exclude (already shown
+//    in the main list). Returns up to 5 supporting/related specialists.
+//  - All other helpers unchanged from v8.
 
 import type { TrialFetchParams, TrialFetchResponse, SiteData, Trial } from "@/types/trial";
 import type {
   PhysicianSearchParams,
+  SuggestedPhysicianParams,
   PhysicianFetchResponse,
+  SuggestedPhysicianFetchResponse,
   LeadPayload,
   Physician,
   SelectedSite,
@@ -64,9 +61,7 @@ export async function fetchTrialSites(nctId: string, signal?: AbortSignal): Prom
 
 /**
  * Build a URLSearchParams string from PhysicianSearchParams.
- * Specialty fields are split on commas and appended as repeated params
- * so "Medical Oncology, Hematology & Oncology" becomes:
- *   specialty=Medical+Oncology&specialty=Hematology+%26+Oncology
+ * Specialty fields are split on commas and appended as repeated params.
  */
 function buildPhysicianParams(params: PhysicianSearchParams): string {
   const qs = new URLSearchParams();
@@ -99,6 +94,37 @@ export async function fetchPhysicians(
 ): Promise<PhysicianFetchResponse> {
   return apiFetch<PhysicianFetchResponse>(
     `/api/physicians/search?${buildPhysicianParams(params)}`,
+    undefined,
+    signal,
+  );
+}
+
+/**
+ * Fetch suggested physicians related to the trial condition.
+ * These are supporting/broader specialists (e.g. pediatricians for childhood
+ * cancer) — NOT the same as the main search list.
+ *
+ * Pass exclude_npis (NPIs already in the main list) so the backend
+ * de-duplicates automatically.
+ */
+export async function fetchSuggestedPhysicians(
+  params:  SuggestedPhysicianParams,
+  signal?: AbortSignal,
+): Promise<SuggestedPhysicianFetchResponse> {
+  const qs = new URLSearchParams();
+  qs.append("lat",    String(params.lat));
+  qs.append("lng",    String(params.lng));
+  qs.append("radius", String(params.radius));
+
+  if (params.condition?.trim()) {
+    qs.append("condition", params.condition.trim());
+  }
+
+  // Send each excluded NPI as a repeated param
+  (params.exclude_npis ?? []).forEach((npi) => qs.append("exclude_npis", npi));
+
+  return apiFetch<SuggestedPhysicianFetchResponse>(
+    `/api/physicians/suggested?${qs.toString()}`,
     undefined,
     signal,
   );
@@ -168,15 +194,6 @@ export async function getPhysiciansForTrial(
 
 // ── Leads ─────────────────────────────────────────────────────────────────────
 
-/**
- * Validates and cleans a LeadPayload before sending to the API.
- * Strips undefined/null/empty optional fields so they are omitted from the
- * JSON body entirely — preventing Pydantic from receiving "undefined" as a
- * string and failing EmailStr validation.
- *
- * Throws if name or email are missing, so the caller gets a clear error
- * rather than a cryptic 422 from the backend.
- */
 function buildLeadPayload(raw: LeadPayload): Record<string, unknown> {
   const name  = raw.name?.trim()  ?? "";
   const email = raw.email?.trim() ?? "";
@@ -203,10 +220,6 @@ function buildLeadPayload(raw: LeadPayload): Record<string, unknown> {
   return payload;
 }
 
-/**
- * Submit a user-filled lead form (LeadCaptureModal).
- * Validates name + email before sending — throws on missing required fields.
- */
 export async function submitLead(
   payload: LeadPayload,
 ): Promise<{ success: boolean; id?: string }> {
@@ -216,32 +229,10 @@ export async function submitLead(
   });
 }
 
-/**
- * Auto-generate a local lead record from a Physician record.
- * Saved to leads.json for internal tracking only — NOT pushed to Salesforce
- * because there is no real user email. The backend's salesforce.py detects
- * the .local placeholder domain and skips the SF push automatically.
- *
- * To generate a real Salesforce lead for a physician, use LeadCaptureModal
- * which calls submitLead() with a user-supplied email address.
- *
- * Payload fields:
- *   name            → physician.name
- *   email           → "lead@aquarient.local" (backend default, SF skipped)
- *   company         → "Individual Physicians"
- *   lead_source     → "Clinical Trial"
- *   physician_name  → physician.name
- *   npi             → physician.npi
- *   nct_id          → site.nct_id
- *   auto            → true
- */
 export async function submitAutoLead(
   physician: Physician,
   site:      SelectedSite,
 ): Promise<{ success: boolean; id?: string }> {
-  // Email is intentionally omitted — the backend defaults to "lead@aquarient.local"
-  // which salesforce.py detects as a placeholder and skips the SF push.
-  // This means auto-leads are tracked locally but never sent to Salesforce.
   const payload: Record<string, unknown> = {
     name:           physician.name,
     company:        "Individual Physicians",
@@ -252,7 +243,6 @@ export async function submitAutoLead(
     auto:           true,
   };
 
-  // Optional fields — only include when present
   if (physician.phone?.trim())         payload.phone = physician.phone.trim();
   if (physician.taxonomy_desc?.trim()) payload.title = physician.taxonomy_desc.trim();
   if (site.facility?.trim())           payload.site  = site.facility.trim();

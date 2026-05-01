@@ -31,6 +31,15 @@ export interface PhysicianSearchParams {
   user_specialty?:    string;
 }
 
+export interface SuggestedPhysicianParams {
+  lat:          number;
+  lng:          number;
+  radius:       number;
+  condition?:   string;
+  /** NPIs already shown in the main list — backend excludes these */
+  exclude_npis?: string[];
+}
+
 export interface PhysicianFetchResponse {
   physicians:         Physician[];
   total:              number;
@@ -39,20 +48,22 @@ export interface PhysicianFetchResponse {
   search_specialties: string[];
 }
 
+/** Identical shape to PhysicianFetchResponse — typed separately for clarity */
+export type SuggestedPhysicianFetchResponse = PhysicianFetchResponse;
+
 export interface LeadPayload {
   name:            string;
   email:           string;
   phone?:          string;
-  npi?:            string;   // optional — not present on Load More leads
-  nct_id?:         string;   // optional — not present on Load More leads
+  npi?:            string;
+  nct_id?:         string;
   site?:           string;
   message?:        string;
-  // Salesforce fields
-  company?:        string;   // "Individual Physicians"
-  lead_source?:    string;   // "Clinical Trial"
-  title?:          string;   // physician taxonomy_desc
-  physician_name?: string;   // physician full name (auto-leads)
-  auto?:           boolean;  // true = auto-generated, no user form
+  company?:        string;
+  lead_source?:    string;
+  title?:          string;
+  physician_name?: string;
+  auto?:           boolean;
 }
 
 export type LeadModalTrigger = "card" | "load_more";
