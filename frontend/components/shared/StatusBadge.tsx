@@ -1,4 +1,3 @@
-// components/shared/StatusBadge.tsx
 "use client";
 
 import React from "react";
@@ -7,105 +6,61 @@ interface Props {
   status?: string | null;
 }
 
-/**
- * Renders a coloured status pill for any trial / site status string.
- *
- * FIX: "N/A" and "NA" are no longer rendered as a raw grey "NA" string —
- * they get their own intentional "Not applicable" pill with neutral styling.
- */
 export default function StatusBadge({ status }: Props) {
   if (!status) return null;
 
   const s = status.trim();
 
-  // ── FIX: treat N/A variants as a proper "Not applicable" pill ────────────
   if (s === "N/A" || s === "NA" || s.toLowerCase() === "n/a") {
     return (
-      <span
-        style={{
-          display:       "inline-flex",
-          alignItems:    "center",
-          padding:       "2px 7px",
-          borderRadius:  20,
-          fontSize:      10,
-          fontWeight:    500,
-          background:    "#f1f5f9",
-          color:         "#64748b",
-          border:        "1px solid #e2e8f0",
-          letterSpacing: "0.2px",
-          whiteSpace:    "nowrap",
-        }}
-      >
+      <span style={{
+        display: "inline-flex", alignItems: "center",
+        padding: "2px 8px", borderRadius: 20,
+        fontSize: 10, fontWeight: 500,
+        background: "var(--surface-2)", color: "var(--muted)",
+        border: "1px solid var(--border)",
+        letterSpacing: "0.2px", whiteSpace: "nowrap",
+      }}>
         Not applicable
       </span>
     );
   }
 
-  // ── Map status string → colour scheme ────────────────────────────────────
   const lower = s.toLowerCase();
 
-  let bg     = "#f1f5f9";
-  let color  = "#475569";
-  let border = "#e2e8f0";
+  let bg     = "var(--surface-2)";
+  let color  = "var(--muted)";
+  let border = "var(--border)";
   let dot: string | null = null;
 
   if (lower === "recruiting") {
-    bg     = "#f0fdf4";
-    color  = "#15803d";
-    border = "#bbf7d0";
-    dot    = "#15803d";
+    bg = "var(--green-50)"; color = "#065f46"; border = "var(--green-100)";
+    dot = "#059669";
   } else if (lower.includes("active") && !lower.includes("not")) {
-    bg     = "#eff6ff";
-    color  = "#1d4ed8";
-    border = "#bfdbfe";
-    dot    = "#1d4ed8";
+    bg = "var(--blue-50)"; color = "#1e40af"; border = "#bfdbfe";
+    dot = "#2563eb";
   } else if (lower === "completed") {
-    bg     = "#f8fafc";
-    color  = "#334155";
-    border = "#e2e8f0";
+    bg = "var(--surface-2)"; color = "var(--ink-3)"; border = "var(--border)";
   } else if (lower === "terminated" || lower === "withdrawn") {
-    bg     = "#fef2f2";
-    color  = "#b91c1c";
-    border = "#fecaca";
-  } else if (
-    lower.includes("not yet") ||
-    lower.includes("invitation") ||
-    lower === "suspended"
-  ) {
-    bg     = "#fffbeb";
-    color  = "#92400e";
-    border = "#fde68a";
+    bg = "var(--coral-50)"; color = "#991b1b"; border = "#fecaca";
+  } else if (lower.includes("not yet") || lower.includes("invitation") || lower === "suspended") {
+    bg = "var(--amber-50)"; color = "#92400e"; border = "#fde68a";
+    dot = "#d97706";
   }
 
   return (
-    <span
-      style={{
-        display:       "inline-flex",
-        alignItems:    "center",
-        gap:           4,
-        padding:       "2px 8px",
-        borderRadius:  20,
-        fontSize:      10,
-        fontWeight:    700,
-        letterSpacing: "0.2px",
-        textTransform: "uppercase",
-        whiteSpace:    "nowrap",
-        background:    bg,
-        color:         color,
-        border:        `1px solid ${border}`,
-      }}
-    >
-      {/* Dot indicator for active statuses */}
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "2px 8px", borderRadius: 20,
+      fontSize: 10, fontWeight: 700, letterSpacing: "0.2px",
+      textTransform: "uppercase", whiteSpace: "nowrap",
+      background: bg, color, border: `1px solid ${border}`,
+    }}>
       {dot && (
-        <span
-          style={{
-            width:        5,
-            height:       5,
-            borderRadius: "50%",
-            background:   dot,
-            flexShrink:   0,
-          }}
-        />
+        <span style={{
+          width: 5, height: 5, borderRadius: "50%",
+          background: dot, flexShrink: 0,
+        }} />
       )}
       {s}
     </span>

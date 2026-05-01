@@ -1,4 +1,3 @@
-// components/trials/TrialSiteMap.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -19,19 +18,17 @@ interface Props {
 
 function statusColor(status: string | null): string {
   const s = (status || "").toUpperCase().trim();
-  if (s === "RECRUITING" || s === "ENROLLING_BY_INVITATION") return "#16a34a";
-  if (s === "NOT_YET_RECRUITING")             return "#f59e0b";
+  if (s === "RECRUITING" || s === "ENROLLING_BY_INVITATION") return "#059669";
+  if (s === "NOT_YET_RECRUITING")             return "#d97706";
   if (s.includes("ACTIVE"))                   return "#2563eb";
-  if (s === "TERMINATED")                     return "#ef4444";
-  if (s === "WITHDRAWN" || s === "SUSPENDED") return "#f59e0b";
+  if (s === "TERMINATED")                     return "#dc2626";
+  if (s === "WITHDRAWN" || s === "SUSPENDED") return "#d97706";
   if (s === "COMPLETED")                      return "#64748b";
-  return "#9ca3af";
+  return "#94a3b8";
 }
 
 function statusLabel(status: string | null): string {
-  return (status || "Unknown")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return (status || "Unknown").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function hospitalMarkerHtml(color: string, size = 28): string {
@@ -41,33 +38,29 @@ function hospitalMarkerHtml(color: string, size = 28): string {
       <rect x="11" y="7" width="6" height="14" rx="1.5" fill="white"/>
       <rect x="7" y="11" width="14" height="6" rx="1.5" fill="white"/>
     </svg>`.trim();
-  return `<div style="filter:drop-shadow(0 2px 6px rgba(0,0,0,0.28));cursor:pointer;">${svg}</div>`;
+  return `<div style="filter:drop-shadow(0 3px 8px rgba(0,0,0,0.28));cursor:pointer;animation:pinDrop 0.4s cubic-bezier(.34,1.56,.64,1) both;">${svg}</div>`;
 }
 
 declare global { interface Window { L: any; } }
 
 const LEGEND = [
-  { color: "#16a34a", label: "Recruiting" },
-  { color: "#f59e0b", label: "Not Yet Recruiting / Suspended" },
+  { color: "#059669", label: "Recruiting" },
+  { color: "#d97706", label: "Not Yet / Suspended" },
   { color: "#2563eb", label: "Active (not recruiting)" },
   { color: "#64748b", label: "Completed" },
-  { color: "#ef4444", label: "Terminated / Withdrawn" },
-  { color: "#9ca3af", label: "Other" },
+  { color: "#dc2626", label: "Terminated / Withdrawn" },
+  { color: "#94a3b8", label: "Other / Unknown" },
 ];
 
 export default function TrialSiteMap({
-  sites,
-  nctId,
-  description,
-  condition,
-  inclusionCriteria,
-  exclusionCriteria,
-  onFindPhysicians,
+  sites, nctId, description, condition,
+  inclusionCriteria, exclusionCriteria, onFindPhysicians,
 }: Props) {
   const mapKey         = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
   const mapDivRef      = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const [showCriteria, setShowCriteria] = useState(false);
+  const [showLegend,   setShowLegend]   = useState(false);
 
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
 
@@ -81,42 +74,43 @@ export default function TrialSiteMap({
 
       L.mapquest.key = mapKey;
 
-      if (!document.getElementById("trial-map-style")) {
+      if (!document.getElementById("trial-map-style-v2")) {
         const style = document.createElement("style");
-        style.id = "trial-map-style";
+        style.id = "trial-map-style-v2";
         style.textContent = `
-          .leaflet-map-pane    { z-index: 1 !important; }
-          .leaflet-tile-pane   { z-index: 2 !important; }
-          .leaflet-overlay-pane{ z-index: 3 !important; }
-          .leaflet-marker-pane { z-index: 4 !important; }
-          .leaflet-popup-pane  { z-index: 5 !important; }
+          @keyframes pinDrop {
+            0%  { transform: translateY(-14px) scale(0.6); opacity: 0; }
+            70% { transform: translateY(2px) scale(1.1); opacity: 1; }
+            100%{ transform: translateY(0) scale(1); opacity: 1; }
+          }
           .trial-tooltip {
-            background: white !important; border: 1px solid #e2e8f0 !important;
+            background: white !important; border: 1px solid #e4e7f0 !important;
             border-radius: 10px !important; padding: 8px 12px !important;
             font-size: 12px !important; font-weight: 500 !important;
-            color: #1e293b !important; box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+            color: #0a0f1e !important; box-shadow: 0 6px 20px rgba(0,0,0,0.12) !important;
             white-space: nowrap !important; pointer-events: none !important;
+            font-family: 'Sora', sans-serif !important;
           }
           .trial-popup .leaflet-popup-content-wrapper {
-            background: white !important; border: 1px solid #e2e8f0 !important;
-            border-radius: 14px !important; box-shadow: 0 12px 32px rgba(0,0,0,0.14) !important;
+            background: white !important; border: 1px solid #e4e7f0 !important;
+            border-radius: 16px !important; box-shadow: 0 16px 48px rgba(0,0,0,0.16) !important;
             padding: 0 !important; overflow: hidden !important;
-            min-width: 240px !important; max-width: 300px !important;
+            min-width: 250px !important; max-width: 310px !important;
           }
           .trial-popup .leaflet-popup-content { margin: 0 !important; line-height: 1.5 !important; }
           .trial-popup .leaflet-popup-close-button {
             top: 10px !important; right: 12px !important;
-            font-size: 20px !important; color: #94a3b8 !important;
-            font-weight: 300 !important;
+            font-size: 20px !important; color: #94a3b8 !important; font-weight: 300 !important;
           }
           .find-phys-btn {
-            display: block; width: 100%; margin-top: 10px;
-            padding: 8px 0; border-radius: 8px;
-            border: none; background: #2563eb; color: white;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            width: 100%; margin-top: 10px; padding: 9px 0; border-radius: 10px;
+            border: none; background: #047857; color: white;
             font-size: 12px; font-weight: 700; cursor: pointer;
-            text-align: center; transition: background 0.12s;
+            text-align: center; transition: background 0.14s;
+            font-family: 'Sora', sans-serif;
           }
-          .find-phys-btn:hover { background: #1d4ed8; }
+          .find-phys-btn:hover { background: #065f46; }
         `;
         document.head.appendChild(style);
       }
@@ -124,47 +118,52 @@ export default function TrialSiteMap({
       const lats = mappableSites.map((s) => s.lat as number);
       const lons = mappableSites.map((s) => s.lon as number);
       const map  = L.mapquest.map(mapDivRef.current, {
-        center:      [(Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2],
+        center: [(Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2],
         layers:      L.mapquest.tileLayer("map"),
         zoom:        3,
         zoomControl: false,
       });
       mapInstanceRef.current = map;
 
-      mappableSites.forEach((site) => {
+      mappableSites.forEach((site, idx) => {
         const color  = statusColor(site.status);
-        const icon   = L.divIcon({ html: hospitalMarkerHtml(color, 28), className: "", iconSize: [28, 28], iconAnchor: [14, 14] });
+        const icon   = L.divIcon({
+          html: hospitalMarkerHtml(color, 28),
+          className: "", iconSize: [28, 28], iconAnchor: [14, 14],
+        });
         const marker = L.marker([site.lat, site.lon], { icon }).addTo(map);
         const loc    = [site.city, site.state, site.country].filter(Boolean).join(", ");
 
         marker.bindTooltip(
-          `<div style="font-weight:700;font-size:13px;color:#0f172a;">${site.facility || "Unknown Facility"}</div>
+          `<div style="font-weight:700;font-size:13px;">${site.facility || "Unknown Facility"}</div>
            ${loc ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">📍 ${loc}</div>` : ""}`,
           { permanent: false, direction: "top", offset: [0, -16], className: "trial-tooltip" }
         );
 
         const popupContent = `
           <div>
-            <div style="background:${color}12;border-bottom:1px solid ${color}30;padding:14px 16px 12px;">
-              <div style="font-weight:700;font-size:13px;color:#0f172a;line-height:1.35;padding-right:20px;">
+            <div style="background:${color}10;border-bottom:1px solid ${color}25;padding:14px 16px 12px;">
+              <div style="font-weight:700;font-size:13px;color:#0a0f1e;line-height:1.35;padding-right:22px;font-family:'Sora',sans-serif;">
                 ${site.facility || "Unknown Facility"}
               </div>
-              ${loc ? `<div style="font-size:11px;color:#64748b;margin-top:4px;">📍 ${loc}</div>` : ""}
+              ${loc ? `<div style="font-size:11px;color:#64748b;margin-top:5px;">📍 ${loc}</div>` : ""}
             </div>
             <div style="padding:12px 16px 14px;">
               ${site.status ? `
                 <div style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;
-                  font-size:11px;font-weight:700;background:${color}18;color:${color};border:1px solid ${color}40;">
+                  font-size:11px;font-weight:700;background:${color}14;color:${color};border:1px solid ${color}35;">
                   <span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;"></span>
                   ${statusLabel(site.status)}
                 </div>` : ""}
               <button class="find-phys-btn" id="fp-btn-${site.lat}-${site.lon}">
-                🩺 Find physicians near this site
+                🩺 Find physicians nearby
               </button>
             </div>
           </div>`;
 
-        marker.bindPopup(popupContent, { className: "trial-popup", offset: [0, -10], maxWidth: 300, closeButton: true });
+        marker.bindPopup(popupContent, {
+          className: "trial-popup", offset: [0, -10], maxWidth: 310, closeButton: true,
+        });
         marker.on("click", () => marker.openPopup());
         marker.on("popupopen", () => {
           setTimeout(() => {
@@ -172,7 +171,11 @@ export default function TrialSiteMap({
             if (btn) {
               btn.addEventListener("click", () => {
                 marker.closePopup();
-                onFindPhysicians({ lat: site.lat as number, lng: site.lon as number, facility: site.facility, city: site.city, state: site.state, nct_id: nctId, condition: condition ?? null });
+                onFindPhysicians({
+                  lat: site.lat as number, lng: site.lon as number,
+                  facility: site.facility, city: site.city, state: site.state,
+                  nct_id: nctId, condition: condition ?? null,
+                });
               });
             }
           }, 50);
@@ -180,7 +183,7 @@ export default function TrialSiteMap({
       });
 
       if (mappableSites.length > 1) {
-        map.fitBounds(window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])), { padding: [40, 40] });
+        map.fitBounds(window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])), { padding: [44, 44] });
       }
     };
 
@@ -215,170 +218,265 @@ export default function TrialSiteMap({
   const zoomOut = () => mapInstanceRef.current?.zoomOut();
   const fitAll  = () => {
     if (!mapInstanceRef.current || mappableSites.length === 0) return;
-    mapInstanceRef.current.fitBounds(window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])), { padding: [40, 40] });
+    mapInstanceRef.current.fitBounds(
+      window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])), { padding: [44, 44] }
+    );
   };
 
   return (
     <>
       <style>{`
+        .tsm-map-wrap { position: relative; flex-shrink: 0; }
         .tsm-map-controls {
-          position:absolute; top:12px; right:12px; z-index:1000;
-          display:flex; flex-direction:column; gap:6px;
+          position: absolute; top: 12px; right: 12px; z-index: 1000;
+          display: flex; flex-direction: column; gap: 6px;
         }
-        .tsm-map-legend {
-          position:absolute; bottom:12px; left:12px; z-index:1000;
-          background:rgba(255,255,255,0.97); border:1px solid #e2e8f0;
-          border-radius:10px; padding:10px 14px;
-          box-shadow:0 2px 10px rgba(0,0,0,0.10);
-          display:flex; flex-direction:column; gap:6px;
-          pointer-events:none; max-width:220px;
+        .tsm-map-btn {
+          width: 36px; height: 36px; background: white;
+          border: 1px solid var(--border); border-radius: var(--radius-md);
+          font-size: 17px; font-weight: 700; color: var(--ink-3);
+          cursor: pointer; display: flex; align-items: center; justify-content: center;
+          box-shadow: var(--shadow-md); transition: all 0.15s;
+        }
+        .tsm-map-btn:hover {
+          background: var(--green-50); color: var(--forest-mid);
+          border-color: var(--green-100);
+          box-shadow: 0 4px 14px rgba(6,95,70,0.15);
+        }
+        .tsm-legend-toggle {
+          position: absolute; bottom: 12px; left: 12px; z-index: 1000;
+          background: white; border: 1px solid var(--border);
+          border-radius: var(--radius-md); padding: 7px 12px;
+          box-shadow: var(--shadow-md); cursor: pointer;
+          font-size: 11px; font-weight: 600; color: var(--ink-3);
+          display: flex; align-items: center; gap: 5px;
+          transition: all 0.15s; font-family: var(--font-sans);
+        }
+        .tsm-legend-toggle:hover { background: var(--surface); border-color: var(--border-mid); }
+        .tsm-legend-panel {
+          position: absolute; bottom: 46px; left: 12px; z-index: 1000;
+          background: rgba(255,255,255,0.97); border: 1px solid var(--border);
+          border-radius: var(--radius-lg); padding: 12px 16px;
+          box-shadow: var(--shadow-lg);
+          display: flex; flex-direction: column; gap: 8px;
+          pointer-events: none; max-width: 230px;
+          animation: fadeUp 0.18s ease both;
         }
         .tsm-legend-title {
-          font-size:9px; font-weight:700; letter-spacing:1px;
-          text-transform:uppercase; color:#94a3b8; margin-bottom:2px;
+          font-size: 9px; font-weight: 700; letter-spacing: 1px;
+          text-transform: uppercase; color: var(--muted); margin-bottom: 3px;
         }
-        .tsm-legend-row   { display:flex; align-items:center; gap:7px; }
-        .tsm-legend-label { font-size:11px; color:#475569; font-weight:500; line-height:1.3; }
-        .tsm-section-title {
-          font-size:11px; font-weight:700; text-transform:uppercase;
-          letter-spacing:0.8px; color:#94a3b8;
-          padding:16px 20px 8px; border-bottom:1px solid #f1f5f9;
+        .tsm-legend-row   { display: flex; align-items: center; gap: 8px; }
+        .tsm-legend-label { font-size: 11px; color: var(--ink-3); font-weight: 500; line-height: 1.3; }
+        .tsm-section-hdr {
+          font-size: 10px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 1px; color: var(--muted);
+          padding: 18px 20px 8px; border-bottom: 1px solid var(--border);
+          background: #fff; position: sticky; top: 0; z-index: 5;
         }
-        .tsm-desc { font-size:13px; color:#4b5563; line-height:1.7; padding:12px 20px 16px; }
+        .tsm-desc {
+          font-size: 13px; color: var(--ink-3); line-height: 1.75;
+          padding: 14px 20px 18px;
+        }
+        .tsm-criteria-wrap {
+          padding: 0 20px 18px;
+        }
+        .tsm-criteria-toggle {
+          width: 100%; padding: 11px 16px;
+          background: var(--surface); border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          display: flex; align-items: center; justify-content: space-between;
+          cursor: pointer; font-family: var(--font-sans);
+          font-size: 13px; font-weight: 600; color: var(--ink-2);
+          transition: all 0.15s;
+        }
+        .tsm-criteria-toggle:hover { background: var(--surface-2); border-color: var(--border-mid); }
+        .tsm-criteria-body {
+          padding: 14px 16px; background: var(--surface);
+          border: 1px solid var(--border); border-top: none;
+          border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+          display: flex; flex-direction: column; gap: 14px;
+          animation: fadeIn 0.18s ease both;
+        }
+        .tsm-crit-label {
+          font-size: 10px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.6px; margin-bottom: 5px;
+        }
+        .tsm-crit-text { font-size: 12px; color: var(--ink-3); line-height: 1.7; }
         .tsm-site-card {
-          background:#fff; border:1px solid #e4e8f0; border-radius:10px;
-          padding:12px 14px; cursor:pointer; outline:none;
-          transition:border-color 0.15s, box-shadow 0.15s;
-          margin-bottom: 8px;
+          background: #fff; border: 1px solid var(--border);
+          border-radius: var(--radius-lg); padding: 13px 15px;
+          cursor: pointer; outline: none;
+          transition: all 0.16s cubic-bezier(.22,1,.36,1);
+          margin-bottom: 8px; position: relative; overflow: hidden;
+        }
+        .tsm-site-card::before {
+          content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+          background: transparent; transition: background 0.14s;
         }
         .tsm-site-card:hover {
-          border-color:#2563eb;
-          box-shadow:0 2px 8px rgba(37,99,235,0.10);
+          border-color: var(--green-400);
+          box-shadow: 0 4px 16px rgba(6,95,70,0.10);
+          transform: translateY(-1px);
         }
-        .tsm-site-card:hover .site-cta { opacity:1 !important; }
-        .tsm-site-facility { font-size:13px; font-weight:500; color:#0d1117; flex:1; }
-        .tsm-site-location { font-size:12px; color:#8b95a1; margin-bottom:6px; }
-        .site-cta {
-          opacity:0; transition:opacity 0.15s;
-          font-size:11px; font-weight:600; color:#2563eb;
-          text-transform:uppercase; letter-spacing:0.5px;
+        .tsm-site-card:hover::before { background: var(--green-500); }
+        .tsm-site-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+        .tsm-facility { font-size: 13px; font-weight: 500; color: var(--ink); flex: 1; }
+        .tsm-location { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+        .tsm-site-focus {
+          opacity: 0; transition: opacity 0.15s;
+          font-size: 11px; font-weight: 600; color: var(--forest-mid);
+          letter-spacing: 0.3px;
+        }
+        .tsm-site-card:hover .tsm-site-focus { opacity: 1; }
+        .tsm-find-btn {
+          display: flex; align-items: center; justify-content: center; gap: 6px;
+          width: 100%; margin-top: 9px; padding: 8px 0; border-radius: var(--radius-md);
+          border: 1px solid var(--green-100); background: var(--green-50);
+          color: var(--forest-mid); font-size: 11px; font-weight: 700;
+          cursor: pointer; font-family: var(--font-sans);
+          transition: all 0.15s;
+        }
+        .tsm-find-btn:hover {
+          background: var(--forest-mid); color: #fff;
+          border-color: var(--forest-mid);
+          box-shadow: 0 3px 10px rgba(6,95,70,0.25);
+        }
+        .tsm-no-coords {
+          display: flex; align-items: center; gap: 5px;
+          font-size: 11px; color: var(--muted-light); margin-top: 5px;
+        }
+        .tsm-sites-list { padding: 12px 20px 24px; }
+        .tsm-empty-map {
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          gap: 14px; background: var(--surface-2); color: var(--muted);
         }
       `}</style>
 
-      {/* Map — sticky at top, never scrolls */}
-      <div style={{ position: "relative", flexShrink: 0 }}>
+      {/* Map */}
+      <div className="tsm-map-wrap">
         {!mapKey || mappableSites.length === 0 ? (
-          <div style={{
-            height: 420, display: "flex", alignItems: "center",
-            justifyContent: "center", flexDirection: "column", gap: 12,
-            background: "#f8fafc", color: "#94a3b8",
-          }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <div className="tsm-empty-map" style={{ height: 420 }}>
+            <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"
+              style={{ opacity: 0.35 }}>
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
               <circle cx="12" cy="10" r="3"/>
             </svg>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>
-              {!mapKey ? "MapQuest API key not configured" : "No geocoded site locations available"}
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-3)" }}>
+              {!mapKey ? "MapQuest key not configured" : "No geocoded sites available"}
+            </div>
+            <div style={{ fontSize: 12, maxWidth: 240, textAlign: "center", lineHeight: 1.6 }}>
+              {!mapKey
+                ? "Set NEXT_PUBLIC_MAPQUEST_KEY in your environment"
+                : "Site location data was not returned from ClinicalTrials.gov"}
             </div>
           </div>
         ) : (
           <>
             <div ref={mapDivRef} style={{ height: 420, width: "100%", background: "#e8edf2" }} />
 
+            {/* Zoom controls */}
             <div className="tsm-map-controls">
               {[
                 { icon: "+", title: "Zoom in",  fn: zoomIn  },
                 { icon: "−", title: "Zoom out", fn: zoomOut },
                 { icon: "⊡", title: "Fit all",  fn: fitAll  },
               ].map((b) => (
-                <button key={b.title} title={b.title} onClick={b.fn}
-                  style={{
-                    width: 34, height: 34, background: "white",
-                    border: "1px solid #e2e8f0", borderRadius: 8,
-                    fontSize: 17, fontWeight: 700, color: "#334155",
-                    cursor: "pointer", display: "flex", alignItems: "center",
-                    justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "#eff6ff"; e.currentTarget.style.color = "#2563eb"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "white"; e.currentTarget.style.color = "#334155"; }}
-                >{b.icon}</button>
+                <button key={b.title} title={b.title} onClick={b.fn} className="tsm-map-btn">
+                  {b.icon}
+                </button>
               ))}
             </div>
 
-            <div className="tsm-map-legend">
-              <div className="tsm-legend-title">Status Legend</div>
-              {LEGEND.map((l) => (
-                <div key={l.label} className="tsm-legend-row">
-                  <svg width="14" height="14" viewBox="0 0 28 28" style={{ flexShrink: 0 }}>
-                    <circle cx="14" cy="14" r="13" fill={l.color}/>
-                    <rect x="11" y="7" width="6" height="14" rx="1.5" fill="white"/>
-                    <rect x="7" y="11" width="14" height="6" rx="1.5" fill="white"/>
-                  </svg>
-                  <span className="tsm-legend-label">{l.label}</span>
-                </div>
-              ))}
-            </div>
+            {/* Legend toggle */}
+            <button
+              className="tsm-legend-toggle"
+              onClick={() => setShowLegend(v => !v)}
+            >
+              <span>◎</span>
+              {showLegend ? "Hide legend" : "Status legend"}
+            </button>
+
+            {showLegend && (
+              <div className="tsm-legend-panel">
+                <div className="tsm-legend-title">Site Status</div>
+                {LEGEND.map((l) => (
+                  <div key={l.label} className="tsm-legend-row">
+                    <svg width="14" height="14" viewBox="0 0 28 28" style={{ flexShrink: 0 }}>
+                      <circle cx="14" cy="14" r="13" fill={l.color}/>
+                      <rect x="11" y="7" width="6" height="14" rx="1.5" fill="white"/>
+                      <rect x="7" y="11" width="14" height="6" rx="1.5" fill="white"/>
+                    </svg>
+                    <span className="tsm-legend-label">{l.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
 
-      {/* Scrollable content below the map — flows naturally inside .detail-content */}
+      {/* Below-map content */}
       <div>
         {description && (
           <>
-            <div className="tsm-section-title">About This Trial</div>
+            <div className="tsm-section-hdr">About This Trial</div>
             <p className="tsm-desc">{description}</p>
           </>
         )}
 
         {(inclusionCriteria || exclusionCriteria) && (
-          <div style={{ padding: "0 20px 16px" }}>
-            <div style={{ background: "#f8fafc", border: "1px solid #e4e8f0", borderRadius: 10, overflow: "hidden" }}>
-              <button
-                onClick={() => setShowCriteria((v) => !v)}
-                style={{
-                  width: "100%", padding: "10px 14px",
-                  background: "transparent", border: "none",
-                  textAlign: "left", display: "flex",
-                  alignItems: "center", justifyContent: "space-between",
-                  cursor: "pointer", fontFamily: "inherit",
-                }}
-              >
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#4b5563" }}>Eligibility Criteria</span>
-                <span style={{ fontSize: 12, color: "#8b95a1" }}>{showCriteria ? "▲ Hide" : "▼ Show"}</span>
-              </button>
-              {showCriteria && (
-                <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-                  {inclusionCriteria && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Inclusion</div>
-                      <p style={{ fontSize: 12, color: "#4b5563", lineHeight: 1.6 }}>{inclusionCriteria}</p>
+          <div className="tsm-criteria-wrap">
+            <button
+              className="tsm-criteria-toggle"
+              style={{ borderRadius: showCriteria ? "var(--radius-lg) var(--radius-lg) 0 0" : "var(--radius-lg)" }}
+              onClick={() => setShowCriteria(v => !v)}
+            >
+              <span>Eligibility Criteria</span>
+              <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 500 }}>
+                {showCriteria ? "▲ Collapse" : "▼ Expand"}
+              </span>
+            </button>
+            {showCriteria && (
+              <div className="tsm-criteria-body">
+                {inclusionCriteria && (
+                  <div>
+                    <div className="tsm-crit-label" style={{ color: "var(--green-700)" }}>
+                      Inclusion criteria
                     </div>
-                  )}
-                  {exclusionCriteria && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Exclusion</div>
-                      <p style={{ fontSize: 12, color: "#4b5563", lineHeight: 1.6 }}>{exclusionCriteria}</p>
+                    <p className="tsm-crit-text">{inclusionCriteria}</p>
+                  </div>
+                )}
+                {exclusionCriteria && (
+                  <div>
+                    <div className="tsm-crit-label" style={{ color: "var(--coral-600)" }}>
+                      Exclusion criteria
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+                    <p className="tsm-crit-text">{exclusionCriteria}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        <div className="tsm-section-title">All Locations ({sites.length})</div>
+        <div className="tsm-section-hdr">
+          All Locations — {sites.length} site{sites.length !== 1 ? "s" : ""}
+        </div>
+
         {sites.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#8b95a1", padding: "12px 20px" }}>No site data available for this trial.</p>
+          <p style={{ fontSize: 13, color: "var(--muted)", padding: "14px 20px" }}>
+            No site data available for this trial.
+          </p>
         ) : (
-          /* Plain div list — scroll handled by parent .detail-content overflow-y:auto */
-          <div style={{ padding: "12px 20px 20px" }}>
+          <div className="tsm-sites-list">
             {sites.map((site, i) => {
               const hasCoords = site.lat != null && site.lon != null;
               return (
                 <div
                   key={`${site.facility}-${i}`}
-                  className="tsm-site-card"
+                  className={`tsm-site-card card-anim-${Math.min(i + 1, 5)}`}
                   role={hasCoords ? "button" : undefined}
                   tabIndex={hasCoords ? 0 : undefined}
                   onClick={() => {
@@ -387,42 +485,39 @@ export default function TrialSiteMap({
                     mapDivRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && hasCoords && mapInstanceRef.current) {
+                    if (e.key === "Enter" && hasCoords && mapInstanceRef.current)
                       mapInstanceRef.current.setView([site.lat, site.lon], 11);
-                    }
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-                    <div className="tsm-site-facility">{site.facility || "Unnamed Site"}</div>
+                  <div className="tsm-site-header">
+                    <div className="tsm-facility">{site.facility || "Unnamed Site"}</div>
                     <StatusBadge status={site.status} />
                   </div>
-                  <div className="tsm-site-location">
+                  <div className="tsm-location">
                     {[site.city, site.state, site.country].filter(Boolean).join(", ") || "Location unknown"}
                   </div>
                   {hasCoords ? (
                     <>
-                      <div className="site-cta">→ Click to focus on map</div>
+                      <div className="tsm-site-focus">→ Click to focus map</div>
                       <button
-                        style={{
-                          display: "block", width: "100%", marginTop: 8,
-                          padding: "6px 0", borderRadius: 7,
-                          border: "1px solid #bfdbfe", background: "#eff6ff",
-                          color: "#2563eb", fontSize: 11, fontWeight: 700,
-                          cursor: "pointer", fontFamily: "inherit",
-                          transition: "all 0.12s", textAlign: "center",
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "#2563eb"; e.currentTarget.style.color = "white"; e.currentTarget.style.borderColor = "#2563eb"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "#eff6ff"; e.currentTarget.style.color = "#2563eb"; e.currentTarget.style.borderColor = "#bfdbfe"; }}
+                        className="tsm-find-btn"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onFindPhysicians({ lat: site.lat as number, lng: site.lon as number, facility: site.facility, city: site.city, state: site.state, nct_id: nctId, condition: condition ?? null });
+                          onFindPhysicians({
+                            lat: site.lat as number, lng: site.lon as number,
+                            facility: site.facility, city: site.city,
+                            state: site.state, nct_id: nctId, condition: condition ?? null,
+                          });
                         }}
                       >
                         🩺 Find physicians nearby
                       </button>
                     </>
                   ) : (
-                    <div style={{ fontSize: 11, color: "#cdd3e0" }}>No coordinates available</div>
+                    <div className="tsm-no-coords">
+                      <span>○</span>
+                      No map coordinates available
+                    </div>
                   )}
                 </div>
               );

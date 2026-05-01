@@ -1,5 +1,4 @@
-/* app/globals.css */
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -8,46 +7,64 @@
 }
 
 :root {
-  --font-sans:  'DM Sans', sans-serif;
-  --font-mono:  'DM Mono', monospace;
+  /* Fonts */
+  --font-sans:    'Sora', 'DM Sans', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
 
-  --white:      #ffffff;
-  --gray-50:    #f8fafc;
-  --gray-100:   #f1f5f9;
-  --gray-200:   #e2e8f0;
-  --gray-300:   #cbd5e1;
-  --gray-400:   #94a3b8;
-  --gray-500:   #64748b;
-  --gray-600:   #475569;
-  --gray-700:   #334155;
-  --gray-800:   #1e293b;
-  --gray-900:   #0f172a;
+  /* Clinical Green — primary brand */
+  --forest:       #064e3b;
+  --forest-mid:   #065f46;
+  --green-700:    #047857;
+  --green-600:    #059669;
+  --green-500:    #10b981;
+  --green-400:    #34d399;
+  --green-100:    #d1fae5;
+  --green-50:     #ecfdf5;
 
-  --blue-50:    #eff6ff;
-  --blue-100:   #dbeafe;
-  --blue-200:   #bfdbfe;
-  --blue-500:   #3b82f6;
-  --blue-600:   #2563eb;
-  --blue-700:   #1d4ed8;
+  /* Medical Blue — physicians */
+  --navy:         #0c2340;
+  --blue-800:     #1e3a5f;
+  --blue-700:     #1e40af;
+  --blue-600:     #2563eb;
+  --blue-500:     #3b82f6;
+  --blue-100:     #dbeafe;
+  --blue-50:      #eff6ff;
 
-  --green-50:   #f0fdf4;
-  --green-500:  #22c55e;
-  --green-600:  #16a34a;
-  --green-700:  #15803d;
+  /* Overlap Purple */
+  --purple-600:   #7c3aed;
+  --purple-100:   #ede9fe;
 
-  --red-50:     #fef2f2;
-  --red-500:    #ef4444;
-  --red-600:    #dc2626;
+  /* Alert Coral */
+  --coral-600:    #dc2626;
+  --coral-50:     #fef2f2;
 
-  --amber-50:   #fffbeb;
-  --amber-500:  #f59e0b;
-  --amber-600:  #d97706;
-  --amber-700:  #b45309;
+  /* Amber — warnings */
+  --amber-600:    #d97706;
+  --amber-50:     #fffbeb;
+
+  /* Neutrals */
+  --white:        #ffffff;
+  --surface:      #f7f8fc;
+  --surface-2:    #f0f2f7;
+  --border:       #e4e7f0;
+  --border-mid:   #c8cfe0;
+  --ink:          #0a0f1e;
+  --ink-2:        #1e2538;
+  --ink-3:        #3d4663;
+  --muted:        #7a839e;
+  --muted-light:  #a8b2cc;
 
   /* Layout */
-  --header-h:  56px;
-  --search-h:  62px;
-  --panel-top: calc(var(--header-h) + var(--search-h));
+  --header-h:     60px;
+  --search-h:     64px;
+  --radius-sm:    6px;
+  --radius-md:    10px;
+  --radius-lg:    14px;
+  --radius-xl:    20px;
+  --shadow-sm:    0 1px 4px rgba(10, 15, 30, 0.06);
+  --shadow-md:    0 4px 16px rgba(10, 15, 30, 0.10);
+  --shadow-lg:    0 12px 40px rgba(10, 15, 30, 0.14);
+  --shadow-card:  0 2px 8px rgba(10, 15, 30, 0.07), 0 0 0 1px rgba(10, 15, 30, 0.04);
 }
 
 html, body {
@@ -55,8 +72,8 @@ html, body {
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
-  color: #0d1117;
-  background: #f6f7fb;
+  color: var(--ink);
+  background: var(--surface);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -65,43 +82,171 @@ button, input, select, textarea {
   font-family: var(--font-sans);
 }
 
-/* ── Invisible scrollbar (works in Salesforce webview too) ─────────────────── */
-/* All elements: scrollable but no visible bar */
+/* Invisible scrollbar */
 * {
-  scrollbar-width: none;        /* Firefox */
-  -ms-overflow-style: none;     /* IE / Edge / Salesforce Trident */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-*::-webkit-scrollbar {
-  display: none;                /* Chrome / Safari / Salesforce Lightning webview */
-}
+*::-webkit-scrollbar { display: none; }
 
-/* Focus-visible only */
 :focus-visible {
-  outline: 2px solid var(--blue-500);
+  outline: 2px solid var(--green-500);
   outline-offset: 2px;
 }
 
-/* Animations */
+/* ── Global Animations ─────────────────────────────────────────────────────── */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes fadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
 @keyframes spinAnim {
   to { transform: rotate(360deg); }
 }
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+@keyframes pinDrop {
+  0%   { transform: translateY(-12px) scale(0.6); opacity: 0; }
+  70%  { transform: translateY(2px) scale(1.08); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+@keyframes pulseRing {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.6); opacity: 0; }
+}
+@keyframes cardReveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-.animate-fade-up   { animation: fadeUp  0.25s ease both; }
-.animate-fade-in   { animation: fadeIn  0.2s  ease both; }
+.animate-fade-up    { animation: fadeUp    0.28s cubic-bezier(.22,1,.36,1) both; }
+.animate-fade-in    { animation: fadeIn    0.22s ease both; }
+.animate-slide-right{ animation: slideRight 0.24s cubic-bezier(.22,1,.36,1) both; }
 
+/* Staggered card animations */
+.card-anim-1  { animation: cardReveal 0.3s cubic-bezier(.22,1,.36,1) 0ms    both; }
+.card-anim-2  { animation: cardReveal 0.3s cubic-bezier(.22,1,.36,1) 40ms   both; }
+.card-anim-3  { animation: cardReveal 0.3s cubic-bezier(.22,1,.36,1) 80ms   both; }
+.card-anim-4  { animation: cardReveal 0.3s cubic-bezier(.22,1,.36,1) 120ms  both; }
+.card-anim-5  { animation: cardReveal 0.3s cubic-bezier(.22,1,.36,1) 160ms  both; }
+
+/* Spinner */
 .spinner {
-  width:        26px;
-  height:       26px;
-  border:       2.5px solid #e4e8f0;
-  border-top-color: var(--blue-600);
+  width: 24px; height: 24px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--green-500);
   border-radius: 50%;
-  animation:    spinAnim 0.7s linear infinite;
+  animation: spinAnim 0.72s linear infinite;
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    var(--border) 50%,
+    var(--surface-2) 75%
+  );
+  background-size: 400px 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Shared utility classes ─────────────────────────────────────────────────── */
+.mono { font-family: var(--font-mono); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 9px; border-radius: 20px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+  text-transform: uppercase; white-space: nowrap;
+}
+
+.badge-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%; flex-shrink: 0;
+}
+
+/* Status badge colours */
+.badge-recruiting  { background: var(--green-50);  color: #065f46; border: 1px solid var(--green-100); }
+.badge-active      { background: var(--blue-50);   color: #1e40af; border: 1px solid #bfdbfe; }
+.badge-completed   { background: var(--surface-2); color: var(--ink-3); border: 1px solid var(--border); }
+.badge-terminated  { background: var(--coral-50);  color: #991b1b; border: 1px solid #fecaca; }
+.badge-warning     { background: var(--amber-50);  color: #92400e; border: 1px solid #fde68a; }
+.badge-default     { background: var(--surface-2); color: var(--ink-3); border: 1px solid var(--border); }
+.badge-phase       { background: var(--surface-2); color: var(--ink-3); border: 1px solid var(--border); font-family: var(--font-mono); }
+
+/* Btn base */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 18px; border: none; border-radius: var(--radius-md);
+  font-family: var(--font-sans); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.16s cubic-bezier(.22,1,.36,1);
+  white-space: nowrap;
+}
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-primary {
+  background: var(--forest-mid); color: #fff;
+  box-shadow: 0 2px 8px rgba(6, 95, 70, 0.30);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--forest);
+  box-shadow: 0 4px 14px rgba(6, 95, 70, 0.40);
+  transform: translateY(-1px);
+}
+.btn-secondary {
+  background: var(--surface); color: var(--ink-2);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--border); border-color: var(--border-mid);
+}
+.btn-ghost {
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--surface-2); color: var(--ink-2);
+  border-color: var(--border-mid);
+}
+
+/* Input base */
+.input-base {
+  height: 36px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  font-size: 13px; color: var(--ink); background: var(--surface);
+  outline: none; font-family: var(--font-sans);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input-base:focus {
+  border-color: var(--green-500);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+  background: #fff;
+}
+.input-base::placeholder { color: var(--muted-light); }
+
+/* Card */
+.card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* Chip / pill */
+.chip {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 500;
+  background: var(--green-50); color: var(--forest-mid);
+  border: 1px solid var(--green-100);
 }

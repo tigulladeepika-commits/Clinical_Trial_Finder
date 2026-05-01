@@ -22,8 +22,8 @@ import { initializeCityStateValidation } from "@/lib/validation";
 import type { Trial, TrialSearchFilters, SiteData } from "@/types/trial";
 import type { SelectedSite }                         from "@/types/physician";
 
-const HEADER_H = 56;
-const SEARCH_H = 68;
+const HEADER_H = 60;
+const SEARCH_H = 64;
 
 function HomeInner() {
   const router       = useRouter();
@@ -44,12 +44,8 @@ function HomeInner() {
   const [sitesError,    setSitesError]    = useState<string | null>(null);
   const [selectedSite,  setSelectedSite]  = useState<SelectedSite | null>(null);
 
-  // Stores the resolved specialty strings from BOTH the user's search
-  // condition AND the trial condition, kept for the lifetime of the
-  // physician session so every re-search still OR-includes them.
   const pinnedTrialSpecialtyRef = useRef<string | undefined>(undefined);
   const pinnedUserSpecialtyRef  = useRef<string | undefined>(undefined);
-
   const sitesFetchAbortRef = useRef<AbortController | null>(null);
 
   const {
@@ -157,17 +153,6 @@ function HomeInner() {
     }
   }, [resetPhysicians, selectedTrial]);
 
-  // ── handleFindPhysicians ─────────────────────────────────────────────────
-  //
-  // Three OR conditions sent to backend independently:
-  //
-  //   specialty          → trial's own condition  (e.g. "Non-Small Cell Lung Carcinoma")
-  //   initial_specialty  → user's search bar input (e.g. "Lung Cancer")  ← always pinned
-  //   user_specialty     → extra specialty user types in the panel later
-  //
-  // Backend resolves each via resolve_with_broader() and unions the results.
-  // A physician matching ANY ONE of the three makes it into the result set.
-  //
   const handleFindPhysicians = useCallback(async (site: SelectedSite) => {
     setSelectedSite(site);
     resetPhysicians();
@@ -177,109 +162,42 @@ function HomeInner() {
     const userSearchCondition = filtersFromUrl.condition.trim();
     const trialCondition      = site.condition?.trim() ?? "";
 
-    // Resolve trial condition → NUCC specialties
     let trialSpecialty: string | undefined;
     if (trialCondition) {
       try {
         const list = await getConditionSpecialties(trialCondition);
-        trialSpecialty = list.length > 0
-          ? list.join(", ")
-          : trialCondition;
+        trialSpecialty = list.length > 0 ? list.join(", ") : trialCondition;
       } catch {
         trialSpecialty = trialCondition;
       }
     }
 
-    // Resolve user's search bar condition → NUCC specialties
-    // Only fetch if it's actually different from the trial condition
-    // (same condition would just duplicate results already covered above)
     let userSpecialty: string | undefined;
-    if (
-      userSearchCondition &&
-      userSearchCondition.toLowerCase() !== trialCondition.toLowerCase()
-    ) {
+    if (userSearchCondition && userSearchCondition.toLowerCase() !== trialCondition.toLowerCase()) {
       try {
         const list = await getConditionSpecialties(userSearchCondition);
-        userSpecialty = list.length > 0
-          ? list.join(", ")
-          : userSearchCondition;
+        userSpecialty = list.length > 0 ? list.join(", ") : userSearchCondition;
       } catch {
         userSpecialty = userSearchCondition;
       }
     }
 
-    // Pin both for the lifetime of this physician session.
-    // Every subsequent re-search in the panel will include these.
     pinnedTrialSpecialtyRef.current = trialSpecialty;
     pinnedUserSpecialtyRef.current  = userSpecialty;
 
-    // initial_specialty = whichever is more specific (prefer user's input
-    // since it's what they actually typed; fall back to trial condition)
     const initialSpecialty = userSpecialty ?? trialSpecialty;
 
-    // usePhysicians.search signature:
-    //   search(site, radius, specialty, userSpecialty, initialSpecialty)
-    //
-    // specialty        → trial condition  (backend slot: specialty)
-    // userSpecialty    → user search bar  (backend slot: user_specialty)
-    // initialSpecialty → pinned anchor    (backend slot: initial_specialty)
-    //
-    // Backend OR-combines all three independently via _add_resolved().
-    searchPhysicians(
-      site,
-      25,
-      trialSpecialty,   // specialty        — trial condition
-      userSpecialty,    // user_specialty   — user's search bar condition
-      initialSpecialty, // initial_specialty — pinned; always OR-included
-    );
+    searchPhysicians(site, 25, trialSpecialty, userSpecialty, initialSpecialty);
   }, [resetPhysicians, searchPhysicians, filtersFromUrl.condition]);
 
-  // ── handlePhysicianSearch ────────────────────────────────────────────────
-  //
-  // Called when user hits Search inside PhysicianPanel (changes radius or
-  // types a new specialty in the panel input).
-  //
-  // The panel sends back:
-  //   specialty        — trial condition (site.condition, unchanged)
-  //   userSpecialty    — whatever the user typed in the panel input box
-  //   initialSpecialty — the pinned value from the first search
-  //
-  // We ALWAYS re-inject the two pinned values from refs so they are
-  // never lost when the user types a third specialty in the panel.
-  // Result: backend receives up to THREE independent OR conditions:
-  //   1. pinnedTrialSpecialtyRef  (trial condition, always)
-  //   2. pinnedUserSpecialtyRef   (user search bar, always)
-  //   3. panelUserSpecialty       (new panel input, when present)
-  //
   const handlePhysicianSearch = useCallback(
-    (
-      radius:           number,
-      _specialty:       string, // trial condition forwarded by panel — we use our ref instead
-      panelUserSpecialty: string, // new specialty user typed in panel input
-      _initialSpecialty:  string, // panel's pinned value — we use our ref instead
-    ) => {
+    (radius: number, _specialty: string, panelUserSpecialty: string, _initialSpecialty: string) => {
       if (!selectedSite) return;
-
       const trialSpecialty   = pinnedTrialSpecialtyRef.current;
       const userBarSpecialty = pinnedUserSpecialtyRef.current;
-
-      // If the user typed something new in the panel AND it differs from
-      // both pinned values, it becomes a genuine third OR condition.
       const panelInput = panelUserSpecialty.trim() || undefined;
-
-      // initial_specialty = whichever anchor is most specific
       const initialSpecialty = userBarSpecialty ?? trialSpecialty;
-
-      // When user typed in panel: pass as user_specialty so backend adds it
-      // as a third OR bucket on top of the two pinned ones.
-      // When panel input matches a pinned value: no-op, backend deduplicates.
-      searchPhysicians(
-        selectedSite,
-        radius,
-        trialSpecialty,   // specialty        — trial condition (always)
-        panelInput,       // user_specialty   — panel input (3rd OR condition)
-        initialSpecialty, // initial_specialty — pinned anchor (always)
-      );
+      searchPhysicians(selectedSite, radius, trialSpecialty, panelInput, initialSpecialty);
     },
     [selectedSite, searchPhysicians],
   );
@@ -290,240 +208,297 @@ function HomeInner() {
   }, [resetPhysicians]);
 
   const searchFormKey = [
-    filtersFromUrl.condition,
-    filtersFromUrl.city,
-    filtersFromUrl.state,
-    filtersFromUrl.status,
-    filtersFromUrl.phase,
+    filtersFromUrl.condition, filtersFromUrl.city, filtersFromUrl.state,
+    filtersFromUrl.status, filtersFromUrl.phase,
   ].join("|");
+
+  const kpiData = siteData ? {
+    total:      siteData.sites.length,
+    recruiting: siteData.sites.filter(s => s.status?.toLowerCase() === "recruiting").length,
+    onMap:      siteData.sites.filter(s => s.lat != null && s.lon != null).length,
+    countries:  new Set(siteData.sites.map(s => s.country).filter(Boolean)).size || 1,
+  } : null;
 
   return (
     <>
       <style>{`
         .app-shell {
-          display: flex;
-          flex-direction: column;
-          height: 100vh;
-          overflow: hidden;
-          background: #f6f7fb;
+          display: flex; flex-direction: column;
+          height: 100vh; overflow: hidden;
+          background: var(--surface);
+          font-family: var(--font-sans);
         }
+
+        /* ── Header ── */
         .site-header {
-          height: ${HEADER_H}px;
-          flex-shrink: 0;
-          background: #fff;
-          border-bottom: 1px solid #e4e8f0;
-          z-index: 100;
-          box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+          height: ${HEADER_H}px; flex-shrink: 0;
+          background: var(--forest);
+          z-index: 200;
+          display: flex; align-items: center;
         }
         .header-inner {
-          max-width: 1800px;
-          margin: 0 auto;
-          padding: 0 24px;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
+          max-width: 1800px; margin: 0 auto;
+          padding: 0 24px; width: 100%;
+          display: flex; align-items: center; justify-content: space-between;
         }
-        .logo-group { display: flex; align-items: center; gap: 10px; }
+        .logo-group { display: flex; align-items: center; gap: 12px; }
         .logo-mark {
-          width: 32px; height: 32px;
-          background: linear-gradient(135deg, #2563eb, #1d4ed8);
-          border-radius: 8px;
+          width: 36px; height: 36px;
+          background: rgba(255,255,255,0.15);
+          border-radius: 10px;
           display: flex; align-items: center; justify-content: center;
-          font-family: 'DM Mono', monospace;
-          font-size: 11px; font-weight: 600; color: #fff;
-          letter-spacing: -0.5px;
+          font-family: var(--font-mono);
+          font-size: 12px; font-weight: 600; color: #fff;
+          border: 1px solid rgba(255,255,255,0.2);
+          backdrop-filter: blur(4px);
         }
         .logo-text {
-          font-size: 15px; font-weight: 700; color: #0d1117;
+          font-size: 16px; font-weight: 700; color: #fff;
           letter-spacing: -0.3px;
         }
-        .logo-text span { color: #2563eb; }
+        .logo-text span { color: var(--green-400); }
+        .header-right {
+          display: flex; align-items: center; gap: 14px;
+        }
         .header-tagline {
-          font-size: 12px; color: #94a3b8;
-          font-weight: 500; font-style: italic;
+          font-size: 12px; color: rgba(255,255,255,0.5);
+          font-weight: 400; letter-spacing: 0.2px;
         }
-        @media (max-width: 640px) { .header-tagline { display: none; } }
-        .search-card {
-          height: ${SEARCH_H}px;
-          flex-shrink: 0;
+        .header-pill {
+          display: inline-flex; align-items: center; gap: 5px;
+          padding: 4px 12px; border-radius: 20px;
+          background: rgba(255,255,255,0.1);
+          border: 1px solid rgba(255,255,255,0.15);
+          font-size: 11px; font-weight: 600; color: var(--green-400);
+        }
+        .header-live-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: var(--green-400);
+          animation: pulseRing 2s ease-in-out infinite;
+        }
+        @media (max-width: 640px) {
+          .header-tagline { display: none; }
+          .header-pill    { display: none; }
+        }
+
+        /* ── Search bar ── */
+        .search-bar {
+          height: ${SEARCH_H}px; flex-shrink: 0;
           background: #fff;
-          border-bottom: 1px solid #e4e8f0;
-          padding: 0 24px;
-          display: flex;
-          align-items: center;
+          border-bottom: 1px solid var(--border);
+          padding: 0 20px;
+          display: flex; align-items: center;
+          box-shadow: var(--shadow-sm);
+          z-index: 100;
         }
+
+        /* ── Hero ── */
         .hero-wrap {
-          flex: 1;
-          overflow-y: auto;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #dbeafe;
+          flex: 1; overflow-y: auto;
+          display: flex; align-items: center; justify-content: center;
+          background: linear-gradient(160deg, #ecfdf5 0%, #dbeafe 50%, #f0fdf4 100%);
+          position: relative;
         }
+        .hero-bg-pattern {
+          position: absolute; inset: 0; pointer-events: none;
+          background-image: radial-gradient(circle at 1px 1px, rgba(6,95,70,0.08) 1px, transparent 0);
+          background-size: 28px 28px;
+          opacity: 0.6;
+        }
+        .hero-content {
+          position: relative; z-index: 1;
+          width: 100%; max-width: 680px;
+          padding: 40px 24px;
+          animation: fadeUp 0.5s cubic-bezier(.22,1,.36,1) both;
+        }
+
+        /* ── Results layout ── */
         .results-layout {
-          flex: 1;
-          min-height: 0;
+          flex: 1; min-height: 0;
           display: grid;
-          grid-template-columns: 320px minmax(0, 1fr);
-          animation: fadeUp 0.28s ease both;
+          grid-template-columns: 340px minmax(0, 1fr);
           overflow: hidden;
+          animation: fadeIn 0.25s ease both;
         }
-        @media (max-width: 860px) {
+        @media (max-width: 900px) {
           .results-layout {
             grid-template-columns: 1fr;
             grid-template-rows: auto 1fr;
           }
-          .trials-panel { max-height: 45vh; }
+          .trials-panel { max-height: 42vh; }
         }
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(5px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
+
+        /* ── Trials panel (left) ── */
         .trials-panel {
-          border-right: 1px solid #e4e8f0;
-          overflow-y: auto;
-          background: #fff;
-          display: flex;
-          flex-direction: column;
-          min-width: 0;
+          border-right: 1px solid var(--border);
+          overflow-y: auto; background: #fff;
+          display: flex; flex-direction: column; min-width: 0;
         }
+
+        /* ── Detail panel (right) ── */
         .detail-panel {
-          display: flex;
-          flex-direction: column;
-          background: #f6f7fb;
-          min-width: 0;
-          overflow: hidden;
+          display: flex; flex-direction: column;
+          background: var(--surface); min-width: 0; overflow: hidden;
         }
+
+        /* ── Trial detail header ── */
         .trial-detail-header {
-          padding: 14px 20px;
-          border-bottom: 1px solid #e4e8f0;
-          background: #fff;
-          flex-shrink: 0;
+          padding: 16px 20px;
+          border-bottom: 1px solid var(--border);
+          background: #fff; flex-shrink: 0;
         }
         .tdh-badges {
           display: flex; align-items: center; gap: 6px;
-          margin-bottom: 6px; flex-wrap: wrap;
+          margin-bottom: 7px; flex-wrap: wrap;
         }
         .tdh-nct {
-          font-size: 10px; font-weight: 700; color: #2563eb;
-          letter-spacing: 0.8px; text-transform: uppercase;
-          font-family: 'DM Mono', monospace;
+          font-size: 10px; font-weight: 700; color: var(--forest-mid);
+          letter-spacing: 1px; text-transform: uppercase;
+          font-family: var(--font-mono);
         }
         .tdh-title {
-          font-size: 14px; font-weight: 600; color: #0d1117;
-          line-height: 1.45; margin-bottom: 4px;
+          font-size: 14px; font-weight: 600; color: var(--ink);
+          line-height: 1.5; margin-bottom: 5px;
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
-        .tdh-sponsor { font-size: 11px; color: #8b95a1; }
-        .tdh-sponsor strong { color: #4b5563; font-weight: 500; }
+        .tdh-sponsor { font-size: 11px; color: var(--muted); }
+        .tdh-sponsor strong { color: var(--ink-3); font-weight: 500; }
+
+        /* ── KPI bar ── */
         .kpi-row {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          border-bottom: 1px solid #e4e8f0;
-          background: #fff;
-          flex-shrink: 0;
+          display: grid; grid-template-columns: repeat(4, 1fr);
+          border-bottom: 1px solid var(--border);
+          background: #fff; flex-shrink: 0;
         }
         .kpi-cell {
-          padding: 12px 8px;
-          text-align: center;
-          border-right: 1px solid #e4e8f0;
+          padding: 14px 8px; text-align: center;
+          border-right: 1px solid var(--border);
+          transition: background 0.15s;
         }
         .kpi-cell:last-child { border-right: none; }
+        .kpi-cell:hover { background: var(--surface); }
         .kpi-num {
-          font-size: 22px; font-weight: 700; color: #0d1117;
-          line-height: 1; font-family: 'DM Mono', monospace;
+          font-size: 24px; font-weight: 700; color: var(--ink);
+          line-height: 1; font-family: var(--font-mono);
+          letter-spacing: -1px;
         }
-        .kpi-num.green { color: #16a34a; }
+        .kpi-num.green { color: var(--green-600); }
         .kpi-label {
-          font-size: 9px; font-weight: 600; letter-spacing: 0.07em;
-          text-transform: uppercase; color: #8b95a1; margin-top: 4px;
+          font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
+          text-transform: uppercase; color: var(--muted); margin-top: 5px;
         }
+
         .detail-content {
-          flex: 1;
-          min-height: 0;
-          overflow-y: auto;
+          flex: 1; min-height: 0; overflow-y: auto;
         }
-        .badge {
-          display: inline-flex; align-items: center; gap: 4px;
-          padding: 2px 8px; border-radius: 20px;
-          font-size: 10px; font-weight: 700; letter-spacing: 0.2px;
-          text-transform: uppercase; white-space: nowrap;
-        }
-        .b-recruiting { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
-        .b-active     { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-        .b-completed  { background: #f8fafc; color: #334155; border: 1px solid #e2e8f0; }
-        .b-terminated { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
-        .b-warning    { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
-        .b-default    { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
-        .b-phase      { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; font-family: 'DM Mono', monospace; }
-        .b-na {
-          background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0;
-          font-size: 10px; font-weight: 500; padding: 2px 7px;
-          border-radius: 20px; letter-spacing: 0.3px; white-space: nowrap;
-          font-family: inherit;
-        }
+
+        /* ── State boxes ── */
         .state-box {
           display: flex; flex-direction: column; align-items: center;
-          justify-content: center; gap: 10px; padding: 48px 20px; color: #8b95a1;
+          justify-content: center; gap: 12px;
+          padding: 56px 24px; color: var(--muted);
         }
-        .spinner {
-          width: 26px; height: 26px;
-          border: 2.5px solid #e4e8f0; border-top-color: #2563eb;
-          border-radius: 50%; animation: spinAnim 0.7s linear infinite;
-        }
-        @keyframes spinAnim { to { transform: rotate(360deg); } }
-        .state-msg { font-size: 13px; font-weight: 500; }
+        .state-msg { font-size: 13px; font-weight: 500; color: var(--muted); }
+
+        /* ── Error box ── */
         .error-box {
-          margin: 14px; padding: 12px 14px; border-radius: 10px;
-          background: #fef2f2; border: 1px solid #fecaca;
-          color: #dc2626; font-size: 13px;
-          display: flex; flex-direction: column; gap: 8px;
+          margin: 16px; padding: 14px 16px; border-radius: var(--radius-lg);
+          background: var(--coral-50); border: 1px solid #fecaca;
+          color: var(--coral-600); font-size: 13px;
+          display: flex; flex-direction: column; gap: 10px;
+          animation: fadeIn 0.2s ease both;
         }
-        .err-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
+        .err-label {
+          font-size: 10px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.8px; opacity: 0.7;
+        }
+
+        /* ── No results ── */
         .no-results {
           display: flex; flex-direction: column; align-items: center;
-          justify-content: center; gap: 8px;
-          padding: 56px 24px; text-align: center; color: #8b95a1;
+          justify-content: center; gap: 10px;
+          padding: 64px 24px; text-align: center; color: var(--muted);
+          animation: fadeUp 0.3s ease both;
         }
-        .no-results h3 { font-size: 14px; font-weight: 600; color: #4b5563; margin-top: 4px; }
-        .no-results p  { font-size: 12px; }
+        .no-results-icon {
+          width: 52px; height: 52px; border-radius: 50%;
+          background: var(--surface-2);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 22px;
+        }
+        .no-results h3 { font-size: 14px; font-weight: 600; color: var(--ink-3); }
+        .no-results p  { font-size: 12px; max-width: 220px; line-height: 1.6; }
+
+        /* ── Detail empty ── */
         .detail-empty {
           display: flex; flex-direction: column; align-items: center;
-          justify-content: center; gap: 14px;
-          height: 100%; padding: 40px; text-align: center; color: #8b95a1;
+          justify-content: center; gap: 18px;
+          height: 100%; padding: 48px; text-align: center; color: var(--muted);
+          animation: fadeIn 0.3s ease both;
         }
-        .detail-empty-icon { font-size: 42px; opacity: 0.5; }
+        .detail-empty-visual {
+          width: 80px; height: 80px;
+          border-radius: 24px;
+          background: linear-gradient(135deg, var(--green-50), var(--blue-50));
+          display: flex; align-items: center; justify-content: center;
+          font-size: 36px;
+          border: 1px solid var(--border);
+        }
+        .detail-empty-title {
+          font-size: 15px; font-weight: 600; color: var(--ink-2);
+        }
         .detail-empty p {
-          font-size: 14px; font-weight: 500; color: #4b5563;
-          max-width: 220px; line-height: 1.6;
+          font-size: 13px; color: var(--muted);
+          max-width: 240px; line-height: 1.7;
         }
-        .btn-primary {
-          padding: 9px 20px; background: #2563eb; color: #fff;
-          border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
-          cursor: pointer; font-family: inherit; transition: background 0.15s;
+        .detail-empty-steps {
+          display: flex; flex-direction: column; gap: 8px;
+          text-align: left; max-width: 260px;
         }
-        .btn-primary:hover { background: #1d4ed8; }
+        .detail-step {
+          display: flex; align-items: center; gap: 10px;
+          font-size: 12px; color: var(--ink-3);
+        }
+        .detail-step-num {
+          width: 22px; height: 22px; border-radius: 50%;
+          background: var(--green-50); color: var(--forest-mid);
+          font-size: 10px; font-weight: 700;
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0; border: 1px solid var(--green-100);
+        }
       `}</style>
 
       <div className="app-shell">
 
+        {/* ── Header ── */}
         <header className="site-header">
           <div className="header-inner">
             <div className="logo-group">
               <div className="logo-mark">Ct</div>
-              <div className="logo-text">Clinical<span>Trial</span> Navigator</div>
+              <div className="logo-text">
+                Clini<span>Trial</span> Navigator
+              </div>
             </div>
-            <div className="header-tagline">Find trials · Explore sites · Discover physicians</div>
+            <div className="header-right">
+              <span className="header-tagline">
+                Find trials · Explore sites · Discover physicians
+              </span>
+              <div className="header-pill">
+                <span className="header-live-dot" />
+                400K+ Trials
+              </div>
+            </div>
           </div>
         </header>
 
+        {/* ── Hero (no search results) ── */}
         {!hasResults && (
           <div className="hero-wrap">
-            <div className="hero-form-only">
+            <div className="hero-bg-pattern" />
+            <div className="hero-content">
               <SearchForm
                 key="hero"
                 onSearch={handleSearch}
@@ -535,8 +510,9 @@ function HomeInner() {
           </div>
         )}
 
+        {/* ── Compact search bar ── */}
         {hasResults && (
-          <div className="search-card">
+          <div className="search-bar">
             <SearchForm
               key={searchFormKey}
               onSearch={handleSearch}
@@ -547,9 +523,11 @@ function HomeInner() {
           </div>
         )}
 
+        {/* ── Results ── */}
         {hasResults && (
           <div className="results-layout">
 
+            {/* Left: Trial list */}
             <div className="trials-panel">
               {loading && (
                 <div className="state-box">
@@ -561,14 +539,17 @@ function HomeInner() {
                 <div className="error-box">
                   <span className="err-label">Error loading trials</span>
                   <p>{error}</p>
-                  <button className="btn-primary" onClick={refetch}>Try Again</button>
+                  <button className="btn btn-primary" onClick={refetch}
+                    style={{ alignSelf: "flex-start" }}>
+                    Try Again
+                  </button>
                 </div>
               )}
               {!loading && !error && trials.length === 0 && (
                 <div className="no-results">
-                  <div style={{ fontSize: 32 }}>🔍</div>
+                  <div className="no-results-icon">🔍</div>
                   <h3>No trials found</h3>
-                  <p>Try broadening your search criteria or removing filters.</p>
+                  <p>Try broadening your search or removing filters.</p>
                 </div>
               )}
               {!loading && !error && trials.length > 0 && (
@@ -584,36 +565,53 @@ function HomeInner() {
               )}
             </div>
 
+            {/* Right: Detail / map panel */}
             <div className="detail-panel">
 
               {!selectedTrial && (
                 <div className="detail-empty">
-                  <div className="detail-empty-icon">🗺️</div>
-                  <p>Select a trial from the list to view its site locations on the map</p>
+                  <div className="detail-empty-visual">🗺️</div>
+                  <div className="detail-empty-title">Select a trial to begin</div>
+                  <p>Choose a trial from the list to view its site locations on the map and find nearby physicians.</p>
+                  <div className="detail-empty-steps">
+                    <div className="detail-step">
+                      <span className="detail-step-num">1</span>
+                      Click any trial in the list
+                    </div>
+                    <div className="detail-step">
+                      <span className="detail-step-num">2</span>
+                      Explore sites on the map
+                    </div>
+                    <div className="detail-step">
+                      <span className="detail-step-num">3</span>
+                      Find physicians near sites
+                    </div>
+                  </div>
                 </div>
               )}
 
               {selectedTrial && (
                 <>
+                  {/* Trial header */}
                   <div className="trial-detail-header">
                     <div className="tdh-badges">
                       <span className="tdh-nct">{selectedTrial.nctId}</span>
 
                       {selectedTrial.status && (() => {
                         const s = selectedTrial.status.toLowerCase();
-                        let cls = "badge b-default";
-                        if (s === "recruiting")                                      cls = "badge b-recruiting";
-                        else if (s.includes("active"))                               cls = "badge b-active";
-                        else if (s === "completed")                                  cls = "badge b-completed";
-                        else if (s === "terminated")                                 cls = "badge b-terminated";
-                        else if (s.includes("not yet") || s.includes("invitation")) cls = "badge b-warning";
+                        let cls = "badge badge-default";
+                        if (s === "recruiting")                                      cls = "badge badge-recruiting";
+                        else if (s.includes("active"))                               cls = "badge badge-active";
+                        else if (s === "completed")                                  cls = "badge badge-completed";
+                        else if (s === "terminated")                                 cls = "badge badge-terminated";
+                        else if (s.includes("not yet") || s.includes("invitation")) cls = "badge badge-warning";
                         return <span className={cls}>{selectedTrial.status}</span>;
                       })()}
 
                       {selectedTrial.phases?.map((p) =>
                         p === "N/A" || p === "NA"
-                          ? <span key={p} className="b-na">Not applicable</span>
-                          : <span key={p} className="badge b-phase">{p}</span>
+                          ? <span key={p} className="badge badge-default">Not applicable</span>
+                          : <span key={p} className="badge badge-phase">{p}</span>
                       )}
                     </div>
 
@@ -656,72 +654,63 @@ function HomeInner() {
                         onLoadMore={loadMorePhysicians}
                         onBack={handleBackToSites}
                         kpiBar={
-                          <div className="kpi-row">
-                            <div className="kpi-cell">
-                              <div className="kpi-num">{siteData.sites.length}</div>
-                              <div className="kpi-label">Total Sites</div>
-                            </div>
-                            <div className="kpi-cell">
-                              <div className="kpi-num green">
-                                {siteData.sites.filter(s => s.status?.toLowerCase() === "recruiting").length}
+                          kpiData && (
+                            <div className="kpi-row">
+                              <div className="kpi-cell">
+                                <div className="kpi-num">{kpiData.total}</div>
+                                <div className="kpi-label">Total Sites</div>
                               </div>
-                              <div className="kpi-label">Recruiting</div>
-                            </div>
-                            <div className="kpi-cell">
-                              <div className="kpi-num">
-                                {siteData.sites.filter(s => s.lat != null && s.lon != null).length}
+                              <div className="kpi-cell">
+                                <div className="kpi-num green">{kpiData.recruiting}</div>
+                                <div className="kpi-label">Recruiting</div>
                               </div>
-                              <div className="kpi-label">On Map</div>
-                            </div>
-                            <div className="kpi-cell">
-                              <div className="kpi-num">
-                                {new Set(siteData.sites.map(s => s.country).filter(Boolean)).size || 1}
+                              <div className="kpi-cell">
+                                <div className="kpi-num">{kpiData.onMap}</div>
+                                <div className="kpi-label">On Map</div>
                               </div>
-                              <div className="kpi-label">Countries</div>
+                              <div className="kpi-cell">
+                                <div className="kpi-num">{kpiData.countries}</div>
+                                <div className="kpi-label">Countries</div>
+                              </div>
                             </div>
-                          </div>
+                          )
                         }
                       />
                     )}
 
                     {siteData && !sitesLoading && !selectedSite && (
-                      <div className="kpi-row">
-                        <div className="kpi-cell">
-                          <div className="kpi-num">{siteData.sites.length}</div>
-                          <div className="kpi-label">Total Sites</div>
-                        </div>
-                        <div className="kpi-cell">
-                          <div className="kpi-num green">
-                            {siteData.sites.filter(s => s.status?.toLowerCase() === "recruiting").length}
+                      <>
+                        {kpiData && (
+                          <div className="kpi-row">
+                            <div className="kpi-cell">
+                              <div className="kpi-num">{kpiData.total}</div>
+                              <div className="kpi-label">Total Sites</div>
+                            </div>
+                            <div className="kpi-cell">
+                              <div className="kpi-num green">{kpiData.recruiting}</div>
+                              <div className="kpi-label">Recruiting</div>
+                            </div>
+                            <div className="kpi-cell">
+                              <div className="kpi-num">{kpiData.onMap}</div>
+                              <div className="kpi-label">On Map</div>
+                            </div>
+                            <div className="kpi-cell">
+                              <div className="kpi-num">{kpiData.countries}</div>
+                              <div className="kpi-label">Countries</div>
+                            </div>
                           </div>
-                          <div className="kpi-label">Recruiting</div>
-                        </div>
-                        <div className="kpi-cell">
-                          <div className="kpi-num">
-                            {siteData.sites.filter(s => s.lat != null && s.lon != null).length}
-                          </div>
-                          <div className="kpi-label">On Map</div>
-                        </div>
-                        <div className="kpi-cell">
-                          <div className="kpi-num">
-                            {new Set(siteData.sites.map(s => s.country).filter(Boolean)).size || 1}
-                          </div>
-                          <div className="kpi-label">Countries</div>
-                        </div>
-                      </div>
-                    )}
-
-                    {siteData && !sitesLoading && !selectedSite && (
-                      <TrialSiteMap
-                        sites={siteData.sites}
-                        trialTitle={siteData.title}
-                        nctId={selectedTrial.nctId}
-                        description={selectedTrial.description ?? null}
-                        condition={selectedTrial.conditions?.[0] ?? null}
-                        inclusionCriteria={selectedTrial.inclusionCriteria}
-                        exclusionCriteria={selectedTrial.exclusionCriteria}
-                        onFindPhysicians={handleFindPhysicians}
-                      />
+                        )}
+                        <TrialSiteMap
+                          sites={siteData.sites}
+                          trialTitle={siteData.title}
+                          nctId={selectedTrial.nctId}
+                          description={selectedTrial.description ?? null}
+                          condition={selectedTrial.conditions?.[0] ?? null}
+                          inclusionCriteria={selectedTrial.inclusionCriteria}
+                          exclusionCriteria={selectedTrial.exclusionCriteria}
+                          onFindPhysicians={handleFindPhysicians}
+                        />
+                      </>
                     )}
                   </div>
                 </>
@@ -740,15 +729,19 @@ export default function Home() {
       fallback={
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "center",
-          height: "100vh", flexDirection: "column", gap: 12,
-          fontFamily: "'DM Sans', sans-serif", color: "#94a3b8",
+          height: "100vh", flexDirection: "column", gap: 14,
+          fontFamily: "'Sora', sans-serif", color: "var(--muted)",
+          background: "var(--surface)",
         }}>
           <div style={{
-            width: 32, height: 32,
-            border: "3px solid #f1f5f9", borderTopColor: "#2563eb",
-            borderRadius: "50%", animation: "spinAnim 0.75s linear infinite",
-          }} />
-          <span style={{ fontSize: 14, fontWeight: 500 }}>Loading…</span>
+            width: 40, height: 40, borderRadius: 12,
+            background: "var(--forest)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontFamily: "var(--font-mono)", fontSize: 14,
+            fontWeight: 600, color: "#fff",
+            animation: "spinAnim 2s linear infinite",
+          }}>Ct</div>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>Loading CliniTrial Navigator…</span>
           <style>{`@keyframes spinAnim { to { transform: rotate(360deg); } }`}</style>
         </div>
       }
