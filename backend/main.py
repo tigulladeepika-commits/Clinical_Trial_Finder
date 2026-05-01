@@ -11,12 +11,19 @@ Startup:
   - Validates configuration
   - Initialises taxonomy (background thread — seeds immediately, upgrades async)
   - Initialises ZIP database (sync on Render, background locally)
+
+CORS v2:
+  - Added Salesforce Experience Cloud origin pattern so the app works when
+    embedded in an SF Experience site (*.salesforce-experience.com).
+  - Kept Vercel pattern for direct web access.
+  - Set FRONTEND_URL env var to lock down to a specific origin in production.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -74,17 +81,54 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — regex matches all Vercel preview and production deployments.
-# Locally (IS_RENDER=False) all origins are allowed for ease of development.
+# ── CORS ──────────────────────────────────────────────────────────────────────
+#
+# Priority order:
+#  1. FRONTEND_URL env var set → allow only that exact origin (most secure).
+#  2. IS_RENDER=True and no FRONTEND_URL → allow all known deployment patterns
+#     via regex (Vercel previews + Salesforce Experience Cloud).
+#  3. Local dev (IS_RENDER=False) → allow all origins for convenience.
+#
+# Regex breakdown:
+#   Vercel:     https://clinical-trial-finder[slug].vercel.app
+#   Salesforce: https://[org].preview.salesforce-experience.com
+#               https://[org].salesforce-experience.com
+#               https://[org].my.site.com  (custom domain on SF)
+#               https://[org].force.com    (legacy SF domain)
+
+_CORS_REGEX = (
+    r"https://clinical-trial-finder[a-z0-9\-]*\.vercel\.app"
+    r"|https://[a-zA-Z0-9\-]+\.preview\.salesforce-experience\.com"
+    r"|https://[a-zA-Z0-9\-]+\.salesforce-experience\.com"
+    r"|https://[a-zA-Z0-9\-]+\.my\.site\.com"
+    r"|https://[a-zA-Z0-9\-]+\.force\.com"
+    r"|https://[a-zA-Z0-9\-]+\.lightning\.force\.com"
+)
+
 if cfg.IS_RENDER:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origin_regex=r"https://clinical-trial-finder[a-z0-9\-]*\.vercel\.app",
-        allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
-    )
+    if cfg.FRONTEND_URL:
+        # Exact origin from env var — most locked-down option
+        logger.info("CORS: allowing exact origin %s", cfg.FRONTEND_URL)
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[cfg.FRONTEND_URL],
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Content-Type", "Authorization"],
+        )
+    else:
+        # Regex covers all known deployment patterns
+        logger.info("CORS: using deployment regex (Vercel + Salesforce)")
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origin_regex=_CORS_REGEX,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Content-Type", "Authorization"],
+        )
 else:
+    # Local development — open to all
+    logger.info("CORS: open (local dev)")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -98,11 +142,6 @@ else:
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """
-    Catches Pydantic validation errors (HTTP 422) and logs the raw body +
-    exact fields that failed so they appear in Render logs instead of
-    silently returning a raw FastAPI error body.
-    """
     body_bytes = await request.body()
     try:
         body_text = body_bytes.decode("utf-8")
