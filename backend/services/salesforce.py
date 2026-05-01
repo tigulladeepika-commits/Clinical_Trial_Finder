@@ -9,6 +9,7 @@ Fields sent:
 """
 
 import logging
+import re
 from typing import Dict, Tuple
 
 import requests
@@ -19,13 +20,17 @@ from services.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
-_PLACEHOLDER_EMAIL_DOMAINS = (".com",)
+_EMAIL_REGEX = re.compile(
+    r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$'
+)
 
 
-def _is_placeholder_email(email: str) -> bool:
-    """Return True for internal / placeholder emails that Salesforce will reject."""
+def _is_invalid_email(email: str) -> bool:
+    """Return True if email is empty or doesn't match a valid email pattern."""
     lower = email.strip().lower()
-    return any(lower.endswith(d) for d in _PLACEHOLDER_EMAIL_DOMAINS)
+    if not lower:
+        return True
+    return not bool(_EMAIL_REGEX.match(lower))
 
 
 def push_lead(lead: Dict) -> None:
@@ -58,12 +63,12 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
 
     email = lead.get("email", "")
 
-    # Skip auto-leads that use placeholder emails — Salesforce rejects .local
-    # domains and the lead would be silently dropped or cause a 422 upstream.
-    if _is_placeholder_email(email):
+    # Skip leads with invalid or malformed email addresses —
+    # Salesforce will silently drop or reject them.
+    if _is_invalid_email(email):
         msg = (
             f"Skipping Salesforce push for lead {lead.get('id')} — "
-            f"placeholder email '{email}' not suitable for Salesforce."
+            f"invalid email '{email}' does not match a valid email pattern."
         )
         logger.info(msg)
         return True, 0, "", ""   # return success=True so caller doesn't log a warning
