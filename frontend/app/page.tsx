@@ -241,7 +241,7 @@ function HomeInner() {
 
         /* ── Hero ── */
         .hero-wrap {
-          display: flex; align-items: center; justify-content: center;
+          display: flex; align-items: flex-start; justify-content: center;
           background: linear-gradient(160deg, #eff6ff 0%, #dbeafe 50%, #f0fdf4 100%);
           position: relative;
           min-height: calc(100vh - ${SEARCH_H}px);
@@ -254,12 +254,12 @@ function HomeInner() {
         }
         .hero-content {
           position: relative; z-index: 1;
-          width: 100%; max-width: 680px;
-          padding: 40px 24px;
+          width: 100%; max-width: 960px;
+          padding: 24px 24px;
           animation: fadeUp 0.5s cubic-bezier(.22,1,.36,1) both;
         }
 
-        /* ── Results: 30/70 split — NO overflow trapping ── */
+        /* ── Results: 30/70 split ── */
         .results-layout {
           display: grid;
           grid-template-columns: 30% 70%;
@@ -270,18 +270,17 @@ function HomeInner() {
           .results-layout { grid-template-columns: 1fr; }
         }
 
-        /* ── Left panel: no overflow trap, content flows naturally ── */
+        /* ── Left panel ── */
         .trials-panel {
           border-right: 1px solid var(--border);
           background: #fff;
           display: flex; flex-direction: column; min-width: 0;
-          /* Sticky so the trial list header and items stay in view while right side scrolls */
           position: sticky; top: ${SEARCH_H}px;
           max-height: calc(100vh - ${SEARCH_H}px);
           overflow-y: auto;
         }
 
-        /* ── Right panel: NO internal scroll — Salesforce page provides scroll ── */
+        /* ── Right panel ── */
         .detail-panel {
           display: flex; flex-direction: column;
           background: var(--surface); min-width: 0;
@@ -337,7 +336,6 @@ function HomeInner() {
           text-transform: uppercase; color: var(--muted); margin-top: 4px;
         }
 
-        /* detail-content is no longer a scroll container — parent .detail-panel scrolls */
         .detail-content { display: contents; }
 
         /* ── State boxes ── */
@@ -451,7 +449,7 @@ function HomeInner() {
         {hasResults && (
           <div className="results-layout">
 
-            {/* Left 30%: Trial list — native scroll */}
+            {/* Left 30%: Trial list */}
             <div className="trials-panel">
               {loading && (
                 <div className="state-box">
@@ -489,7 +487,7 @@ function HomeInner() {
               )}
             </div>
 
-            {/* Right 70%: Detail / map panel — native scroll */}
+            {/* Right 70%: Detail / map panel */}
             <div className="detail-panel">
 
               {!selectedTrial && (
@@ -516,7 +514,7 @@ function HomeInner() {
 
               {selectedTrial && (
                 <>
-                  {/* Trial header — sticky so it stays visible on scroll */}
+                  {/* Trial header */}
                   <div className="trial-detail-header">
                     <div className="tdh-badges">
                       <span className="tdh-nct">{selectedTrial.nctId}</span>
@@ -548,7 +546,6 @@ function HomeInner() {
                     )}
                   </div>
 
-                  {/* Detail content — scrollable via the outer detail-panel */}
                   <div className="detail-content">
 
                     {sitesLoading && (
