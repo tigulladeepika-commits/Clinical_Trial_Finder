@@ -4,26 +4,27 @@ Clintrial Navigator V3 — FastAPI application entry point.
 
 Mounts:
   /api/trials       — ClinicalTrials.gov search + detail (V2)
-  /api/physicians   — NPPES physician search (V1 → V3)
-  /api/leads        — Lead capture (new in V3)
+  /api/physicians   — NPPES physician search (V5)
+  /api/leads        — Lead capture
 
 Startup:
   - Validates configuration
-  - Initialises taxonomy (background thread — seeds immediately, upgrades async)
-  - Initialises ZIP database (sync on Render, background locally)
+  - Initialises taxonomy (background thread)
+  - Initialises ZIP database
 
-CORS v2:
-  - Added Salesforce Experience Cloud origin pattern so the app works when
-    embedded in an SF Experience site (*.salesforce-experience.com).
-  - Kept Vercel pattern for direct web access.
-  - Set FRONTEND_URL env var to lock down to a specific origin in production.
+CORS v3:
+  - Always apply regex-based CORS regardless of IS_RENDER flag.
+  - FRONTEND_URL env var adds an exact origin on top of the regex (additive,
+    not exclusive) so custom domains work without breaking preview deploys.
+  - Local dev origins always included.
+  - Removed the exclusive FRONTEND_URL branch that was silently blocking
+    all other origins (the root cause of the CORS failure in production).
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -57,19 +58,17 @@ async def lifespan(app: FastAPI):
     if missing:
         logger.warning("Missing env vars: %s", ", ".join(missing))
 
-    # Taxonomy: seeds synchronously in background thread, then upgrades from NUCC CSV
     from services import taxonomy
     taxonomy.initialize()
     logger.info("Taxonomy initializing (seed ready immediately)")
 
-    # ZIP database: sync on Render (blocks until ready), async locally
     from services import zip_database
     zip_database.initialize(background=not cfg.ZIP_LOAD_SYNC)
     logger.info("ZIP DB initializing (sync=%s)", cfg.ZIP_LOAD_SYNC)
 
     logger.info("Clintrial Navigator V3 ready on port %d", cfg.PORT)
     yield
-    # --- shutdown (nothing to clean up) ---
+    # --- shutdown ---
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -81,61 +80,69 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
 # ── CORS ──────────────────────────────────────────────────────────────────────
 #
-# Priority order:
-#  1. FRONTEND_URL env var set → allow only that exact origin (most secure).
-#  2. IS_RENDER=True and no FRONTEND_URL → allow all known deployment patterns
-#     via regex (Vercel previews + Salesforce Experience Cloud).
-#  3. Local dev (IS_RENDER=False) → allow all origins for convenience.
+# Strategy (v3 — always-on regex, no exclusive branch):
 #
-# Regex breakdown:
-#   Vercel:     https://clinical-trial-finder[slug].vercel.app
-#   Salesforce: https://[org].preview.salesforce-experience.com
-#               https://[org].salesforce-experience.com
-#               https://[org].my.site.com  (custom domain on SF)
-#               https://[org].force.com    (legacy SF domain)
+#   allow_origins  — explicit list covering:
+#     • FRONTEND_URL env var (if set — e.g. a custom production domain)
+#     • The known Vercel production URL (belt-and-suspenders)
+#     • Local dev ports
+#
+#   allow_origin_regex — covers ALL dynamic/preview origins:
+#     • Any Vercel preview deploy:  https://clinical-trial-finder-*.vercel.app
+#     • Salesforce Experience Cloud, my.site.com, force.com, lightning.force.com
+#
+#   Both lists are evaluated — a request passes if it matches EITHER.
+#   This means adding FRONTEND_URL never accidentally blocks other origins.
+#
+# Why the old code broke:
+#   When FRONTEND_URL was set, the middleware was configured with ONLY that
+#   one exact origin and the regex was never applied, so every other origin
+#   (including Vercel preview URLs) was rejected with a CORS error.
 
+_EXPLICIT_ORIGINS: list[str] = [
+    # Local development
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:8080",
+    # Known production Vercel URL (hard-coded as safety net)
+    "https://clinical-trial-finder-chi.vercel.app",
+]
+
+# Add FRONTEND_URL from env if present (custom domain, staging URL, etc.)
+_frontend_url = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
+if _frontend_url and _frontend_url not in _EXPLICIT_ORIGINS:
+    _EXPLICIT_ORIGINS.append(_frontend_url)
+    logger.info("CORS: added FRONTEND_URL origin → %s", _frontend_url)
+
+# Regex covers dynamic Vercel preview deploys + Salesforce platforms
 _CORS_REGEX = (
+    # All Vercel deploys for this project (production + any preview slug)
     r"https://clinical-trial-finder[a-z0-9\-]*\.vercel\.app"
+    # Salesforce Experience Cloud
     r"|https://[a-zA-Z0-9\-]+\.preview\.salesforce-experience\.com"
     r"|https://[a-zA-Z0-9\-]+\.salesforce-experience\.com"
+    # Salesforce custom domain / legacy domains
     r"|https://[a-zA-Z0-9\-]+\.my\.site\.com"
     r"|https://[a-zA-Z0-9\-]+\.force\.com"
     r"|https://[a-zA-Z0-9\-]+\.lightning\.force\.com"
 )
 
-if cfg.IS_RENDER:
-    if cfg.FRONTEND_URL:
-        # Exact origin from env var — most locked-down option
-        logger.info("CORS: allowing exact origin %s", cfg.FRONTEND_URL)
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[cfg.FRONTEND_URL],
-            allow_credentials=False,
-            allow_methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["Content-Type", "Authorization"],
-        )
-    else:
-        # Regex covers all known deployment patterns
-        logger.info("CORS: using deployment regex (Vercel + Salesforce)")
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origin_regex=_CORS_REGEX,
-            allow_credentials=False,
-            allow_methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["Content-Type", "Authorization"],
-        )
-else:
-    # Local development — open to all
-    logger.info("CORS: open (local dev)")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
-    )
+logger.info("CORS: explicit origins=%s", _EXPLICIT_ORIGINS)
+logger.info("CORS: regex=%s", _CORS_REGEX)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_EXPLICIT_ORIGINS,
+    allow_origin_regex=_CORS_REGEX,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    expose_headers=["X-Total-Count"],   # useful for pagination headers
+    max_age=600,                         # cache preflight for 10 min
+)
 
 
 # ── Validation error handler ──────────────────────────────────────────────────
@@ -163,15 +170,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 
-# V2 — clinical trials
 try:
     from api.trials import router as trials_router
 except ImportError:
     from trials import router as trials_router  # type: ignore[no-redef]
 
-app.include_router(trials_router,                          prefix="/api/trials",      tags=["trials"])
-app.include_router(physicians_router_module.router,        prefix="/api/physicians",  tags=["physicians"])
-app.include_router(leads_router_module.router,             prefix="/api/leads",       tags=["leads"])
+app.include_router(trials_router,                   prefix="/api/trials",     tags=["trials"])
+app.include_router(physicians_router_module.router,  prefix="/api/physicians", tags=["physicians"])
+app.include_router(leads_router_module.router,       prefix="/api/leads",      tags=["leads"])
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -180,8 +186,9 @@ app.include_router(leads_router_module.router,             prefix="/api/leads", 
 async def health() -> dict:
     from services import taxonomy, zip_database
     return {
-        "status": "ok",
-        "taxonomy_source": taxonomy.source(),
-        "taxonomy_count": taxonomy.count(),
-        "zip_db_ready": zip_database.is_ready(),
+        "status":           "ok",
+        "taxonomy_source":  taxonomy.source(),
+        "taxonomy_count":   taxonomy.count(),
+        "zip_db_ready":     zip_database.is_ready(),
+        "cors_origins":     _EXPLICIT_ORIGINS,
     }
