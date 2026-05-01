@@ -23,7 +23,7 @@ function TrialList({ trials, totalCount, selectedId, onSelect, hasMore, onLoadMo
         .tl-header {
           padding: 14px 16px 12px;
           border-bottom: 1px solid var(--border);
-          background: var(--forest);
+          background: var(--blue-700);
           flex-shrink: 0;
           position: sticky; top: 0; z-index: 10;
         }
@@ -43,7 +43,7 @@ function TrialList({ trials, totalCount, selectedId, onSelect, hasMore, onLoadMo
           background: rgba(255,255,255,0.12);
           border-radius: 20px; padding: 2px 9px;
           font-size: 11px; font-weight: 600;
-          color: var(--green-400);
+          color: var(--blue-200);
           border: 1px solid rgba(255,255,255,0.1);
         }
         .tl-list { flex: 1; overflow-y: auto; }
@@ -62,9 +62,9 @@ function TrialList({ trials, totalCount, selectedId, onSelect, hasMore, onLoadMo
           transition: background 0.14s;
         }
         .tl-item.active {
-          background: var(--green-50);
+          background: var(--blue-50);
         }
-        .tl-item.active::before { background: var(--green-600); }
+        .tl-item.active::before { background: var(--blue-600); }
         .tl-item:not(.active):hover { background: var(--surface); }
         .tl-item:not(.active):hover::before { background: var(--border); }
         .tl-item-badges {
@@ -107,8 +107,8 @@ function TrialList({ trials, totalCount, selectedId, onSelect, hasMore, onLoadMo
         }
         .tl-load-more:hover:not(:disabled) {
           background: var(--surface);
-          border-color: var(--green-500);
-          color: var(--forest-mid);
+          border-color: var(--blue-500);
+          color: var(--blue-600);
         }
         .tl-load-more:disabled { opacity: 0.5; cursor: not-allowed; }
       `}</style>
@@ -138,7 +138,7 @@ function TrialList({ trials, totalCount, selectedId, onSelect, hasMore, onLoadMo
                 <div className="tl-item-badges">
                   <span
                     className="tl-nct"
-                    style={{ color: isActive ? "var(--forest-mid)" : "var(--muted)" }}
+                    style={{ color: isActive ? "var(--blue-600)" : "var(--muted)" }}
                   >
                     {trial.nctId}
                   </span>

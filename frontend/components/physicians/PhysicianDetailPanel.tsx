@@ -65,7 +65,6 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
       <style>{`
         .pdp-shell {
           display: flex; flex-direction: column;
-          height: 100%; overflow: hidden;
           background: var(--surface);
           font-family: var(--font-sans);
           animation: slideRight 0.24s cubic-bezier(.22,1,.36,1) both;
@@ -98,27 +97,27 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         }
         .pdp-lead-btn:not(:disabled):hover {
           filter: brightness(1.08);
-          box-shadow: 0 4px 14px rgba(6,95,70,0.3);
+          box-shadow: 0 4px 14px rgba(37,99,235,0.3);
           transform: translateY(-1px);
         }
         .pdp-lead-btn:disabled { opacity: 0.65; cursor: not-allowed; }
         .pdp-success-banner {
           margin: 0 16px 0;
           padding: 10px 14px;
-          background: var(--green-50); border: 1px solid var(--green-100);
+          background: var(--blue-50); border: 1px solid var(--blue-200);
           border-radius: var(--radius-md);
           display: flex; align-items: center; gap: 9px;
-          font-size: 12px; font-weight: 600; color: var(--forest-mid);
+          font-size: 12px; font-weight: 600; color: var(--blue-600);
           animation: fadeIn 0.18s ease both;
           flex-shrink: 0; margin-top: 12px;
         }
         .pdp-success-dot {
           width: 8px; height: 8px; border-radius: 50%;
-          background: var(--green-500); flex-shrink: 0;
+          background: var(--blue-500); flex-shrink: 0;
           box-shadow: 0 0 0 3px rgba(16,185,129,0.15);
         }
         .pdp-body {
-          flex: 1; overflow-y: auto; padding: 16px;
+          padding: 16px;
           display: flex; flex-direction: column; gap: 14px;
         }
         .pdp-profile-card {
@@ -128,20 +127,20 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         .pdp-profile-header {
           padding: 18px 18px 16px;
           display: flex; align-items: center; gap: 14px;
-          background: linear-gradient(135deg, var(--green-50) 0%, var(--blue-50) 100%);
+          background: linear-gradient(135deg, var(--blue-50) 0%, var(--blue-50) 100%);
           border-bottom: 1px solid var(--border);
         }
         .pdp-avatar {
           width: 58px; height: 58px; border-radius: 50%;
-          background: var(--forest);
+          background: var(--blue-700);
           display: flex; align-items: center; justify-content: center;
           font-size: 20px; font-weight: 700; color: #fff;
           font-family: var(--font-mono); flex-shrink: 0;
-          box-shadow: 0 4px 16px rgba(6,78,59,0.28);
+          box-shadow: 0 4px 16px rgba(37,99,235,0.28);
           border: 3px solid rgba(255,255,255,0.8);
         }
         .pdp-name { font-size: 17px; font-weight: 700; color: var(--ink); line-height: 1.3; }
-        .pdp-specialty { font-size: 12px; color: var(--forest-mid); font-weight: 600; margin-top: 3px; }
+        .pdp-specialty { font-size: 12px; color: var(--blue-600); font-weight: 600; margin-top: 3px; }
         .pdp-npi { font-size: 10px; color: var(--muted); font-family: var(--font-mono); margin-top: 4px; }
         .pdp-section { padding: 14px 18px; }
         .pdp-section + .pdp-section { border-top: 1px solid var(--border); }
@@ -160,9 +159,9 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         }
         .pdp-dist-badge {
           display: inline-flex; align-items: center; gap: 6px;
-          background: var(--green-50); border: 1px solid var(--green-100);
+          background: var(--blue-50); border: 1px solid var(--blue-200);
           border-radius: 20px; padding: 5px 14px;
-          font-size: 12px; font-weight: 700; color: var(--forest-mid);
+          font-size: 12px; font-weight: 700; color: var(--blue-600);
           font-family: var(--font-mono); margin-top: 10px;
         }
         .pdp-trial-card {
@@ -170,7 +169,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           border-radius: var(--radius-xl); padding: 16px 18px;
         }
         .pdp-trial-nct {
-          font-size: 10px; font-weight: 700; color: var(--forest-mid);
+          font-size: 10px; font-weight: 700; color: var(--blue-600);
           font-family: var(--font-mono); letter-spacing: 1px; margin-bottom: 6px;
         }
         .pdp-trial-site { font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -239,7 +238,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
                   <div>
                     <div className="pdp-info-label">Phone</div>
                     <a href={"tel:" + physician.phone}
-                      style={{ color: "var(--forest-mid)", fontWeight: 600, textDecoration: "none" }}>
+                      style={{ color: "var(--blue-600)", fontWeight: 600, textDecoration: "none" }}>
                       {physician.phone}
                     </a>
                   </div>

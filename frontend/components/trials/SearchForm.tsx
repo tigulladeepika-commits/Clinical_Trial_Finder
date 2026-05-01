@@ -107,7 +107,7 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
             min-width: 0;
           }
           .sf-compact-input:focus {
-            border-color: var(--green-500);
+            border-color: var(--blue-500);
             box-shadow: 0 0 0 3px rgba(16,185,129,0.12);
             background: #fff;
           }
@@ -119,7 +119,7 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
             outline: none; cursor: pointer; font-family: var(--font-sans);
             transition: border-color 0.15s;
           }
-          .sf-compact-select:focus { border-color: var(--green-500); }
+          .sf-compact-select:focus { border-color: var(--blue-500); }
           .sf-compact-btn {
             height: 38px; padding: 0 18px;
             display: flex; align-items: center; gap: 7px;
@@ -131,7 +131,7 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
           }
           .sf-compact-btn:not(:disabled):hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 14px rgba(6,95,70,0.35);
+            box-shadow: 0 4px 14px rgba(37,99,235,0.35);
           }
           .sf-compact-btn:disabled { cursor: not-allowed; }
         `}</style>
@@ -167,7 +167,7 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
             onClick={handleSubmit}
             disabled={btnDisabled}
             className="sf-compact-btn"
-            style={{ background: btnDisabled ? "var(--muted-light)" : "var(--forest-mid)" }}
+            style={{ background: btnDisabled ? "var(--muted-light)" : "var(--blue-600)" }}
           >
             {loading ? (
               <span style={{
@@ -195,25 +195,25 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
         .sf-hero-card {
           background: #fff;
           border-radius: 20px;
-          border: 1px solid rgba(6,95,70,0.12);
+          border: 1px solid rgba(37,99,235,0.12);
           padding: 32px 36px 28px;
-          box-shadow: 0 8px 40px rgba(6,78,59,0.12), 0 2px 8px rgba(6,78,59,0.06);
+          box-shadow: 0 8px 40px rgba(37,99,235,0.12), 0 2px 8px rgba(37,99,235,0.06);
         }
         .sf-hero-eyebrow {
           display: flex; align-items: center; gap: 8px;
           margin-bottom: 16px;
         }
         .sf-hero-eyebrow-tag {
-          font-size: 10px; font-weight: 700; color: var(--forest-mid);
+          font-size: 10px; font-weight: 700; color: var(--blue-600);
           text-transform: uppercase; letter-spacing: 1px;
-          background: var(--green-50); padding: 3px 10px;
-          border-radius: 20px; border: 1px solid var(--green-100);
+          background: var(--blue-50); padding: 3px 10px;
+          border-radius: 20px; border: 1px solid var(--blue-200);
         }
         .sf-hero-title {
           font-size: 30px; font-weight: 700; color: var(--ink);
           line-height: 1.2; margin-bottom: 24px; letter-spacing: -0.5px;
         }
-        .sf-hero-title em { color: var(--forest-mid); font-style: italic; }
+        .sf-hero-title em { color: var(--blue-600); font-style: italic; }
         .sf-label {
           font-size: 10px; font-weight: 700; color: var(--muted);
           text-transform: uppercase; letter-spacing: 0.7px;
@@ -227,7 +227,7 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
           transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
         }
         .sf-hero-input:focus {
-          border-color: var(--green-500);
+          border-color: var(--blue-500);
           box-shadow: 0 0 0 4px rgba(16,185,129,0.12);
           background: #fff;
         }
@@ -239,21 +239,21 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
           outline: none; cursor: pointer; font-family: var(--font-sans); width: 100%;
           transition: border-color 0.15s;
         }
-        .sf-hero-select:focus { border-color: var(--green-500); }
+        .sf-hero-select:focus { border-color: var(--blue-500); }
         .sf-hero-btn {
           width: 100%; height: 54px;
           display: flex; align-items: center; justify-content: center; gap: 10px;
-          background: var(--forest-mid); color: #fff;
+          background: var(--blue-600); color: #fff;
           border: none; border-radius: var(--radius-lg);
           font-size: 16px; font-weight: 700; cursor: pointer;
           font-family: var(--font-sans);
           transition: all 0.18s cubic-bezier(.22,1,.36,1);
           letter-spacing: 0.2px;
-          box-shadow: 0 4px 16px rgba(6,95,70,0.35);
+          box-shadow: 0 4px 16px rgba(37,99,235,0.35);
         }
         .sf-hero-btn:hover:not(:disabled) {
-          background: var(--forest);
-          box-shadow: 0 8px 28px rgba(6,95,70,0.45);
+          background: var(--blue-700);
+          box-shadow: 0 8px 28px rgba(37,99,235,0.45);
           transform: translateY(-2px);
         }
         .sf-hero-btn:disabled {
@@ -308,11 +308,11 @@ export default function SearchForm({ onSearch, loading = false, compact = false,
           <span className="sf-hero-eyebrow-tag">ClinicalTrials.gov</span>
           <span style={{
             display: "inline-flex", alignItems: "center", gap: 5,
-            fontSize: 11, fontWeight: 600, color: "var(--green-600)",
+            fontSize: 11, fontWeight: 600, color: "#16a34a",
           }}>
             <span style={{
               width: 6, height: 6, borderRadius: "50%",
-              background: "var(--green-500)", display: "inline-block",
+              background: "var(--blue-500)", display: "inline-block",
             }} />
             Live database
           </span>

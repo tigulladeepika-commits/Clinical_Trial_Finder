@@ -72,7 +72,7 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
   const btnBg =
     leadState === "done"  ? "var(--green-600)" :
     leadState === "error" ? "var(--coral-600)" :
-    "var(--forest-mid)";
+    "var(--blue-600)";
 
   return (
     <>
@@ -92,12 +92,12 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
         }
         .phys-card:hover {
           border-color: var(--green-400);
-          box-shadow: 0 4px 16px rgba(6,95,70,0.10);
+          box-shadow: 0 4px 16px rgba(37,99,235,0.10);
           transform: translateY(-1px);
         }
-        .phys-card:hover::before { background: var(--green-500); }
+        .phys-card:hover::before { background: var(--blue-500); }
         .phys-card:focus-visible {
-          outline: 2px solid var(--green-500); outline-offset: 2px;
+          outline: 2px solid var(--blue-500); outline-offset: 2px;
         }
         .phys-avatar {
           width: 38px; height: 38px; border-radius: 50%;
@@ -113,10 +113,10 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
           font-size: 11px; color: var(--muted); margin-top: 2px;
         }
         .phys-dist {
-          font-size: 11px; font-weight: 700; color: var(--forest-mid);
+          font-size: 11px; font-weight: 700; color: var(--blue-600);
           font-family: var(--font-mono); flex-shrink: 0;
-          background: var(--green-50); padding: 2px 8px;
-          border-radius: 20px; border: 1px solid var(--green-100);
+          background: var(--blue-50); padding: 2px 8px;
+          border-radius: 20px; border: 1px solid var(--blue-200);
         }
         .phys-meta {
           display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -138,7 +138,7 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
           display: flex; align-items: center; gap: 4px;
           font-weight: 500;
         }
-        .phys-card:hover .phys-view-link { color: var(--forest-mid); }
+        .phys-card:hover .phys-view-link { color: var(--blue-600); }
         .phys-lead-btn {
           padding: 4px 12px; color: #fff; border: none;
           border-radius: var(--radius-sm); font-size: 11px; font-weight: 700;

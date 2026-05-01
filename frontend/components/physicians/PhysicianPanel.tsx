@@ -75,8 +75,8 @@ export default function PhysicianPanel({
     <>
       <style>{`
         .pp-shell {
-          display: flex; flex-direction: column; height: 100%;
-          overflow: hidden; font-family: var(--font-sans);
+          display: flex; flex-direction: column;
+          font-family: var(--font-sans);
         }
         .pp-toolbar {
           display: flex; align-items: center; gap: 7px;
@@ -121,15 +121,15 @@ export default function PhysicianPanel({
         }
         .pp-search-btn {
           height: 32px; padding: 0 14px;
-          background: var(--forest-mid); color: #fff;
+          background: #2563eb; color: #fff;
           border: none; border-radius: var(--radius-md);
           font-size: 12px; font-weight: 700;
           cursor: pointer; font-family: var(--font-sans); flex-shrink: 0;
           transition: all 0.15s;
         }
         .pp-search-btn:hover:not(:disabled) {
-          background: var(--forest);
-          box-shadow: 0 3px 10px rgba(6,95,70,0.3);
+          background: var(--blue-700);
+          box-shadow: 0 3px 10px rgba(37,99,235,0.3);
         }
         .pp-search-btn:disabled { background: var(--muted-light); cursor: not-allowed; }
         .pp-chips-bar {
@@ -138,12 +138,12 @@ export default function PhysicianPanel({
           border-bottom: 1px solid var(--green-100); flex-shrink: 0; flex-wrap: wrap;
         }
         .pp-chips-label {
-          font-size: 10px; font-weight: 700; color: var(--forest-mid);
+          font-size: 10px; font-weight: 700; color: var(--blue-600);
           letter-spacing: 0.5px; text-transform: uppercase; flex-shrink: 0;
         }
         .pp-chip {
           display: inline-flex; align-items: center;
-          background: var(--forest-mid); color: #fff;
+          background: #2563eb; color: #fff;
           border-radius: 20px; padding: 2px 9px;
           font-size: 10px; font-weight: 600;
         }
@@ -158,7 +158,7 @@ export default function PhysicianPanel({
           font-weight: 500; flex-direction: column; gap: 10px;
         }
         .pp-list-section {
-          flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+          display: flex; flex-direction: column;
         }
         .pp-count-bar {
           display: flex; align-items: center; justify-content: space-between;
@@ -168,7 +168,7 @@ export default function PhysicianPanel({
         }
         .pp-count-bar strong { color: var(--ink); }
         .pp-list {
-          flex: 1; overflow-y: auto; padding: 10px 14px 14px;
+          padding: 10px 14px 14px;
           display: flex; flex-direction: column; gap: 8px;
         }
         .pp-center {
@@ -188,13 +188,13 @@ export default function PhysicianPanel({
         /* Load more */
         .pp-load-more-inline {
           height: 28px; padding: 0 12px;
-          background: var(--forest-mid); color: #fff;
+          background: #2563eb; color: #fff;
           border: none; border-radius: var(--radius-md);
           font-size: 11px; font-weight: 700; cursor: pointer;
           font-family: var(--font-sans); transition: all 0.15s;
           display: flex; align-items: center; gap: 4px;
         }
-        .pp-load-more-inline:hover:not(:disabled) { background: var(--forest); }
+        .pp-load-more-inline:hover:not(:disabled) { background: var(--blue-700); }
         .pp-load-more-inline:disabled { opacity: 0.55; cursor: not-allowed; }
         .pp-load-more-bottom {
           width: 100%; padding: 11px 0; background: #fff;
@@ -202,7 +202,7 @@ export default function PhysicianPanel({
           cursor: pointer; font-family: var(--font-sans);
           transition: all 0.15s; display: flex;
           align-items: center; justify-content: center; gap: 7px;
-          border: 1.5px dashed var(--border); color: var(--forest-mid);
+          border: 1.5px dashed var(--border); color: var(--blue-600);
         }
         .pp-load-more-bottom:hover:not(:disabled) {
           background: var(--green-50); border-color: var(--green-400);
@@ -219,7 +219,7 @@ export default function PhysicianPanel({
           padding: 10px 14px 8px; border-bottom: 1px solid var(--green-100);
         }
         .pp-suggested-title {
-          font-size: 12px; font-weight: 700; color: var(--forest);
+          font-size: 12px; font-weight: 700; color: var(--blue-700);
           display: flex; align-items: center; gap: 7px;
         }
         .pp-suggested-badge {
@@ -231,7 +231,6 @@ export default function PhysicianPanel({
         .pp-suggested-list {
           padding: 8px 14px 12px;
           display: flex; flex-direction: column; gap: 7px;
-          max-height: 380px; overflow-y: auto;
         }
         .pp-suggest-card {
           background: #fff; border: 1px solid var(--green-100);
@@ -241,18 +240,18 @@ export default function PhysicianPanel({
         }
         .pp-suggest-card:hover {
           border-color: var(--green-500);
-          box-shadow: 0 3px 12px rgba(6,95,70,0.10);
+          box-shadow: 0 3px 12px rgba(37,99,235,0.10);
           transform: translateY(-1px);
         }
         .pp-suggest-tag {
           position: absolute; top: 8px; right: 10px;
           background: var(--green-50); border: 1px solid var(--green-100);
-          color: var(--forest-mid); font-size: 9px; font-weight: 700;
+          color: var(--blue-600); font-size: 9px; font-weight: 700;
           padding: 1px 6px; border-radius: 10px; letter-spacing: 0.4px;
         }
         .pp-suggest-avatar {
           width: 34px; height: 34px; border-radius: 50%;
-          background: var(--green-100); color: var(--forest);
+          background: var(--green-100); color: var(--blue-700);
           display: flex; align-items: center; justify-content: center;
           font-size: 11px; font-weight: 700; flex-shrink: 0;
           font-family: var(--font-mono);
@@ -266,7 +265,7 @@ export default function PhysicianPanel({
         }
         .pp-suggest-dist {
           margin-left: auto; font-family: var(--font-mono);
-          font-size: 10px; font-weight: 700; color: var(--forest-mid);
+          font-size: 10px; font-weight: 700; color: var(--blue-600);
         }
         .pp-suggest-footer {
           display: flex; justify-content: space-between; align-items: center; margin-top: 7px;
@@ -424,7 +423,7 @@ export default function PhysicianPanel({
                     </div>
                     <div className="pp-suggested-sub">
                       Related to{" "}
-                      <strong style={{ color: "var(--forest)" }}>
+                      <strong style={{ color: "var(--blue-700)" }}>
                         {site.condition || "this trial"}
                       </strong>
                     </div>
@@ -443,7 +442,7 @@ export default function PhysicianPanel({
 
                 <div className="pp-suggested-list">
                   {suggested.loading && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", color: "var(--forest-mid)", fontSize: 12, fontWeight: 600 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", color: "var(--blue-600)", fontSize: 12, fontWeight: 600 }}>
                       <div className="pp-spinner-green" />
                       Finding suggested physicians…
                     </div>
@@ -499,7 +498,7 @@ export default function PhysicianPanel({
                     <div style={{ marginTop: 4, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
                       <button
                         className="pp-load-more-bottom"
-                        style={{ borderColor: "var(--green-200)", color: "var(--forest-mid)" }}
+                        style={{ borderColor: "var(--green-200)", color: "var(--blue-600)" }}
                         onClick={() => setShowSuggestModal(true)}
                         disabled={suggested.loading}
                       >

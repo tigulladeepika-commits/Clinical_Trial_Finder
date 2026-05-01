@@ -22,7 +22,6 @@ import { initializeCityStateValidation } from "@/lib/validation";
 import type { Trial, TrialSearchFilters, SiteData } from "@/types/trial";
 import type { SelectedSite }                         from "@/types/physician";
 
-const HEADER_H = 60;
 const SEARCH_H = 64;
 
 function HomeInner() {
@@ -229,58 +228,6 @@ function HomeInner() {
           font-family: var(--font-sans);
         }
 
-        /* ── Header ── */
-        .site-header {
-          height: ${HEADER_H}px; flex-shrink: 0;
-          background: var(--forest);
-          z-index: 200;
-          display: flex; align-items: center;
-        }
-        .header-inner {
-          max-width: 1800px; margin: 0 auto;
-          padding: 0 24px; width: 100%;
-          display: flex; align-items: center; justify-content: space-between;
-        }
-        .logo-group { display: flex; align-items: center; gap: 12px; }
-        .logo-mark {
-          width: 36px; height: 36px;
-          background: rgba(255,255,255,0.15);
-          border-radius: 10px;
-          display: flex; align-items: center; justify-content: center;
-          font-family: var(--font-mono);
-          font-size: 12px; font-weight: 600; color: #fff;
-          border: 1px solid rgba(255,255,255,0.2);
-          backdrop-filter: blur(4px);
-        }
-        .logo-text {
-          font-size: 16px; font-weight: 700; color: #fff;
-          letter-spacing: -0.3px;
-        }
-        .logo-text span { color: var(--green-400); }
-        .header-right {
-          display: flex; align-items: center; gap: 14px;
-        }
-        .header-tagline {
-          font-size: 12px; color: rgba(255,255,255,0.5);
-          font-weight: 400; letter-spacing: 0.2px;
-        }
-        .header-pill {
-          display: inline-flex; align-items: center; gap: 5px;
-          padding: 4px 12px; border-radius: 20px;
-          background: rgba(255,255,255,0.1);
-          border: 1px solid rgba(255,255,255,0.15);
-          font-size: 11px; font-weight: 600; color: var(--green-400);
-        }
-        .header-live-dot {
-          width: 6px; height: 6px; border-radius: 50%;
-          background: var(--green-400);
-          animation: pulseRing 2s ease-in-out infinite;
-        }
-        @media (max-width: 640px) {
-          .header-tagline { display: none; }
-          .header-pill    { display: none; }
-        }
-
         /* ── Search bar ── */
         .search-bar {
           height: ${SEARCH_H}px; flex-shrink: 0;
@@ -296,12 +243,12 @@ function HomeInner() {
         .hero-wrap {
           flex: 1; overflow-y: auto;
           display: flex; align-items: center; justify-content: center;
-          background: linear-gradient(160deg, #ecfdf5 0%, #dbeafe 50%, #f0fdf4 100%);
+          background: linear-gradient(160deg, #eff6ff 0%, #dbeafe 50%, #f0fdf4 100%);
           position: relative;
         }
         .hero-bg-pattern {
           position: absolute; inset: 0; pointer-events: none;
-          background-image: radial-gradient(circle at 1px 1px, rgba(6,95,70,0.08) 1px, transparent 0);
+          background-image: radial-gradient(circle at 1px 1px, rgba(37,99,235,0.07) 1px, transparent 0);
           background-size: 28px 28px;
           opacity: 0.6;
         }
@@ -312,47 +259,49 @@ function HomeInner() {
           animation: fadeUp 0.5s cubic-bezier(.22,1,.36,1) both;
         }
 
-        /* ── Results layout ── */
+        /* ── Results: 30/70 split — both panels use native scroll ── */
         .results-layout {
           flex: 1; min-height: 0;
           display: grid;
-          grid-template-columns: 340px minmax(0, 1fr);
+          grid-template-columns: 30% 70%;
           overflow: hidden;
           animation: fadeIn 0.25s ease both;
         }
         @media (max-width: 900px) {
           .results-layout {
             grid-template-columns: 1fr;
-            grid-template-rows: auto 1fr;
+            grid-template-rows: 42vh 1fr;
           }
-          .trials-panel { max-height: 42vh; }
         }
 
-        /* ── Trials panel (left) ── */
+        /* ── Left panel: native scroll, no custom scrollbar container ── */
         .trials-panel {
           border-right: 1px solid var(--border);
-          overflow-y: auto; background: #fff;
+          overflow-y: auto;
+          background: #fff;
           display: flex; flex-direction: column; min-width: 0;
         }
 
-        /* ── Detail panel (right) ── */
+        /* ── Right panel: native scroll ── */
         .detail-panel {
           display: flex; flex-direction: column;
-          background: var(--surface); min-width: 0; overflow: hidden;
+          background: var(--surface); min-width: 0;
+          overflow-y: auto;
         }
 
-        /* ── Trial detail header ── */
+        /* ── Trial detail header — sticky within detail-panel ── */
         .trial-detail-header {
-          padding: 16px 20px;
+          padding: 14px 20px;
           border-bottom: 1px solid var(--border);
           background: #fff; flex-shrink: 0;
+          position: sticky; top: 0; z-index: 10;
         }
         .tdh-badges {
           display: flex; align-items: center; gap: 6px;
           margin-bottom: 7px; flex-wrap: wrap;
         }
         .tdh-nct {
-          font-size: 10px; font-weight: 700; color: var(--forest-mid);
+          font-size: 10px; font-weight: 700; color: #2563eb;
           letter-spacing: 1px; text-transform: uppercase;
           font-family: var(--font-mono);
         }
@@ -374,26 +323,25 @@ function HomeInner() {
           background: #fff; flex-shrink: 0;
         }
         .kpi-cell {
-          padding: 14px 8px; text-align: center;
+          padding: 12px 8px; text-align: center;
           border-right: 1px solid var(--border);
           transition: background 0.15s;
         }
         .kpi-cell:last-child { border-right: none; }
         .kpi-cell:hover { background: var(--surface); }
         .kpi-num {
-          font-size: 24px; font-weight: 700; color: var(--ink);
+          font-size: 22px; font-weight: 700; color: var(--ink);
           line-height: 1; font-family: var(--font-mono);
-          letter-spacing: -1px;
+          letter-spacing: -0.5px;
         }
-        .kpi-num.green { color: var(--green-600); }
+        .kpi-num.green { color: #16a34a; }
         .kpi-label {
           font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
-          text-transform: uppercase; color: var(--muted); margin-top: 5px;
+          text-transform: uppercase; color: var(--muted); margin-top: 4px;
         }
 
-        .detail-content {
-          flex: 1; min-height: 0; overflow-y: auto;
-        }
+        /* detail-content is no longer a scroll container — parent .detail-panel scrolls */
+        .detail-content { display: contents; }
 
         /* ── State boxes ── */
         .state-box {
@@ -442,7 +390,7 @@ function HomeInner() {
         .detail-empty-visual {
           width: 80px; height: 80px;
           border-radius: 24px;
-          background: linear-gradient(135deg, var(--green-50), var(--blue-50));
+          background: linear-gradient(135deg, var(--blue-50), var(--surface-2));
           display: flex; align-items: center; justify-content: center;
           font-size: 36px;
           border: 1px solid var(--border);
@@ -464,35 +412,14 @@ function HomeInner() {
         }
         .detail-step-num {
           width: 22px; height: 22px; border-radius: 50%;
-          background: var(--green-50); color: var(--forest-mid);
+          background: var(--blue-50); color: #1d4ed8;
           font-size: 10px; font-weight: 700;
           display: flex; align-items: center; justify-content: center;
-          flex-shrink: 0; border: 1px solid var(--green-100);
+          flex-shrink: 0; border: 1px solid var(--blue-200);
         }
       `}</style>
 
       <div className="app-shell">
-
-        {/* ── Header ── */}
-        <header className="site-header">
-          <div className="header-inner">
-            <div className="logo-group">
-              <div className="logo-mark">Ct</div>
-              <div className="logo-text">
-                Clini<span>Trial</span> Navigator
-              </div>
-            </div>
-            <div className="header-right">
-              <span className="header-tagline">
-                Find trials · Explore sites · Discover physicians
-              </span>
-              <div className="header-pill">
-                <span className="header-live-dot" />
-                400K+ Trials
-              </div>
-            </div>
-          </div>
-        </header>
 
         {/* ── Hero (no search results) ── */}
         {!hasResults && (
@@ -527,7 +454,7 @@ function HomeInner() {
         {hasResults && (
           <div className="results-layout">
 
-            {/* Left: Trial list */}
+            {/* Left 30%: Trial list — native scroll */}
             <div className="trials-panel">
               {loading && (
                 <div className="state-box">
@@ -565,7 +492,7 @@ function HomeInner() {
               )}
             </div>
 
-            {/* Right: Detail / map panel */}
+            {/* Right 70%: Detail / map panel — native scroll */}
             <div className="detail-panel">
 
               {!selectedTrial && (
@@ -592,7 +519,7 @@ function HomeInner() {
 
               {selectedTrial && (
                 <>
-                  {/* Trial header */}
+                  {/* Trial header — sticky so it stays visible on scroll */}
                   <div className="trial-detail-header">
                     <div className="tdh-badges">
                       <span className="tdh-nct">{selectedTrial.nctId}</span>
@@ -624,6 +551,7 @@ function HomeInner() {
                     )}
                   </div>
 
+                  {/* Detail content — scrollable via the outer detail-panel */}
                   <div className="detail-content">
 
                     {sitesLoading && (
@@ -730,18 +658,15 @@ export default function Home() {
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           height: "100vh", flexDirection: "column", gap: 14,
-          fontFamily: "'Sora', sans-serif", color: "var(--muted)",
-          background: "var(--surface)",
+          fontFamily: "'DM Sans', sans-serif", color: "#8b95a1",
+          background: "#f6f7fb",
         }}>
           <div style={{
-            width: 40, height: 40, borderRadius: 12,
-            background: "var(--forest)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontFamily: "var(--font-mono)", fontSize: 14,
-            fontWeight: 600, color: "#fff",
-            animation: "spinAnim 2s linear infinite",
-          }}>Ct</div>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>Loading CliniTrial Navigator…</span>
+            width: 26, height: 26, borderRadius: "50%",
+            border: "3px solid #e4e8f0", borderTopColor: "#2563eb",
+            animation: "spinAnim 0.75s linear infinite",
+          }} />
+          <span style={{ fontSize: 14, fontWeight: 500 }}>Loading…</span>
           <style>{`@keyframes spinAnim { to { transform: rotate(360deg); } }`}</style>
         </div>
       }

@@ -239,9 +239,9 @@ export default function TrialSiteMap({
           box-shadow: var(--shadow-md); transition: all 0.15s;
         }
         .tsm-map-btn:hover {
-          background: var(--green-50); color: var(--forest-mid);
-          border-color: var(--green-100);
-          box-shadow: 0 4px 14px rgba(6,95,70,0.15);
+          background: var(--blue-50); color: var(--blue-600);
+          border-color: var(--blue-200);
+          box-shadow: 0 4px 14px rgba(37,99,235,0.15);
         }
         .tsm-legend-toggle {
           position: absolute; bottom: 12px; left: 12px; z-index: 1000;
@@ -315,8 +315,8 @@ export default function TrialSiteMap({
           background: transparent; transition: background 0.14s;
         }
         .tsm-site-card:hover {
-          border-color: var(--green-400);
-          box-shadow: 0 4px 16px rgba(6,95,70,0.10);
+          border-color: var(--blue-400);
+          box-shadow: 0 4px 16px rgba(37,99,235,0.10);
           transform: translateY(-1px);
         }
         .tsm-site-card:hover::before { background: var(--green-500); }
@@ -325,22 +325,22 @@ export default function TrialSiteMap({
         .tsm-location { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
         .tsm-site-focus {
           opacity: 0; transition: opacity 0.15s;
-          font-size: 11px; font-weight: 600; color: var(--forest-mid);
+          font-size: 11px; font-weight: 600; color: var(--blue-600);
           letter-spacing: 0.3px;
         }
         .tsm-site-card:hover .tsm-site-focus { opacity: 1; }
         .tsm-find-btn {
           display: flex; align-items: center; justify-content: center; gap: 6px;
           width: 100%; margin-top: 9px; padding: 8px 0; border-radius: var(--radius-md);
-          border: 1px solid var(--green-100); background: var(--green-50);
-          color: var(--forest-mid); font-size: 11px; font-weight: 700;
+          border: 1px solid var(--blue-200); background: var(--blue-50);
+          color: var(--blue-600); font-size: 11px; font-weight: 700;
           cursor: pointer; font-family: var(--font-sans);
           transition: all 0.15s;
         }
         .tsm-find-btn:hover {
-          background: var(--forest-mid); color: #fff;
-          border-color: var(--forest-mid);
-          box-shadow: 0 3px 10px rgba(6,95,70,0.25);
+          background: var(--blue-600); color: #fff;
+          border-color: var(--blue-600);
+          box-shadow: 0 3px 10px rgba(37,99,235,0.25);
         }
         .tsm-no-coords {
           display: flex; align-items: center; gap: 5px;
