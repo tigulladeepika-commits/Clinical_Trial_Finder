@@ -2,21 +2,17 @@
 Taxonomy service for medical specialties and classifications.
 Manages taxonomy data from NUCC CSV or seed data.
 
-v2 changes:
-  - Added CONDITION_MAP: maps plain-language condition queries to NUCC specialties.
-  - search() now checks condition map first, then falls back to specialty matching.
-  - resolve() helper returns the best NUCC display string for a raw user query.
-
-v3 changes:
-  - _condition_map_lookup() now uses 4-pass matching (exact → prefix → substring
-    key → token overlap) so multi-word trial conditions like "High Grade Sarcoma"
-    correctly map to ["Medical Oncology", "Surgical Oncology"] even though the key
-    stored in CONDITION_MAP is just "sarcoma" or "high grade sarcoma".
-  - resolve_with_broader() now runs condition-map lookup first, then expands each
-    hit through SPECIALTY_HIERARCHY, and only includes broader terms that actually
-    exist in the loaded NUCC taxonomy. This prevents phantom NPPES queries like
-    taxonomy_description=Oncology (not a real NUCC code) from silently returning
-    zero results.
+v2: Added CONDITION_MAP, search() checks condition map first.
+v3: _condition_map_lookup() uses 4-pass matching. resolve_with_broader() guards
+    against phantom NPPES queries.
+v4: resolve_with_broader() handles multiple conditions separated by commas/"and".
+v5: Added 200+ missing clinical-trial condition keys (metastatic/castrate-resistant
+    prostate cancer, CRPC, MCRPC, sipuleucel, ADT variants, and dozens of other
+    trial-specific phrasings). Improved Pass 3 substring matching to prefer the
+    LONGEST matching key so "metastatic prostate cancer" beats "metastatic" alone.
+    Added _ALWAYS_ONCOLOGY_PREFIXES guard so conditions starting with "metastatic",
+    "advanced", "recurrent", "refractory", "relapsed" default to Medical Oncology
+    instead of falling through to a generic key.
 """
 
 import csv
@@ -42,66 +38,65 @@ _taxonomy_lock = threading.Lock()
 # ─────────────────────────────────────────────
 
 CONDITION_MAP: Dict[str, List[str]] = {
-    # ── Direct specialty matches (user searches for specialty names) ──────────
-    "neurology":                     ["Neurology"],
-    "interventional cardiology":     ["Interventional Cardiology"],
-    "cardiovascular disease":        ["Cardiovascular Disease"],
-    "cardiology":                     ["Cardiovascular Disease"],
-    "diagnostic radiology":           ["Diagnostic Radiology"],
-    "radiology":                      ["Diagnostic Radiology"],
-    "psychiatry":                     ["Psychiatry"],
-    "psychiatry & neurology":         ["Psychiatry & Neurology"],
-    "medical oncology":               ["Medical Oncology"],
-    "surgical oncology":              ["Surgical Oncology"],
-    "radiation oncology":             ["Radiation Oncology"],
-    "hematology":                     ["Hematology & Oncology"],
-    "hematology & oncology":          ["Hematology & Oncology"],
-    "orthopedic surgery":            ["Orthopaedic Surgery"],
-    "orthopaedic surgery":            ["Orthopaedic Surgery"],
-    "orthopedics":                    ["Orthopaedic Surgery"],
-    "gastroenterology":               ["Gastroenterology"],
-    "gi":                             ["Gastroenterology"],
-    "pulmonology":                    ["Pulmonary Disease"],
-    "pulmonary disease":             ["Pulmonary Disease"],
-    "pulmonology":                    ["Pulmonary Disease"],
-    "endocrinology":                  ["Endocrinology, Diabetes & Metabolism"],
-    "nephrology":                     ["Nephrology"],
-    "urology":                        ["Urology"],
-    "obstetrics":                     ["Obstetrics & Gynecology"],
-    "obstetrics & gynecology":        ["Obstetrics & Gynecology"],
-    "gynecology":                      ["Obstetrics & Gynecology"],
-    "dermatology":                    ["Dermatology"],
-    "ophthalmology":                  ["Ophthalmology"],
-    "otolaryngology":                 ["Otolaryngology"],
-    "ent":                            ["Otolaryngology"],
-    "allergy":                        ["Allergy & Immunology"],
-    "allergy & immunology":           ["Allergy & Immunology"],
-    "immunology":                     ["Allergy & Immunology"],
-    "rheumatology":                   ["Rheumatology"],
-    "geriatric medicine":            ["Geriatric Medicine"],
-    "geriatrics":                     ["Geriatric Medicine"],
-    "pediatrics":                     ["Pediatrics"],
-    "pediatric":                      ["Pediatrics"],
-    "neonatology":                    ["Neonatal-Perinatal Medicine"],
-    "internal medicine":             ["Internal Medicine"],
-    "family medicine":               ["Family Medicine"],
-    "general surgery":                ["General Surgery"],
-    "surgery":                        ["General Surgery"],
-    "neurosurgery":                   ["Neurosurgery"],
-    "thoracic surgery":              ["Thoracic Surgery"],
-    "cardiac surgery":                ["Cardiac Surgery"],
-    "vascular surgery":              ["Vascular Surgery"],
-    "colon & rectal surgery":        ["Colon & Rectal Surgery"],
-    "proctology":                     ["Colon & Rectal Surgery"],
-    "pain medicine":                  ["Pain Medicine"],
-    "pain":                           ["Pain Medicine"],
-    "addiction medicine":            ["Addiction Medicine"],
-    "sleep medicine":                ["Sleep Medicine"],
-    "sports medicine":               ["Sports Medicine"],
-    "physical medicine":              ["Physical Medicine & Rehabilitation"],
-    "rehabilitation":                ["Physical Medicine & Rehabilitation"],
-    "infectious disease":             ["Infectious Disease"],
-    "infectious diseases":            ["Infectious Disease"],
+    # ── Direct specialty matches ───────────────────────────────────────────────
+    "neurology":                         ["Neurology"],
+    "interventional cardiology":         ["Interventional Cardiology"],
+    "cardiovascular disease":            ["Cardiovascular Disease"],
+    "cardiology":                        ["Cardiovascular Disease"],
+    "diagnostic radiology":              ["Diagnostic Radiology"],
+    "radiology":                         ["Diagnostic Radiology"],
+    "psychiatry":                        ["Psychiatry"],
+    "psychiatry & neurology":            ["Psychiatry & Neurology"],
+    "medical oncology":                  ["Medical Oncology"],
+    "surgical oncology":                 ["Surgical Oncology"],
+    "radiation oncology":                ["Radiation Oncology"],
+    "hematology":                        ["Hematology & Oncology"],
+    "hematology & oncology":             ["Hematology & Oncology"],
+    "orthopedic surgery":                ["Orthopaedic Surgery"],
+    "orthopaedic surgery":               ["Orthopaedic Surgery"],
+    "orthopedics":                       ["Orthopaedic Surgery"],
+    "gastroenterology":                  ["Gastroenterology"],
+    "gi":                                ["Gastroenterology"],
+    "pulmonology":                       ["Pulmonary Disease"],
+    "pulmonary disease":                 ["Pulmonary Disease"],
+    "endocrinology":                     ["Endocrinology, Diabetes & Metabolism"],
+    "nephrology":                        ["Nephrology"],
+    "urology":                           ["Urology"],
+    "obstetrics":                        ["Obstetrics & Gynecology"],
+    "obstetrics & gynecology":           ["Obstetrics & Gynecology"],
+    "gynecology":                        ["Obstetrics & Gynecology"],
+    "dermatology":                       ["Dermatology"],
+    "ophthalmology":                     ["Ophthalmology"],
+    "otolaryngology":                    ["Otolaryngology"],
+    "ent":                               ["Otolaryngology"],
+    "allergy":                           ["Allergy & Immunology"],
+    "allergy & immunology":              ["Allergy & Immunology"],
+    "immunology":                        ["Allergy & Immunology"],
+    "rheumatology":                      ["Rheumatology"],
+    "geriatric medicine":                ["Geriatric Medicine"],
+    "geriatrics":                        ["Geriatric Medicine"],
+    "pediatrics":                        ["Pediatrics"],
+    "pediatric":                         ["Pediatrics"],
+    "neonatology":                       ["Neonatal-Perinatal Medicine"],
+    "internal medicine":                 ["Internal Medicine"],
+    "family medicine":                   ["Family Medicine"],
+    "general surgery":                   ["General Surgery"],
+    "surgery":                           ["General Surgery"],
+    "neurosurgery":                      ["Neurosurgery"],
+    "thoracic surgery":                  ["Thoracic Surgery"],
+    "cardiac surgery":                   ["Cardiac Surgery"],
+    "vascular surgery":                  ["Vascular Surgery"],
+    "colon & rectal surgery":            ["Colon & Rectal Surgery"],
+    "proctology":                        ["Colon & Rectal Surgery"],
+    "pain medicine":                     ["Pain Medicine"],
+    "pain":                              ["Pain Medicine"],
+    "addiction medicine":                ["Addiction Medicine"],
+    "sleep medicine":                    ["Sleep Medicine"],
+    "sports medicine":                   ["Sports Medicine"],
+    "physical medicine":                 ["Physical Medicine & Rehabilitation"],
+    "rehabilitation":                    ["Physical Medicine & Rehabilitation"],
+    "infectious disease":                ["Infectious Disease"],
+    "infectious diseases":               ["Infectious Disease"],
 
     # ── Neurological ──────────────────────────────────────────────────────────
     "alzheimer":              ["Geriatric Medicine", "Neurology"],
@@ -142,6 +137,7 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "glioma":                 ["Neurology", "Neurosurgery", "Medical Oncology"],
     "glioblastoma":           ["Neurology", "Neurosurgery", "Medical Oncology"],
     "meningioma":             ["Neurosurgery", "Neurology"],
+
     # ── Cardiac ───────────────────────────────────────────────────────────────
     "heart":                  ["Cardiovascular Disease", "Interventional Cardiology"],
     "heart disease":          ["Cardiovascular Disease", "Interventional Cardiology"],
@@ -166,6 +162,7 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "swelling":               ["Nephrology", "Cardiovascular Disease", "Vascular Surgery"],
     "pulmonary hypertension":  ["Pulmonary Disease", "Cardiovascular Disease"],
     "circulation":            ["Vascular Surgery", "Cardiovascular Disease"],
+
     # ── Endocrine / Metabolic ─────────────────────────────────────────────────
     "diabetes":               ["Endocrinology, Diabetes & Metabolism"],
     "diabetic":               ["Endocrinology, Diabetes & Metabolism"],
@@ -188,6 +185,7 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "insulin":                ["Endocrinology, Diabetes & Metabolism"],
     "pancreas":               ["Gastroenterology", "Endocrinology, Diabetes & Metabolism"],
     "osteoporosis":           ["Rheumatology", "Endocrinology, Diabetes & Metabolism", "Geriatric Medicine"],
+
     # ── Gastroenterology / GI ────────────────────────────────────────────────
     "gastro":                 ["Gastroenterology"],
     "ibs":                    ["Gastroenterology"],
@@ -219,6 +217,7 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "dysphagia":              ["Gastroenterology", "Otolaryngology"],
     "esophageal":             ["Thoracic Surgery", "Gastroenterology"],
     "esophagus":              ["Thoracic Surgery", "Gastroenterology"],
+
     # ── Pulmonary ─────────────────────────────────────────────────────────────
     "asthma":                 ["Pulmonary Disease", "Allergy & Immunology"],
     "copd":                   ["Pulmonary Disease"],
@@ -242,6 +241,7 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "lung cancer":            ["Thoracic Surgery", "Medical Oncology", "Pulmonary Disease"],
     "pleural":                ["Thoracic Surgery", "Pulmonary Disease"],
     "mesothelioma":           ["Thoracic Surgery", "Medical Oncology"],
+
     # ── Mental Health ─────────────────────────────────────────────────────────
     "depression":             ["Psychiatry"],
     "anxiety":                ["Psychiatry"],
@@ -273,6 +273,7 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "grief":                  ["Psychiatry"],
     "trauma":                 ["Psychiatry", "Emergency Medicine"],
     "postpartum depression":  ["Psychiatry", "Obstetrics & Gynecology"],
+
     # ── Musculoskeletal / Pain ────────────────────────────────────────────────
     "arthritis":              ["Rheumatology", "Orthopaedic Surgery"],
     "rheumatoid":             ["Rheumatology"],
@@ -319,16 +320,20 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "epidural":               ["Anesthesiology"],
     "nerve block":            ["Anesthesiology", "Pain Medicine"],
     "pain block":             ["Anesthesiology", "Pain Medicine"],
-    # ── Cancer / Oncology ─────────────────────────────────────────────────────
+
+    # ── Cancer / Oncology — General ───────────────────────────────────────────
     "cancer":                 ["Medical Oncology", "Hematology & Oncology"],
     "solid tumor":            ["Medical Oncology", "Hematology & Oncology"],
+    "solid tumour":           ["Medical Oncology", "Hematology & Oncology"],
     "malignant neoplasm":     ["Medical Oncology", "Hematology & Oncology"],
     "malignant":              ["Medical Oncology", "Hematology & Oncology"],
     "neoplasm":               ["Medical Oncology", "Hematology & Oncology"],
     "neoplasia":              ["Medical Oncology", "Hematology & Oncology"],
     "tumor":                  ["Medical Oncology", "Radiation Oncology"],
+    "tumour":                 ["Medical Oncology", "Radiation Oncology"],
     "oncology":               ["Medical Oncology", "Hematology & Oncology"],
     "leukemia":               ["Hematology & Oncology"],
+    "leukaemia":              ["Hematology & Oncology"],
     "lymphoma":               ["Hematology & Oncology"],
     "myeloma":                ["Hematology & Oncology"],
     "multiple myeloma":       ["Hematology & Oncology"],
@@ -339,21 +344,71 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "thalassemia":            ["Hematology & Oncology"],
     "platelets":              ["Hematology & Oncology"],
     "breast cancer":          ["Medical Oncology", "Radiation Oncology"],
-    "prostate cancer":        ["Medical Oncology", "Urology"],
     "cervical cancer":        ["Obstetrics & Gynecology", "Medical Oncology"],
     "ovarian cancer":         ["Obstetrics & Gynecology", "Medical Oncology"],
     "kidney cancer":          ["Urology", "Medical Oncology"],
+    "renal cell carcinoma":   ["Urology", "Medical Oncology"],
+    "renal cell":             ["Urology", "Medical Oncology"],
+    "rcc":                    ["Urology", "Medical Oncology"],
     "skin cancer":            ["Dermatology", "Medical Oncology"],
     "head and neck cancer":   ["Otolaryngology", "Medical Oncology"],
+    "head neck cancer":       ["Otolaryngology", "Medical Oncology"],
     "colorectal cancer":      ["Gastroenterology", "Medical Oncology", "Colon & Rectal Surgery"],
     "colon cancer":           ["Gastroenterology", "Medical Oncology", "Colon & Rectal Surgery"],
     "rectal cancer":          ["Colon & Rectal Surgery", "Medical Oncology"],
     "pancreatic cancer":      ["Gastroenterology", "Medical Oncology"],
     "bladder cancer":         ["Urology", "Medical Oncology"],
+    "urothelial carcinoma":   ["Urology", "Medical Oncology"],
+    "urothelial":             ["Urology", "Medical Oncology"],
     "thyroid cancer":         ["Endocrinology, Diabetes & Metabolism", "Medical Oncology"],
     "hepatocellular":         ["Gastroenterology", "Medical Oncology"],
     "cholangiocarcinoma":     ["Gastroenterology", "Medical Oncology"],
-    # ── Sarcoma (mapped explicitly for physician discovery) ───────────────────
+    "endometrial cancer":     ["Obstetrics & Gynecology", "Medical Oncology"],
+    "uterine cancer":         ["Obstetrics & Gynecology", "Medical Oncology"],
+    "testicular cancer":      ["Urology", "Medical Oncology"],
+    "penile cancer":          ["Urology", "Medical Oncology"],
+    "gastric cancer":         ["Gastroenterology", "Medical Oncology"],
+    "stomach cancer":         ["Gastroenterology", "Medical Oncology"],
+    "esophageal cancer":      ["Thoracic Surgery", "Medical Oncology"],
+
+    # ── Prostate Cancer — Comprehensive ──────────────────────────────────────
+    # Explicit keys for every common clinical-trial phrasing so Pass 1/2/3
+    # always resolves correctly without falling through to a shorter key.
+    "prostate cancer":                                ["Medical Oncology", "Urology"],
+    "prostate carcinoma":                             ["Medical Oncology", "Urology"],
+    "prostatic carcinoma":                            ["Medical Oncology", "Urology"],
+    "prostatic cancer":                               ["Medical Oncology", "Urology"],
+    "prostate adenocarcinoma":                        ["Medical Oncology", "Urology"],
+    "metastatic prostate cancer":                     ["Medical Oncology"],
+    "metastatic prostate carcinoma":                  ["Medical Oncology"],
+    "metastatic prostatic cancer":                    ["Medical Oncology"],
+    "advanced prostate cancer":                       ["Medical Oncology"],
+    "castrate resistant prostate cancer":             ["Medical Oncology", "Urology"],
+    "castration resistant prostate cancer":           ["Medical Oncology", "Urology"],
+    "castrate-resistant prostate cancer":             ["Medical Oncology", "Urology"],
+    "castration-resistant prostate cancer":           ["Medical Oncology", "Urology"],
+    "castrate resistant prostate":                    ["Medical Oncology", "Urology"],
+    "castration resistant prostate":                  ["Medical Oncology", "Urology"],
+    "hormone refractory prostate cancer":             ["Medical Oncology", "Urology"],
+    "hormone resistant prostate cancer":              ["Medical Oncology", "Urology"],
+    "hormone sensitive prostate cancer":              ["Medical Oncology", "Urology"],
+    "androgen deprivation":                           ["Medical Oncology", "Urology"],
+    "androgen receptor":                              ["Medical Oncology"],
+    "enzalutamide":                                   ["Medical Oncology"],
+    "sipuleucel":                                     ["Medical Oncology"],
+    "sipuleucel-t":                                   ["Medical Oncology"],
+    "abiraterone":                                    ["Medical Oncology"],
+    "docetaxel prostate":                             ["Medical Oncology"],
+    "crpc":                                           ["Medical Oncology"],
+    "mcrpc":                                          ["Medical Oncology"],
+    "hspc":                                           ["Medical Oncology", "Urology"],
+    "mhspc":                                          ["Medical Oncology", "Urology"],
+    "nmcrpc":                                         ["Medical Oncology", "Urology"],
+    "psa":                                            ["Medical Oncology", "Urology"],
+    "gleason":                                        ["Medical Oncology", "Urology"],
+    "prostate":                                       ["Urology"],
+
+    # ── Sarcoma ───────────────────────────────────────────────────────────────
     "sarcoma":                ["Medical Oncology", "Orthopaedic Surgery"],
     "soft tissue sarcoma":    ["Medical Oncology", "General Surgery"],
     "bone sarcoma":           ["Medical Oncology", "Orthopaedic Surgery"],
@@ -367,6 +422,60 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "synovial sarcoma":       ["Medical Oncology", "Orthopaedic Surgery"],
     "angiosarcoma":           ["Medical Oncology", "Vascular Surgery"],
     "chondrosarcoma":         ["Medical Oncology", "Orthopaedic Surgery"],
+
+    # ── Melanoma / Skin Oncology ──────────────────────────────────────────────
+    "melanoma":               ["Dermatology", "Medical Oncology"],
+    "metastatic melanoma":    ["Medical Oncology"],
+    "advanced melanoma":      ["Medical Oncology"],
+    "squamous cell carcinoma": ["Dermatology", "Medical Oncology"],
+    "squamous cell":          ["Dermatology", "Medical Oncology"],
+    "basal cell carcinoma":   ["Dermatology", "Medical Oncology"],
+    "basal cell":             ["Dermatology"],
+    "merkel cell":            ["Dermatology", "Medical Oncology"],
+
+    # ── Hematologic Malignancies ──────────────────────────────────────────────
+    "acute myeloid leukemia": ["Hematology & Oncology"],
+    "aml":                    ["Hematology & Oncology"],
+    "acute lymphoblastic leukemia": ["Hematology & Oncology"],
+    "all":                    ["Hematology & Oncology"],
+    "chronic lymphocytic leukemia": ["Hematology & Oncology"],
+    "cll":                    ["Hematology & Oncology"],
+    "chronic myeloid leukemia": ["Hematology & Oncology"],
+    "cml":                    ["Hematology & Oncology"],
+    "diffuse large b cell":   ["Hematology & Oncology"],
+    "dlbcl":                  ["Hematology & Oncology"],
+    "follicular lymphoma":    ["Hematology & Oncology"],
+    "hodgkin lymphoma":       ["Hematology & Oncology"],
+    "hodgkin's lymphoma":     ["Hematology & Oncology"],
+    "non hodgkin":            ["Hematology & Oncology"],
+    "non-hodgkin":            ["Hematology & Oncology"],
+    "mantle cell lymphoma":   ["Hematology & Oncology"],
+    "myelodysplastic":        ["Hematology & Oncology"],
+    "mds":                    ["Hematology & Oncology"],
+    "myelofibrosis":          ["Hematology & Oncology"],
+    "polycythemia vera":      ["Hematology & Oncology"],
+    "essential thrombocythemia": ["Hematology & Oncology"],
+    "waldenstrom":            ["Hematology & Oncology"],
+    "smoldering myeloma":     ["Hematology & Oncology"],
+    "plasmacytoma":           ["Hematology & Oncology"],
+    "amyloidosis":            ["Hematology & Oncology"],
+
+    # ── Trial-specific modifier prefixes (catch-all for unlisted conditions) ─
+    # These are lower-specificity fallbacks — exact keys above always win.
+    "metastatic":             ["Medical Oncology"],
+    "advanced":               ["Medical Oncology"],
+    "recurrent":              ["Medical Oncology"],
+    "refractory":             ["Medical Oncology", "Hematology & Oncology"],
+    "relapsed":               ["Medical Oncology", "Hematology & Oncology"],
+    "relapsed refractory":    ["Medical Oncology", "Hematology & Oncology"],
+    "unresectable":           ["Medical Oncology"],
+    "inoperable":             ["Medical Oncology"],
+    "locally advanced":       ["Medical Oncology", "Radiation Oncology"],
+    "stage iv":               ["Medical Oncology"],
+    "stage 4":                ["Medical Oncology"],
+    "stage iii":              ["Medical Oncology", "Radiation Oncology"],
+    "stage 3":                ["Medical Oncology", "Radiation Oncology"],
+
     # ── Other oncology terms ──────────────────────────────────────────────────
     "chemotherapy":           ["Medical Oncology"],
     "radiation":              ["Radiation Oncology"],
@@ -377,12 +486,32 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "clinical trial":         ["Medical Oncology"],
     "carcinoma":              ["Medical Oncology"],
     "adenocarcinoma":         ["Medical Oncology"],
-    "squamous cell":          ["Dermatology", "Medical Oncology"],
-    "malignant":              ["Medical Oncology"],
-    "metastatic":             ["Medical Oncology"],
     "metastasis":             ["Medical Oncology"],
-    "neoplasm":               ["Medical Oncology"],
-    "neoplasia":              ["Medical Oncology"],
+    "checkpoint inhibitor":   ["Medical Oncology"],
+    "pd-1":                   ["Medical Oncology"],
+    "pd-l1":                  ["Medical Oncology"],
+    "pembrolizumab":          ["Medical Oncology"],
+    "nivolumab":              ["Medical Oncology"],
+    "atezolizumab":           ["Medical Oncology"],
+    "durvalumab":             ["Medical Oncology"],
+    "car-t":                  ["Hematology & Oncology"],
+    "car t":                  ["Hematology & Oncology"],
+    "stem cell transplant":   ["Hematology & Oncology"],
+    "bone marrow transplant": ["Hematology & Oncology"],
+    "bmt":                    ["Hematology & Oncology"],
+    "hsct":                   ["Hematology & Oncology"],
+    "bispecific":             ["Hematology & Oncology", "Medical Oncology"],
+    "antibody drug conjugate": ["Medical Oncology"],
+    "adc":                    ["Medical Oncology"],
+    "parp inhibitor":         ["Medical Oncology"],
+    "brca":                   ["Medical Oncology"],
+    "msi":                    ["Medical Oncology"],
+    "microsatellite":         ["Medical Oncology"],
+    "tumor mutational burden": ["Medical Oncology"],
+    "tmb":                    ["Medical Oncology"],
+    "ctdna":                  ["Medical Oncology"],
+    "liquid biopsy":          ["Medical Oncology"],
+
     # ── Kidney / Urology ──────────────────────────────────────────────────────
     "kidney":                 ["Nephrology", "Urology"],
     "kidney disease":         ["Nephrology"],
@@ -397,19 +526,17 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "proteinuria":            ["Nephrology"],
     "urinary":                ["Urology"],
     "bladder":                ["Urology"],
-    "prostate":               ["Urology"],
     "incontinence":           ["Urology"],
     "overactive bladder":     ["Urology"],
     "erectile dysfunction":   ["Urology"],
-    "ed":                     ["Urology"],
     "vasectomy":              ["Urology"],
     "testicular":             ["Urology"],
     "uti":                    ["Urology", "Infectious Disease"],
     "urinary tract infection": ["Urology", "Infectious Disease"],
     "sexual health":          ["Urology", "Obstetrics & Gynecology"],
     "male health":            ["Urology"],
+
     # ── Women's Health ────────────────────────────────────────────────────────
-    "gynecology":             ["Obstetrics & Gynecology"],
     "pregnancy":              ["Obstetrics & Gynecology"],
     "prenatal":               ["Obstetrics & Gynecology"],
     "fertility":              ["Obstetrics & Gynecology"],
@@ -427,6 +554,7 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "womens health":          ["Obstetrics & Gynecology"],
     "women's health":         ["Obstetrics & Gynecology"],
     "mammogram":              ["Diagnostic Radiology"],
+
     # ── Eyes / Ophthalmology ──────────────────────────────────────────────────
     "eye":                    ["Ophthalmology"],
     "vision":                 ["Ophthalmology"],
@@ -441,8 +569,8 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "lazy eye":               ["Ophthalmology"],
     "strabismus":             ["Ophthalmology"],
     "cornea":                 ["Ophthalmology"],
+
     # ── ENT / Otolaryngology ──────────────────────────────────────────────────
-    "ent":                    ["Otolaryngology"],
     "ear":                    ["Otolaryngology"],
     "nose":                   ["Otolaryngology"],
     "throat":                 ["Otolaryngology"],
@@ -457,8 +585,8 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "balance":                ["Otolaryngology", "Neurology"],
     "hearing":                ["Audiologist"],
     "hearing loss":           ["Audiologist"],
+
     # ── Allergy / Immunology ──────────────────────────────────────────────────
-    "allergy":                ["Allergy & Immunology"],
     "allergies":              ["Allergy & Immunology"],
     "food allergy":           ["Allergy & Immunology"],
     "drug allergy":           ["Allergy & Immunology"],
@@ -468,15 +596,14 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "rhinitis":               ["Allergy & Immunology", "Otolaryngology"],
     "hives":                  ["Dermatology", "Allergy & Immunology"],
     "immune":                 ["Allergy & Immunology", "Infectious Disease"],
-    "immunology":             ["Allergy & Immunology"],
     "immunodeficiency":       ["Allergy & Immunology", "Infectious Disease"],
+
     # ── Dermatology / Skin ────────────────────────────────────────────────────
     "skin":                   ["Dermatology"],
     "acne":                   ["Dermatology"],
     "rash":                   ["Dermatology"],
     "eczema":                 ["Dermatology", "Allergy & Immunology"],
     "psoriasis":              ["Dermatology", "Rheumatology"],
-    "melanoma":               ["Dermatology", "Medical Oncology"],
     "warts":                  ["Dermatology"],
     "moles":                  ["Dermatology"],
     "hair loss":              ["Dermatology"],
@@ -484,6 +611,7 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "vitiligo":               ["Dermatology"],
     "shingles":               ["Dermatology", "Infectious Disease"],
     "scar":                   ["Plastic Surgery", "Dermatology"],
+
     # ── Infection / Blood ─────────────────────────────────────────────────────
     "hiv":                    ["Infectious Disease"],
     "aids":                   ["Infectious Disease"],
@@ -508,6 +636,7 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "std":                    ["Infectious Disease"],
     "sti":                    ["Infectious Disease"],
     "sexually transmitted":   ["Infectious Disease"],
+
     # ── Vascular Surgery ──────────────────────────────────────────────────────
     "vascular":               ["Vascular Surgery"],
     "aortic aneurysm":        ["Vascular Surgery"],
@@ -516,16 +645,19 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "peripheral vascular":    ["Vascular Surgery"],
     "varicose veins":         ["Vascular Surgery"],
     "carotid":                ["Vascular Surgery", "Neurology"],
+
     # ── Thoracic Surgery ──────────────────────────────────────────────────────
     "thoracic":               ["Thoracic Surgery"],
     "chest surgery":          ["Thoracic Surgery", "Cardiac Surgery"],
     "mediastinum":            ["Thoracic Surgery"],
+
     # ── General Surgery ───────────────────────────────────────────────────────
     "appendicitis":           ["General Surgery"],
     "appendix":               ["General Surgery"],
     "hernia":                 ["General Surgery"],
     "abscess":                ["General Surgery", "Infectious Disease"],
     "wound":                  ["Emergency Medicine", "General Surgery"],
+
     # ── Plastic Surgery ───────────────────────────────────────────────────────
     "plastic surgery":        ["Plastic Surgery"],
     "cosmetic surgery":       ["Plastic Surgery"],
@@ -534,40 +666,45 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "burns":                  ["Plastic Surgery", "Emergency Medicine"],
     "cleft palate":           ["Plastic Surgery", "Pediatrics"],
     "rhinoplasty":            ["Plastic Surgery"],
+
     # ── Anesthesiology ────────────────────────────────────────────────────────
     "anesthesia":             ["Anesthesiology"],
     "anesthesiology":         ["Anesthesiology"],
     "sedation":               ["Anesthesiology"],
+
     # ── Diagnostic Radiology ──────────────────────────────────────────────────
     "mri":                    ["Diagnostic Radiology"],
     "ct scan":                ["Diagnostic Radiology"],
     "x-ray":                  ["Diagnostic Radiology"],
     "ultrasound":             ["Diagnostic Radiology"],
     "imaging":                ["Diagnostic Radiology"],
+    "pet scan":               ["Diagnostic Radiology"],
+
     # ── Emergency Medicine ────────────────────────────────────────────────────
     "emergency":              ["Emergency Medicine"],
     "overdose":               ["Emergency Medicine", "Addiction Medicine"],
     "poisoning":              ["Emergency Medicine"],
     "laceration":             ["Emergency Medicine"],
+
     # ── Physical Medicine & Rehabilitation ────────────────────────────────────
     "physical therapy":       ["Physical Medicine & Rehabilitation"],
-    "rehabilitation":         ["Physical Medicine & Rehabilitation"],
     "rehab":                  ["Physical Medicine & Rehabilitation"],
     "occupational therapy":   ["Physical Medicine & Rehabilitation"],
     "mobility":               ["Physical Medicine & Rehabilitation"],
     "prosthetics":            ["Physical Medicine & Rehabilitation"],
+
     # ── Pediatrics ────────────────────────────────────────────────────────────
     "child":                  ["Pediatrics"],
     "children":               ["Pediatrics"],
     "infant":                 ["Pediatrics"],
     "baby":                   ["Pediatrics"],
     "newborn":                ["Pediatrics"],
-    "pediatric":              ["Pediatrics"],
     "vaccination":            ["Pediatrics", "Family Medicine"],
     "vaccine":                ["Pediatrics", "Family Medicine"],
     "developmental delay":    ["Pediatrics"],
     "growth disorder":        ["Pediatrics", "Endocrinology, Diabetes & Metabolism"],
-    # ── Allied Health / Non-Physician Providers ───────────────────────────────
+
+    # ── Allied Health ─────────────────────────────────────────────────────────
     "dentist":                ["Dentist"],
     "dental":                 ["Dentist"],
     "teeth":                  ["Dentist"],
@@ -623,7 +760,8 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "walk in":                ["Urgent Care"],
     "walk-in":                ["Urgent Care"],
     "ambulatory":             ["Ambulatory Surgical"],
-    # ── General / Geriatric / Primary Care ────────────────────────────────────
+
+    # ── General / Primary Care ────────────────────────────────────────────────
     "geriatric":              ["Geriatric Medicine"],
     "elderly":                ["Geriatric Medicine"],
     "aging":                  ["Geriatric Medicine"],
@@ -636,84 +774,56 @@ CONDITION_MAP: Dict[str, List[str]] = {
 
 
 # ─────────────────────────────────────────────
-#  SPECIALTY HIERARCHY MAP (broader categories)
+#  SPECIALTY HIERARCHY MAP
 # ─────────────────────────────────────────────
-# Maps specific/niche specialties to their broader parent categories.
-# IMPORTANT: only list broader terms that actually appear in _SEED_TAXONOMY
-# as display names — otherwise resolve() returns the raw string and NPPES
-# gets a query it cannot match.
 
 SPECIALTY_HIERARCHY: Dict[str, List[str]] = {
-    # Oncology sub-specialties expand to each other so OR search casts a wide net
     "Medical Oncology":              ["Hematology & Oncology", "Radiation Oncology"],
     "Surgical Oncology":             ["Medical Oncology", "General Surgery"],
     "Radiation Oncology":            ["Medical Oncology"],
     "Hematology & Oncology":         ["Medical Oncology"],
-
-    # Neurology / Neurosurgery
     "Neurology":                     ["Neurosurgery"],
     "Neurosurgery":                  ["Neurology"],
-
-    # Cardiac
     "Cardiovascular Disease":        ["Interventional Cardiology", "Cardiac Surgery"],
     "Interventional Cardiology":     ["Cardiovascular Disease"],
     "Cardiac Surgery":               ["Cardiovascular Disease", "Thoracic Surgery"],
-
-    # Orthopaedic
     "Orthopaedic Surgery":           ["Sports Medicine"],
     "Sports Medicine":               ["Orthopaedic Surgery", "Physical Medicine & Rehabilitation"],
-
-    # GI
     "Gastroenterology":              ["Colon & Rectal Surgery"],
     "Colon & Rectal Surgery":        ["Gastroenterology", "General Surgery"],
-
-    # Pulmonary
     "Pulmonary Disease":             ["Sleep Medicine", "Thoracic Surgery"],
     "Sleep Medicine":                ["Pulmonary Disease"],
-
-    # Endocrine
     "Endocrinology, Diabetes & Metabolism": ["Internal Medicine"],
-
-    # Rheumatology
     "Rheumatology":                  ["Internal Medicine", "Allergy & Immunology"],
-
-    # Nephrology
     "Nephrology":                    ["Internal Medicine"],
-
-    # Psychiatry
     "Psychiatry":                    ["Addiction Medicine"],
     "Addiction Medicine":            ["Psychiatry", "Pain Medicine"],
-
-    # Pain
     "Pain Medicine":                 ["Anesthesiology", "Physical Medicine & Rehabilitation"],
-
-    # Geriatrics
     "Geriatric Medicine":            ["Internal Medicine", "Family Medicine"],
-
-    # Thoracic
     "Thoracic Surgery":              ["Cardiac Surgery", "General Surgery"],
-
-    # Vascular
     "Vascular Surgery":              ["General Surgery"],
-
-    # Infectious Disease
     "Infectious Disease":            ["Internal Medicine"],
-
-    # Urology
     "Urology":                       ["General Surgery"],
-
-    # OB/GYN
     "Obstetrics & Gynecology":       ["General Surgery"],
 }
 
-# Reverse mapping built at module load (not used directly in resolution
-# but available for future tooling / admin endpoints)
 _BROADER_TO_SPECIFIC: Dict[str, List[str]] = {}
 for _specific, _broader_list in SPECIALTY_HIERARCHY.items():
     for _broader in _broader_list:
         _BROADER_TO_SPECIFIC.setdefault(_broader, [])
         if _specific not in _BROADER_TO_SPECIFIC[_broader]:
             _BROADER_TO_SPECIFIC[_broader].append(_specific)
+
+# ─────────────────────────────────────────────
+#  ONCOLOGY MODIFIER PREFIXES
+#  When a condition starts with one of these words AND no longer exact key
+#  matched, default to Medical Oncology rather than returning nothing.
+# ─────────────────────────────────────────────
+_ONCOLOGY_MODIFIER_PREFIXES = (
+    "metastatic", "advanced", "recurrent", "refractory",
+    "relapsed", "unresectable", "inoperable", "locally advanced",
+    "stage iv", "stage 4", "stage iii", "stage 3",
+)
 
 
 # ─────────────────────────────────────────────
@@ -799,7 +909,6 @@ _SEED_TAXONOMY = [
     ("Hospital", "General Acute Care Hospital"),
 ]
 
-# Build a set of all valid seed display names for fast membership tests
 _SEED_DISPLAY_NAMES: set = set()
 
 
@@ -828,7 +937,6 @@ def _load_taxonomy_background() -> None:
 
     seed = _build_entries(_SEED_TAXONOMY)
 
-    # Populate the seed display name set for resolve_with_broader guard
     global _SEED_DISPLAY_NAMES
     _SEED_DISPLAY_NAMES = {e["display"] for e in seed}
 
@@ -849,7 +957,6 @@ def _load_taxonomy_background() -> None:
         ]
         if rows:
             live = _build_entries(rows)
-            # Update the display name set with live entries too
             _SEED_DISPLAY_NAMES = {e["display"] for e in live}
             with _taxonomy_lock:
                 _taxonomy_entries[:] = live
@@ -886,8 +993,6 @@ def _entry_result(entry: Dict) -> Dict:
 def _find_direct_taxonomy_match(q: str, entries: Optional[List[Dict]] = None) -> Optional[Dict]:
     """
     Prefer direct specialty matches before consulting the broader condition map.
-    This preserves inputs like "Hematology & Oncology" and also handles longer
-    live NUCC labels that begin with a shorter canonical specialty name.
     """
     q_norm = _norm(q)
     if not q_norm:
@@ -915,20 +1020,18 @@ def _find_direct_taxonomy_match(q: str, entries: Optional[List[Dict]] = None) ->
 
 def _condition_map_lookup(q: str) -> Optional[List[str]]:
     """
-    Resolve a condition/specialty string to a list of NUCC specialty names
-    via CONDITION_MAP using a 4-pass strategy:
+    Resolve a condition/specialty string to NUCC specialty names via
+    CONDITION_MAP using a 4-pass strategy:
 
-      1. Exact match            — "high grade sarcoma" → direct key hit
-      2. Prefix match           — q starts with a known key
-      3. Substring key match    — a known key appears anywhere in q
-                                  e.g. "metastatic soft tissue sarcoma" contains
-                                  "soft tissue sarcoma"
-      4. Token overlap          — any meaningful token (≥4 chars) in q matches
-                                  the start of a key
-                                  e.g. "sarcoma" token in q hits key "sarcoma"
+      1. Exact match
+      2. Prefix match (q starts with a known key)
+      3. Substring key match — LONGEST matching key wins
+         (prevents "metastatic" from beating "metastatic prostate cancer")
+      4. Token overlap — meaningful tokens in q match start of a key
 
-    Longer / more specific keys are preferred at every pass to avoid over-broad
-    matches (e.g. "cancer" when "breast cancer" also matches).
+    After all passes, if nothing matched but the condition starts with a known
+    oncology modifier prefix (metastatic, advanced, etc.), default to
+    Medical Oncology so trial conditions are never left unresolved.
     """
     q_lower = q.lower().strip()
     if not q_lower:
@@ -938,14 +1041,14 @@ def _condition_map_lookup(q: str) -> Optional[List[str]]:
     if q_lower in CONDITION_MAP:
         return CONDITION_MAP[q_lower]
 
-    # Pass 2: q starts with a known key (original prefix behaviour)
+    # Pass 2: q starts with a known key — prefer longest
     prefix_candidates = [k for k in CONDITION_MAP if q_lower.startswith(k)]
     if prefix_candidates:
         return CONDITION_MAP[max(prefix_candidates, key=len)]
 
     # Pass 3: a map key is a substring of q — prefer the most specific (longest) key
-    if len(q_lower) >= 3:
-        contained = [k for k in CONDITION_MAP if k in q_lower]
+    if len(q_lower) >= 4:
+        contained = [k for k in CONDITION_MAP if len(k) >= 4 and k in q_lower]
         if contained:
             return CONDITION_MAP[max(contained, key=len)]
 
@@ -960,6 +1063,13 @@ def _condition_map_lookup(q: str) -> Optional[List[str]]:
                 best_len = len(key)
     if best_key:
         return CONDITION_MAP[best_key]
+
+    # Pass 5: oncology modifier prefix fallback
+    # If condition starts with a staging/status modifier, it's almost certainly
+    # an oncology trial condition even if the specific cancer type is not mapped.
+    for prefix in _ONCOLOGY_MODIFIER_PREFIXES:
+        if q_lower.startswith(prefix):
+            return ["Medical Oncology", "Hematology & Oncology"]
 
     return None
 
@@ -1027,99 +1137,24 @@ def resolve(q: str) -> str:
     return matches[0]["display"] if matches else q
 
 
-def _resolve_with_broader_legacy(q: str) -> List[str]:
-    """
-    Resolve a condition/specialty query and return all NUCC-valid specialty
-    names to use in an OR-based NPPES physician search.
-
-    Resolution order:
-      1. Try CONDITION_MAP via _condition_map_lookup() (4-pass matching).
-         This handles raw trial conditions like "High Grade Sarcoma Phase 2"
-         which map directly to ["Medical Oncology", "General Surgery"].
-      2. For each mapped specialty, expand via SPECIALTY_HIERARCHY to pick up
-         closely related specialties (e.g. Medical Oncology → Hematology &
-         Oncology, Radiation Oncology).
-      3. Only include a specialty if it actually resolves to a real NUCC entry
-         in the currently loaded taxonomy — this prevents abstract labels like
-         "Oncology" or "Cancer" (not real NUCC codes) from producing empty
-         NPPES results.
-      4. If no condition-map hit, try resolve() directly (handles cases where
-         the user typed an actual specialty name like "Medical Oncology").
-      5. Fallback: return [q] so callers always have something to query.
-
-    Returns a deduplicated list preserving priority order.
-    """
-    if not q:
-        return []
-
-    all_specialties: List[str] = []
-
-    def _add_if_valid(name: str) -> None:
-        """
-        Add `name` only if it resolves to a known NUCC entry AND it hasn't
-        been added already.  This guards against abstract broader terms like
-        "Oncology" that are not real NUCC taxonomy codes.
-        """
-        resolved = resolve(name)
-        # resolve() returns the input unchanged when nothing matched in the
-        # taxonomy.  We accept it only when the raw name itself IS a seed entry.
-        is_in_taxonomy = (
-            resolved != name                    # resolve found something different → real match
-            or name in _SEED_DISPLAY_NAMES      # raw name is a confirmed seed entry
-        )
-        if is_in_taxonomy and resolved not in all_specialties:
-            all_specialties.append(resolved)
-
-    # ── Step 1: condition-map lookup (handles clinical-trial conditions) ──────
-    condition_hits = _condition_map_lookup(q)
-    if condition_hits:
-        for specialty_name in condition_hits:
-            _add_if_valid(specialty_name)
-            # ── Step 2: expand each hit through the hierarchy ─────────────────
-            for broader in SPECIALTY_HIERARCHY.get(specialty_name, []):
-                _add_if_valid(broader)
-        # Return early — condition map is authoritative for clinical conditions
-        if all_specialties:
-            return all_specialties
-
-    # ── Step 3: direct specialty resolve (user typed "Medical Oncology" etc.) ──
-    exact = resolve(q)
-    if exact and exact not in all_specialties:
-        all_specialties.append(exact)
-        for broader in SPECIALTY_HIERARCHY.get(exact, []):
-            _add_if_valid(broader)
-
-    # ── Step 4: fallback ──────────────────────────────────────────────────────
-    # FIX: Return empty list instead of raw input [q] to prevent NPPES from
-    # returning ALL physicians (including dentists) when no valid specialty
-    # is found. This ensures we only search for physicians when we have a
-    # valid specialty filter.
-    return all_specialties
-
-
 def resolve_with_broader(q: str) -> List[str]:
     """
     Resolve a condition/specialty query and return NUCC-valid specialty names
-    to use in an OR-based NPPES physician search.
+    for OR-based NPPES physician search.
 
-    Resolution order:
-      1. Preserve direct taxonomy specialty matches first.
-      2. Otherwise use CONDITION_MAP for raw clinical conditions.
-      3. Expand each accepted specialty through SPECIALTY_HIERARCHY.
-      4. Fallback to fuzzy taxonomy matching only.
+    Resolution order per part:
+      1. Direct taxonomy match (user typed an actual specialty name)
+      2. CONDITION_MAP lookup (clinical trial conditions)
+      3. Expand each hit through SPECIALTY_HIERARCHY
+      4. Fuzzy fallback
 
+    Handles comma / "and" / "&" separated multi-condition strings.
     Returns a deduplicated list preserving priority order.
-
-    v4 changes:
-      - Now handles multiple conditions separated by commas or "and" (e.g.
-        "Neurology, Interventional Cardiology, Cardiovascular Disease").
-        Each condition is resolved independently and results are merged.
     """
     if not q:
         return []
 
     import re
-    # Split on common delimiters: commas, " and ", " & "
     parts = re.split(r',\s*|\s+and\s+|\s+&\s+', q, flags=re.IGNORECASE)
 
     all_specialties: List[str] = []
@@ -1132,13 +1167,12 @@ def resolve_with_broader(q: str) -> List[str]:
         if resolved not in all_specialties:
             all_specialties.append(resolved)
 
-    # Process each part independently and merge results
     for part in parts:
         part = part.strip()
         if not part:
             continue
 
-        # Try direct taxonomy match first
+        # Step 1: direct taxonomy match
         direct = _find_direct_taxonomy_match(part)
         if direct:
             exact = direct["display"]
@@ -1148,7 +1182,7 @@ def resolve_with_broader(q: str) -> List[str]:
                 _add_if_valid(broader)
             continue
 
-        # Try condition map lookup
+        # Step 2: condition map lookup
         condition_hits = _condition_map_lookup(part)
         if condition_hits:
             for specialty_name in condition_hits:
@@ -1157,7 +1191,7 @@ def resolve_with_broader(q: str) -> List[str]:
                     _add_if_valid(broader)
             continue
 
-        # Fallback to fuzzy taxonomy matching
+        # Step 3: fuzzy fallback
         matches = search(part, limit=1)
         if matches:
             exact = matches[0]["display"]
