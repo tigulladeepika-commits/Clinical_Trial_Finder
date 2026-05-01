@@ -223,7 +223,6 @@ function HomeInner() {
       <style>{`
         .app-shell {
           display: flex; flex-direction: column;
-          height: 100vh; overflow: hidden;
           background: var(--surface);
           font-family: var(--font-sans);
         }
@@ -237,14 +236,15 @@ function HomeInner() {
           display: flex; align-items: center;
           box-shadow: var(--shadow-sm);
           z-index: 100;
+          position: sticky; top: 0;
         }
 
         /* ── Hero ── */
         .hero-wrap {
-          flex: 1; overflow-y: auto;
           display: flex; align-items: center; justify-content: center;
           background: linear-gradient(160deg, #eff6ff 0%, #dbeafe 50%, #f0fdf4 100%);
           position: relative;
+          min-height: calc(100vh - ${SEARCH_H}px);
         }
         .hero-bg-pattern {
           position: absolute; inset: 0; pointer-events: none;
@@ -259,42 +259,39 @@ function HomeInner() {
           animation: fadeUp 0.5s cubic-bezier(.22,1,.36,1) both;
         }
 
-        /* ── Results: 30/70 split — both panels use native scroll ── */
+        /* ── Results: 30/70 split — NO overflow trapping ── */
         .results-layout {
-          flex: 1; min-height: 0;
           display: grid;
           grid-template-columns: 30% 70%;
-          overflow: hidden;
+          align-items: start;
           animation: fadeIn 0.25s ease both;
         }
         @media (max-width: 900px) {
-          .results-layout {
-            grid-template-columns: 1fr;
-            grid-template-rows: 42vh 1fr;
-          }
+          .results-layout { grid-template-columns: 1fr; }
         }
 
-        /* ── Left panel: native scroll, no custom scrollbar container ── */
+        /* ── Left panel: no overflow trap, content flows naturally ── */
         .trials-panel {
           border-right: 1px solid var(--border);
-          overflow-y: auto;
           background: #fff;
           display: flex; flex-direction: column; min-width: 0;
+          /* Sticky so the trial list header and items stay in view while right side scrolls */
+          position: sticky; top: ${SEARCH_H}px;
+          max-height: calc(100vh - ${SEARCH_H}px);
+          overflow-y: auto;
         }
 
-        /* ── Right panel: native scroll ── */
+        /* ── Right panel: NO internal scroll — Salesforce page provides scroll ── */
         .detail-panel {
           display: flex; flex-direction: column;
           background: var(--surface); min-width: 0;
-          overflow-y: auto;
         }
 
-        /* ── Trial detail header — sticky within detail-panel ── */
+        /* ── Trial detail header ── */
         .trial-detail-header {
           padding: 14px 20px;
           border-bottom: 1px solid var(--border);
           background: #fff; flex-shrink: 0;
-          position: sticky; top: 0; z-index: 10;
         }
         .tdh-badges {
           display: flex; align-items: center; gap: 6px;

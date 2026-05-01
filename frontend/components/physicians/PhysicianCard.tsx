@@ -64,10 +64,10 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
   };
 
   const btnLabel =
-    leadState === "loading" ? "Adding…"   :
-    leadState === "done"    ? "✓ Added"   :
-    leadState === "error"   ? "⚠ Retry"   :
-    "+ Lead";
+    leadState === "loading" ? "Adding…"      :
+    leadState === "done"    ? "✓ Added"      :
+    leadState === "error"   ? "⚠ Retry"      :
+    "Add as Lead";
 
   const btnBg =
     leadState === "done"  ? "var(--green-600)" :
@@ -91,7 +91,7 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
           width: 3px; background: transparent; transition: background 0.14s;
         }
         .phys-card:hover {
-          border-color: var(--green-400);
+          border-color: var(--blue-500);
           box-shadow: 0 4px 16px rgba(37,99,235,0.10);
           transform: translateY(-1px);
         }
