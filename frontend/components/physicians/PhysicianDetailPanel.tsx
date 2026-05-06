@@ -76,17 +76,21 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           flex-shrink: 0;
         }
         .pdp-back {
-          display: flex; align-items: center; justify-content: center;
-          height: 32px; width: 32px;
+          display: flex; align-items: center; gap: 6px;
+          height: 32px; padding: 0 12px;
           background: var(--surface); border: 1px solid var(--border);
           border-radius: var(--radius-md); cursor: pointer;
-          font-size: 16px; color: var(--ink-3); flex-shrink: 0;
+          font-size: 12px; font-weight: 600; color: var(--ink-3);
+          flex-shrink: 0;
           transition: all 0.15s; font-family: var(--font-sans);
+          white-space: nowrap;
         }
         .pdp-back:hover {
           background: var(--surface-2); border-color: var(--border-mid);
-          color: var(--ink);
+          color: var(--blue-600);
         }
+        /* Change 2: "Find Physicians" nav label */
+        .pdp-back-icon { font-size: 14px; }
         .pdp-header-title { font-size: 13px; font-weight: 600; color: var(--ink); flex: 1; }
         .pdp-lead-btn {
           padding: 8px 16px; color: #fff; border: none;
@@ -184,7 +188,11 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
 
       <div className="pdp-shell">
         <div className="pdp-header">
-          <button className="pdp-back" onClick={onBack} title="Back to list">←</button>
+          {/* Change 2: Navigation label updated to "Find Physicians" */}
+          <button className="pdp-back" onClick={onBack} title="Back to Find Physicians">
+            <span className="pdp-back-icon">←</span>
+            Find Physicians
+          </button>
           <div className="pdp-header-title">Physician Details</div>
           <button
             className="pdp-lead-btn"
@@ -237,6 +245,8 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
                   <span className="pdp-info-icon">📞</span>
                   <div>
                     <div className="pdp-info-label">Phone</div>
+                    {/* Phone shown in full in detail panel (not masked) — 
+                        masking is only on the card list view per Change 1 */}
                     <a href={"tel:" + physician.phone}
                       style={{ color: "var(--blue-600)", fontWeight: 600, textDecoration: "none" }}>
                       {physician.phone}

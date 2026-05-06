@@ -1,24 +1,3 @@
-"""
-api/physicians.py
-GET /api/physicians/search    — main list (search-criteria driven, max 10)
-GET /api/physicians/suggested — suggested list (trial-condition driven, max 5)
-
-v5 changes:
-  - Parallel async NPPES fan-out using asyncio + httpx.AsyncClient.
-    All ZIP × specialty combos are fired concurrently instead of sequentially,
-    reducing median response time from 30–60 s to 2–5 s.
-  - Smarter early-stop: dense oncology specialties (Medical Oncology,
-    Hematology & Oncology, etc.) stop after MAX_DENSE_ZIPS ZIP hits instead
-    of scanning the full radius — they exist in almost every metro ZIP.
-  - Centroid buffer increased from 5 → 10 miles so physicians whose ZIP
-    centroid sits near the radius edge are not incorrectly dropped before
-    precise geocoding.
-  - MAX_CONCURRENT_NPPES cap (default 12) prevents hammering the NPPES API
-    and triggering rate-limit responses.
-  - All existing filtering logic (non-physician exclusion, distance sort,
-    jitter, etc.) is preserved unchanged.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -36,11 +15,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
-_CENTROID_BUFFER_MILES  = 10.0   # was 5 — gives geocoder room before precise filter
+_CENTROID_BUFFER_MILES  = 10.0
 MAX_SUGGESTED           = 5
-MAX_CONCURRENT_NPPES    = 12     # max parallel NPPES calls at once (semaphore)
-MAX_DENSE_ZIPS          = 8      # for common specialties, stop after this many ZIPs
-                                  # (they exist everywhere; scanning 100 ZIPs wastes time)
+MAX_CONCURRENT_NPPES    = 12
+MAX_DENSE_ZIPS          = 8
+
+# Minimum physicians threshold before auto-relax kicks in
+_MIN_PHYSICIANS_THRESHOLD = 5
 
 # Specialties that exist in virtually every metro area — cap ZIP scan early
 _DENSE_SPECIALTIES = frozenset({
@@ -116,14 +97,8 @@ async def _fetch_nppes_async(
     zipcode: str,
     desc: str,
 ) -> list[dict]:
-    """
-    Fetch one ZIP × specialty combination from NPPES, respecting the semaphore
-    to avoid flooding the API. Returns a list of parsed physician dicts.
-    """
     async with semaphore:
         loop = asyncio.get_running_loop()
-        # nppes.fetch_with_retry is synchronous — run it in a thread pool so it
-        # doesn't block the event loop.
         rows, _ = await loop.run_in_executor(
             None,
             lambda: nppes.fetch_with_retry({
@@ -146,25 +121,14 @@ async def _run_parallel_nppes(
     query_descriptions: list[str],
     early_stop_threshold: int,
 ) -> list[dict]:
-    """
-    Fire all ZIP × specialty tasks concurrently up to MAX_CONCURRENT_NPPES at
-    a time. Stops scheduling new tasks once early_stop_threshold unique
-    physicians have been found.
-
-    Dense specialties (Medical Oncology, etc.) are capped at MAX_DENSE_ZIPS
-    per specialty so we don't scan 100 ZIPs for a specialty that returns
-    results from the first few.
-    """
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_NPPES)
     seen_npis: set[str] = set()
     raw_physicians: list[dict] = []
     lock = asyncio.Lock()
 
-    # Track how many ZIPs have been queried per dense specialty
     dense_zip_counts: dict[str, int] = {d: 0 for d in query_descriptions}
 
     async def _task(zipcode: str, desc: str) -> None:
-        # Check threshold before even firing (best-effort — not exact)
         async with lock:
             if len(raw_physicians) >= early_stop_threshold:
                 return
@@ -181,13 +145,11 @@ async def _run_parallel_nppes(
                     seen_npis.add(p["npi"])
                     raw_physicians.append(p)
 
-    # Build task list — ZIPs in radius order, descriptions in priority order
     tasks = []
     for zipcode in zip_batch:
         for desc in query_descriptions:
             tasks.append(_task(zipcode, desc))
 
-    # Run all tasks; gather() lets them all run concurrently subject to semaphore
     await asyncio.gather(*tasks, return_exceptions=True)
 
     return raw_physicians
@@ -202,10 +164,6 @@ async def _run_physician_search(
     query_descriptions: list[str],
     max_display: int,
 ) -> dict:
-    """
-    Async core physician search. Parallel NPPES fan-out, centroid pre-filter,
-    precise geocode, haversine distance filter, sort by distance.
-    """
     if not query_descriptions:
         return {
             "physicians":         [],
@@ -215,7 +173,6 @@ async def _run_physician_search(
             "search_specialties": [],
         }
 
-    # ── ZIP codes within radius ───────────────────────────────────────────────
     if not zip_database.is_ready():
         zip_database.wait_for_ready(cfg.ZIP_DB_WAIT)
 
@@ -230,9 +187,8 @@ async def _run_physician_search(
         }
 
     zip_batch = nearby_zips[: cfg.MAX_ZIP_QUERIES]
-    early_stop_threshold = max_display * 5   # fetch 5× so filtering doesn't starve results
+    early_stop_threshold = max_display * 5
 
-    # ── Parallel NPPES calls ──────────────────────────────────────────────────
     raw_physicians = await _run_parallel_nppes(zip_batch, query_descriptions, early_stop_threshold)
 
     if not raw_physicians:
@@ -244,9 +200,6 @@ async def _run_physician_search(
             "search_specialties": query_descriptions,
         }
 
-    # ── ZIP centroid pre-filter ───────────────────────────────────────────────
-    # Use a generous buffer so physicians near the edge aren't dropped before
-    # precise geocoding. Buffer increased from 5 → 10 miles (v5).
     for p in raw_physicians:
         if p.get("zip"):
             z_lat, z_lng = zip_database.get_zip_coords(p["zip"])
@@ -273,7 +226,6 @@ async def _run_physician_search(
             "search_specialties": query_descriptions,
         }
 
-    # ── Precise geocode + strict distance filter ──────────────────────────────
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: nppes.batch_geocode_for_display(pre_filtered))
 
@@ -306,6 +258,87 @@ async def _run_physician_search(
     }
 
 
+# ── Auto-relax helper ─────────────────────────────────────────────────────────
+
+async def _search_with_auto_relax(
+    lat: float,
+    lng: float,
+    radius: float,
+    query_descriptions: list[str],
+    max_display: int,
+) -> dict:
+    """
+    Run physician search with automatic specialty filter relaxation.
+
+    If fewer than _MIN_PHYSICIANS_THRESHOLD results are returned:
+      Level 1 — broaden each specialty to its parent via resolve_with_broader()
+      Level 2 — broaden further using taxonomy hierarchy siblings
+      Level 3 — use get_fallback_specialties() for a generic domain match
+      Level 4 — absolute fallback: Internal Medicine (valid catch-all)
+
+    Each level adds a 'filter_relaxed' field to the result so the UI can
+    show a transparency notice to the user.
+    """
+    result = await _run_physician_search(lat, lng, radius, query_descriptions, max_display)
+
+    if result["total"] >= _MIN_PHYSICIANS_THRESHOLD:
+        return result
+
+    # ── Level 1: broaden each specialty to its parent ────────────────────────
+    broader_l1: list[str] = []
+    seen_l1: set[str] = set(query_descriptions)
+    for desc in query_descriptions:
+        for broader in tax_service.SPECIALTY_HIERARCHY.get(desc, []):
+            if broader not in seen_l1:
+                seen_l1.add(broader)
+                broader_l1.append(broader)
+
+    if broader_l1:
+        combined_l1 = query_descriptions + broader_l1
+        result_l1 = await _run_physician_search(lat, lng, radius, combined_l1, max_display)
+        if result_l1["total"] >= _MIN_PHYSICIANS_THRESHOLD:
+            result_l1["filter_relaxed"] = "broad_specialty"
+            return result_l1
+
+    # ── Level 2: use reverse hierarchy (siblings/children) ──────────────────
+    broader_l2: list[str] = []
+    seen_l2: set[str] = seen_l1.copy()
+    for desc in query_descriptions:
+        for sibling in tax_service._BROADER_TO_SPECIFIC.get(desc, []):
+            if sibling not in seen_l2:
+                seen_l2.add(sibling)
+                broader_l2.append(sibling)
+
+    if broader_l2:
+        combined_l2 = list(seen_l1) + broader_l2
+        result_l2 = await _run_physician_search(lat, lng, radius, combined_l2, max_display)
+        if result_l2["total"] >= _MIN_PHYSICIANS_THRESHOLD:
+            result_l2["filter_relaxed"] = "broad_specialty"
+            return result_l2
+
+    # ── Level 3: generic domain fallback via get_fallback_specialties() ──────
+    # Works for any specialty domain — cardiology, neurology, orthopedics, etc.
+    # Not hardcoded — taxonomy service resolves based on condition keywords
+    fallback_condition = " ".join(query_descriptions)
+    fallback_specialties = tax_service.get_fallback_specialties(fallback_condition)
+
+    if fallback_specialties:
+        combined_l3 = list(seen_l2) + [s for s in fallback_specialties if s not in seen_l2]
+        result_l3 = await _run_physician_search(lat, lng, radius, combined_l3, max_display)
+        if result_l3["total"] > 0:
+            result_l3["filter_relaxed"] = "general_specialty"
+            return result_l3
+
+    # ── Level 4: absolute last resort — Internal Medicine ───────────────────
+    # Internal Medicine is the parent of most specialties in NUCC taxonomy
+    # and guarantees results in virtually any metro area
+    result_l4 = await _run_physician_search(
+        lat, lng, radius, ["Internal Medicine"], max_display
+    )
+    result_l4["filter_relaxed"] = "internal_medicine_fallback"
+    return result_l4
+
+
 # ── /search ───────────────────────────────────────────────────────────────────
 
 @router.get("/search")
@@ -317,6 +350,7 @@ async def search_physicians(
     specialty:         Optional[List[str]]    = Query(None, description="Resolved from trial condition — multiple allowed"),
     initial_specialty: Optional[List[str]]    = Query(None, description="Specialty from user's first search — multiple allowed"),
     user_specialty:    Optional[List[str]]    = Query(None, description="Extra specialty entered by user — multiple allowed"),
+    trial_status:      Optional[str]          = Query(None, description="Trial enrollment status e.g. Recruiting, Completed"),
     response:          Response               = None,
 ):
     if response:
@@ -356,7 +390,6 @@ async def search_physicians(
         seen_descs.add(desc)
         descriptions.append(desc)
 
-    # Primary specialties first, then secondaries
     for group in resolved_groups:
         if group:
             _add(group[0])
@@ -373,17 +406,26 @@ async def search_physicians(
             "radius_miles":       radius,
             "zips_searched":      0,
             "search_specialties": [],
+            "trial_status":       trial_status or "unknown",
+            "filter_relaxed":     None,
         }
 
     logger.info(
         "Physician /search | lat=%.4f lng=%.4f radius=%.1fmi "
-        "initial=%r user=%r specialty=%r → descriptions=%s",
+        "initial=%r user=%r specialty=%r → descriptions=%s trial_status=%r",
         lat, lng, radius,
         initial_specialty, user_specialty, specialty,
-        query_descriptions,
+        query_descriptions, trial_status,
     )
 
-    return await _run_physician_search(lat, lng, radius, query_descriptions, cfg.MAX_DISPLAY)
+    # Use auto-relax search instead of plain search
+    result = await _search_with_auto_relax(lat, lng, radius, query_descriptions, cfg.MAX_DISPLAY)
+
+    # Attach trial status to every response so the frontend can show the banner
+    result["trial_status"]   = trial_status or "unknown"
+    result["filter_relaxed"] = result.get("filter_relaxed")  # None if no relaxation needed
+
+    return result
 
 
 # ── /suggested ────────────────────────────────────────────────────────────────
@@ -417,19 +459,32 @@ async def suggested_physicians(
             "radius_miles":       radius,
             "zips_searched":      0,
             "search_specialties": [],
+            "filter_relaxed":     None,
         }
 
     clean_condition = sanitise(condition.strip(), cfg.MAX_DESC_LEN)
-    all_resolved    = tax_service.resolve_with_broader(clean_condition)
 
+    # ── FEATURE 3: Condition mapping fallback — never return empty ────────────
+    # Level 1: standard resolution
+    all_resolved = tax_service.resolve_with_broader(clean_condition)
+
+    # Level 2: generic fallback via taxonomy service (handles NOS and any
+    # vague condition tag across ALL medical domains — not just oncology)
     if not all_resolved:
-        return {
-            "physicians":         [],
-            "total":              0,
-            "radius_miles":       radius,
-            "zips_searched":      0,
-            "search_specialties": [],
-        }
+        all_resolved = tax_service.get_fallback_specialties(clean_condition)
+        if all_resolved:
+            logger.info(
+                "Suggested /suggested | condition=%r resolved via fallback → %s",
+                condition, all_resolved,
+            )
+
+    # Level 3: absolute last resort
+    if not all_resolved:
+        all_resolved = ["Internal Medicine"]
+        logger.info(
+            "Suggested /suggested | condition=%r fell back to Internal Medicine",
+            condition,
+        )
 
     query_descriptions = all_resolved[: cfg.MAX_TAX_QUERIES + 2]
     exclude_set = set(exclude_npis or [])
@@ -445,10 +500,14 @@ async def suggested_physicians(
     filtered = [p for p in result["physicians"] if p["npi"] not in exclude_set]
     filtered = filtered[:MAX_SUGGESTED]
 
+    # Indicate if fallback was used so UI can show transparency notice
+    used_fallback = all_resolved != tax_service.resolve_with_broader(clean_condition) if all_resolved else False
+
     return {
         "physicians":         filtered,
         "total":              max(0, result["total"] - len(exclude_set)),
         "radius_miles":       result["radius_miles"],
         "zips_searched":      result["zips_searched"],
         "search_specialties": result["search_specialties"],
+        "filter_relaxed":     "condition_fallback" if used_fallback else None,
     }

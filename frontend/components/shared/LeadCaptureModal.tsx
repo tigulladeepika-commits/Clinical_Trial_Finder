@@ -66,7 +66,7 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
       setSuccess(true);
       // Fire loadMore (or other callback) while user reads success message
       onSuccess?.();
-      setTimeout(() => onClose(), 2800);
+      setTimeout(() => onClose(), 3500);
     } catch (err: unknown) {
       setFieldError((err as Error).message || "Something went wrong. Please try again.");
       setSubmitting(false);
@@ -209,7 +209,7 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
           font-size: 14px; color: var(--ink-3); line-height: 1.7;
           background: var(--blue-50); border: 1px solid var(--blue-200);
           border-radius: var(--radius-lg); padding: 14px 20px;
-          max-width: 320px;
+          max-width: 340px;
         }
         .lcm-btn-spinner {
           width: 13px; height: 13px;
@@ -226,14 +226,14 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
             /* ── Success screen ── */
             <div className="lcm-success">
               <div className="lcm-success-icon">✅</div>
-              <div className="lcm-success-title">Thank you!</div>
+              <div className="lcm-success-title">Lead Generated!</div>
               <div className="lcm-success-msg">
-                The Aquarient team will contact you soon.
+                Lead generated in Salesforce. The Aquarient team will get back to you shortly.
               </div>
             </div>
           ) : (
             <>
-              {/* Header — no NCT ID, no "Salesforce" text */}
+              {/* Header */}
               <div className="lcm-hdr">
                 <div>
                   <div className="lcm-title">Contact Aquarient Technologies</div>

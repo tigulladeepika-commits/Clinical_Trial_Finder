@@ -35,6 +35,20 @@ function avatarColor(name: string): { bg: string; color: string } {
   return colors[Math.abs(hash) % colors.length];
 }
 
+// Change 1: Mask phone number — show only last 4 digits
+function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length >= 10) {
+    const last4 = digits.slice(-4);
+    return `(***) ***-${last4}`;
+  }
+  // Fallback: mask all but last 4 characters
+  if (phone.length > 4) {
+    return `${"*".repeat(phone.length - 4)}${phone.slice(-4)}`;
+  }
+  return phone;
+}
+
 export default function PhysicianCard({ physician, nctId, siteName, onClick }: Props) {
   const [leadState, setLeadState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const av = avatarColor(physician.name);
@@ -182,7 +196,8 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
           {physician.address && (
             <span>📍 {physician.address.split(",").slice(0, 2).join(",")}</span>
           )}
-          {physician.phone && <span>📞 {physician.phone}</span>}
+          {/* Change 1: Display masked phone number */}
+          {physician.phone && <span>📞 {maskPhone(physician.phone)}</span>}
           <span className="phys-npi">NPI: {physician.npi}</span>
         </div>
 

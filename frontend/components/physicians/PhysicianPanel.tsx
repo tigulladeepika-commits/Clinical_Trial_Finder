@@ -1,44 +1,6 @@
 "use client";
 
 // components/physicians/PhysicianPanel.tsx
-//
-// Changes vs previous version:
-//
-// FIX 1 — getConditionSpecialties() is now called on mount (and when the
-//   site changes) to pre-resolve the raw CT.gov condition string into NUCC
-//   specialty names BEFORE any physician search runs.
-//
-//   Why this matters: the specialty input was pre-filled with the raw
-//   CT.gov string e.g. "Recurrent High-Grade Glioma That Cannot Be Removed
-//   by Surgery". This long string was sent directly as the `specialty` param
-//   and the backend's resolve_with_broader() resolved it inconsistently —
-//   sometimes to "Medical Oncology", sometimes to "Internal Medicine" or
-//   nothing. By resolving first via the /api/trials/condition endpoint,
-//   we get the definitive NUCC names ("Medical Oncology", "Neurosurgery")
-//   and:
-//     a) pre-fill the input with the clean resolved name instead of the raw
-//        CT.gov string — so the chip bar shows the right specialty immediately
-//     b) pass the resolved name as initial_specialty, not the raw string —
-//        so the backend NPPES query uses precise NUCC taxonomy codes
-//     c) show a "Resolving specialty..." state so the user knows what's
-//        happening before clicking Search
-//
-// FIX 2 — initialSpecialty ownership moved entirely to this component.
-//   The hook no longer pins it. This panel sets resolvedSpecialty from
-//   getConditionSpecialties() and passes it as initial_specialty on every
-//   search. When the user types something different, their input becomes
-//   user_specialty (additive on top of the resolved base specialty).
-//   When the user explicitly clears the input, we do a fresh search with
-//   only the condition-resolved specialties, not the user's previous text.
-//
-// FIX 3 — Suggested physicians useEffect uses a stable memoised NPI key
-//   string (sorted + joined) as the dep, not the physicians array reference.
-//   This prevents the effect from re-firing on every parent re-render when
-//   the actual physicians haven't changed.
-//
-// FIX 4 — RADIUS_OPTIONS now exactly matches usePhysicians RADIUS_STEPS
-//   [5, 10, 25, 50, 100]. The hook's loadMore() will always expand to the
-//   correct next step regardless of what the user picked as starting radius.
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import PhysicianCard              from "@/components/physicians/PhysicianCard";
@@ -67,55 +29,167 @@ interface Props {
 // Must match RADIUS_STEPS in usePhysicians exactly
 const RADIUS_OPTIONS = [5, 10, 25, 50, 100] as const;
 
+// ── NUCC Taxonomy groups ──────────────────────────────────────────────────────
+// Doctors (MD/DO), HCPs (non-physician health care providers), HCOs (organisations)
+interface TaxonomyOption {
+  code:  string;
+  label: string;
+  group: "Doctors" | "HCPs" | "HCOs";
+}
+
+const TAXONOMY_OPTIONS: TaxonomyOption[] = [
+  // ── Doctors ──────────────────────────────────────────────────────────────
+  { code: "207R00000X", label: "Internal Medicine",                  group: "Doctors" },
+  { code: "207RH0000X", label: "Hematology",                        group: "Doctors" },
+  { code: "207RH0003X", label: "Hematology & Oncology",             group: "Doctors" },
+  { code: "207RO0000X", label: "Medical Oncology",                  group: "Doctors" },
+  { code: "2086S0129X", label: "Surgical Oncology",                 group: "Doctors" },
+  { code: "2086X0206X", label: "Surgical Oncology (Thoracic)",      group: "Doctors" },
+  { code: "207RR0500X", label: "Rheumatology",                      group: "Doctors" },
+  { code: "207RE0101X", label: "Endocrinology, Diabetes & Metabolism", group: "Doctors" },
+  { code: "207RI0200X", label: "Infectious Disease",                group: "Doctors" },
+  { code: "207RG0300X", label: "Gastroenterology",                  group: "Doctors" },
+  { code: "207RP1001X", label: "Pulmonary Disease",                 group: "Doctors" },
+  { code: "207RC0000X", label: "Cardiovascular Disease",            group: "Doctors" },
+  { code: "207RN0300X", label: "Nephrology",                        group: "Doctors" },
+  { code: "2084N0400X", label: "Neurology",                         group: "Doctors" },
+  { code: "207T00000X", label: "Neurological Surgery (Neurosurgery)", group: "Doctors" },
+  { code: "207X00000X", label: "Orthopaedic Surgery",               group: "Doctors" },
+  { code: "207V00000X", label: "Obstetrics & Gynecology",           group: "Doctors" },
+  { code: "207VX0000X", label: "Gynecologic Oncology",              group: "Doctors" },
+  { code: "207W00000X", label: "Ophthalmology",                     group: "Doctors" },
+  { code: "207Y00000X", label: "Otolaryngology (ENT)",              group: "Doctors" },
+  { code: "207ZP0102X", label: "Anatomic & Clinical Pathology",     group: "Doctors" },
+  { code: "2085R0202X", label: "Diagnostic Radiology",              group: "Doctors" },
+  { code: "2085R0001X", label: "Radiation Oncology",                group: "Doctors" },
+  { code: "208600000X", label: "General Surgery",                   group: "Doctors" },
+  { code: "207Q00000X", label: "Family Medicine",                   group: "Doctors" },
+  { code: "207P00000X", label: "Emergency Medicine",                group: "Doctors" },
+  { code: "208M00000X", label: "Hospitalist",                       group: "Doctors" },
+  { code: "207N00000X", label: "Dermatology",                       group: "Doctors" },
+  { code: "207K00000X", label: "Allergy & Immunology",              group: "Doctors" },
+  { code: "207U00000X", label: "Physical Medicine & Rehabilitation", group: "Doctors" },
+  { code: "2084P0800X", label: "Psychiatry",                        group: "Doctors" },
+  { code: "207LP2900X", label: "Pain Medicine",                     group: "Doctors" },
+  { code: "207RC0001X", label: "Clinical Cardiac Electrophysiology", group: "Doctors" },
+  { code: "207RI0011X", label: "Interventional Cardiology",         group: "Doctors" },
+  { code: "207RU0001X", label: "Transplant Hepatology",             group: "Doctors" },
+  { code: "2086S0105X", label: "Transplant Surgery",                group: "Doctors" },
+  { code: "208VP0000X", label: "Pain Medicine (ABPM)",              group: "Doctors" },
+
+  // ── HCPs ─────────────────────────────────────────────────────────────────
+  { code: "363LF0000X", label: "Nurse Practitioner – Family",       group: "HCPs" },
+  { code: "363LA2200X", label: "Nurse Practitioner – Acute Care",   group: "HCPs" },
+  { code: "363LX0001X", label: "Nurse Practitioner – Oncology",     group: "HCPs" },
+  { code: "363LP0200X", label: "Nurse Practitioner – Pediatrics",   group: "HCPs" },
+  { code: "363LS0200X", label: "Nurse Practitioner – School",       group: "HCPs" },
+  { code: "367500000X", label: "Nurse Anesthetist (CRNA)",          group: "HCPs" },
+  { code: "364S00000X", label: "Clinical Nurse Specialist",         group: "HCPs" },
+  { code: "261QR0206X", label: "Research Facility / Clinical Research", group: "HCPs" },
+  { code: "390200000X", label: "Student (Health Care)",             group: "HCPs" },
+  { code: "374700000X", label: "Technician / Technologist",         group: "HCPs" },
+  { code: "246QB0000X", label: "Clinical Laboratory Scientist",     group: "HCPs" },
+  { code: "111N00000X", label: "Chiropractor",                      group: "HCPs" },
+  { code: "122300000X", label: "Dentist",                           group: "HCPs" },
+  { code: "152W00000X", label: "Optometrist",                       group: "HCPs" },
+  { code: "163W00000X", label: "Registered Nurse",                  group: "HCPs" },
+  { code: "164W00000X", label: "Licensed Practical Nurse",          group: "HCPs" },
+  { code: "170100000X", label: "Medical Genetics / Genomics",       group: "HCPs" },
+  { code: "183500000X", label: "Pharmacist",                        group: "HCPs" },
+  { code: "225100000X", label: "Physical Therapist",                group: "HCPs" },
+  { code: "225X00000X", label: "Occupational Therapist",            group: "HCPs" },
+  { code: "231H00000X", label: "Audiologist",                       group: "HCPs" },
+  { code: "235Z00000X", label: "Speech-Language Pathologist",       group: "HCPs" },
+  { code: "251B00000X", label: "Case Manager",                      group: "HCPs" },
+  { code: "332B00000X", label: "Durable Medical Equipment Supplier", group: "HCPs" },
+  { code: "3416L0300X", label: "Perfusionist",                      group: "HCPs" },
+
+  // ── HCOs ─────────────────────────────────────────────────────────────────
+  { code: "282N00000X", label: "General Acute Care Hospital",       group: "HCOs" },
+  { code: "282NC0060X", label: "Critical Access Hospital",          group: "HCOs" },
+  { code: "282NR1301X", label: "Rural Acute Care Hospital",         group: "HCOs" },
+  { code: "283Q00000X", label: "Psychiatric Hospital",              group: "HCOs" },
+  { code: "283X00000X", label: "Rehabilitation Hospital",           group: "HCOs" },
+  { code: "284300000X", label: "Special Hospital",                  group: "HCOs" },
+  { code: "261QA0600X", label: "Ambulatory Surgery Center",         group: "HCOs" },
+  { code: "261QR0200X", label: "Radiology / Imaging Center",        group: "HCOs" },
+  { code: "261QC1500X", label: "Community Health Center",           group: "HCOs" },
+  { code: "261QM1300X", label: "Multi-Specialty Group Practice",    group: "HCOs" },
+  { code: "261QP2300X", label: "Primary Care Clinic",               group: "HCOs" },
+  { code: "261QC0050X", label: "Critical Care (Intensive Care) Facility", group: "HCOs" },
+  { code: "261QH0700X", label: "Hospice",                           group: "HCOs" },
+  { code: "315D00000X", label: "Inpatient Hospice",                 group: "HCOs" },
+  { code: "315P00000X", label: "Intermediate Care Facility",        group: "HCOs" },
+  { code: "311500000X", label: "Alzheimer Center / Dementia Unit",  group: "HCOs" },
+  { code: "324500000X", label: "Substance Abuse Rehab Facility",    group: "HCOs" },
+  { code: "3416A0800X", label: "Ambulance Service",                 group: "HCOs" },
+  { code: "251G00000X", label: "Home Health Agency",                group: "HCOs" },
+  { code: "273100000X", label: "Epilepsy Unit",                     group: "HCOs" },
+  { code: "291U00000X", label: "Clinical Medical Laboratory",       group: "HCOs" },
+];
+
+const GROUPS = ["Doctors", "HCPs", "HCOs"] as const;
+
 export default function PhysicianPanel({
   site, physicians, total, loading, error, searched, hasMore,
   searchSpecialties, kpiBar, onSearch, onLoadMore, onBack,
 }: Props) {
   const [radius,            setRadius]            = useState<number>(25);
-  const [userInput,         setUserInput]         = useState("");
+  const [selectedCodes,     setSelectedCodes]     = useState<string[]>([]);
+  const [dropdownOpen,      setDropdownOpen]       = useState(false);
+  const [dropdownSearch,    setDropdownSearch]     = useState("");
   const [selectedNpi,       setSelectedNpi]       = useState<string | null>(null);
   const [detailPhys,        setDetailPhys]        = useState<Physician | null>(null);
   const [showMainModal,     setShowMainModal]     = useState(false);
   const [showSuggestModal,  setShowSuggestModal]  = useState(false);
 
-  // Resolved NUCC specialty names for this site's condition
   const [resolvedSpecialty, setResolvedSpecialty] = useState<string>("");
   const [resolving,         setResolving]         = useState(false);
 
   const suggested          = useSuggestedPhysicians();
   const siteConditionRef   = useRef<string>("");
+  const dropdownRef        = useRef<HTMLDivElement>(null);
 
-  // ── FIX 1: resolve specialty on mount + when site condition changes ─────────
+  // ── Resolve specialty on mount / site change ─────────────────────────────
   useEffect(() => {
     const condition = site.condition?.trim() ?? "";
-
-    // No change — skip
     if (!condition || condition === siteConditionRef.current) return;
     siteConditionRef.current = condition;
 
     setResolving(true);
     setResolvedSpecialty("");
-    setUserInput("");
+    setSelectedCodes([]);
 
     getConditionSpecialties(condition)
       .then((specialties) => {
-        // Take the first resolved specialty as the canonical input value
-        // e.g. ["Medical Oncology", "Hematology & Oncology"] → "Medical Oncology"
         const primary = specialties[0] ?? condition;
         setResolvedSpecialty(primary);
-        setUserInput(primary);
+        // Auto-select the first matching taxonomy code
+        const match = TAXONOMY_OPTIONS.find(
+          (o) => o.label.toLowerCase() === primary.toLowerCase()
+        );
+        if (match) setSelectedCodes([match.code]);
       })
       .catch(() => {
-        // Fall back to raw condition string if resolution fails
         setResolvedSpecialty(condition);
-        setUserInput(condition);
       })
       .finally(() => setResolving(false));
   }, [site.condition]);
 
-  // ── FIX 3: stable NPI key to prevent suggested from re-firing every render ──
-  const npis    = physicians.map((p) => p.npi);
-  const npiKey  = useMemo(
+  // ── Close dropdown on outside click ─────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // ── Stable NPI key (FIX 3) ───────────────────────────────────────────────
+  const npis   = physicians.map((p) => p.npi);
+  const npiKey = useMemo(
     () => [...npis].sort().join(","),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [npis.join(",")]
@@ -123,31 +197,51 @@ export default function PhysicianPanel({
 
   useEffect(() => {
     if (!searched || loading || physicians.length === 0) return;
-    // Pass the current npis array (reconstructed from the stable key) to avoid
-    // holding a stale closure over the physicians prop
     const currentNpis = npiKey ? npiKey.split(",") : [];
     suggested.fetch(site, radius, site.condition ?? undefined, currentNpis);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searched, loading, npiKey]);
 
-  // ── FIX 2: handleSearch owns initialSpecialty using the resolved value ──────
+  // ── Toggle a taxonomy code ───────────────────────────────────────────────
+  const toggleCode = useCallback((code: string) => {
+    setSelectedCodes((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    );
+  }, []);
+
+  // ── Build specialty string from selected codes ───────────────────────────
+  const selectedLabels = useMemo(
+    () => TAXONOMY_OPTIONS.filter((o) => selectedCodes.includes(o.code)).map((o) => o.label),
+    [selectedCodes]
+  );
+
+  // ── handleSearch ─────────────────────────────────────────────────────────
   const handleSearch = useCallback(() => {
-    const input = userInput.trim();
-
-    // Determine what to send:
-    // - initial_specialty: always the pre-resolved NUCC name from the condition
-    // - user_specialty:    only if the user changed the input away from the
-    //                      resolved value (they want to add/override)
-    const isResolved = input.toLowerCase() === resolvedSpecialty.toLowerCase();
-    const userSpecialty = (!isResolved && input) ? input : "";
-
+    const userSpecialty  = selectedLabels.join(", ");
+    const initialSpecialty = resolvedSpecialty;
     onSearch(
       radius,
-      site.condition?.trim() ?? "",  // raw condition — backend fallback only
+      site.condition?.trim() ?? "",
       userSpecialty,
-      resolvedSpecialty,             // pre-resolved NUCC name — primary signal
+      initialSpecialty,
     );
-  }, [radius, userInput, resolvedSpecialty, site.condition, onSearch]);
+  }, [radius, selectedLabels, resolvedSpecialty, site.condition, onSearch]);
+
+  // ── Filtered options for dropdown search ────────────────────────────────
+  const filteredOptions = useMemo(() => {
+    const q = dropdownSearch.toLowerCase();
+    return TAXONOMY_OPTIONS.filter(
+      (o) => !q || o.label.toLowerCase().includes(q) || o.group.toLowerCase().includes(q)
+    );
+  }, [dropdownSearch]);
+
+  // ── Dropdown trigger label ───────────────────────────────────────────────
+  const triggerLabel =
+    selectedCodes.length === 0
+      ? "Select taxonomy…"
+      : selectedCodes.length === 1
+      ? selectedLabels[0]
+      : `${selectedCodes.length} specialties selected`;
 
   if (detailPhys) {
     return (
@@ -187,28 +281,93 @@ export default function PhysicianPanel({
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .pp-site-sub { font-size: 10px; color: var(--muted); font-weight: 500; }
-        .pp-specialty-wrap { flex: 2 1 120px; position: relative; min-width: 0; }
-        .pp-specialty-input {
+
+        /* ── Taxonomy dropdown ── */
+        .pp-taxonomy-wrap {
+          flex: 2 1 150px; position: relative; min-width: 0;
+        }
+        .pp-taxonomy-trigger {
           width: 100%; height: 32px; padding: 0 28px 0 11px;
           border: 1px solid var(--border); border-radius: var(--radius-md);
           font-size: 12px; color: var(--ink); background: var(--surface);
           outline: none; font-family: var(--font-sans);
           transition: border-color 0.15s, box-shadow 0.15s;
-          box-sizing: border-box;
+          box-sizing: border-box; cursor: pointer;
+          display: flex; align-items: center; justify-content: space-between;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          text-align: left;
         }
-        .pp-specialty-input:focus {
+        .pp-taxonomy-trigger:hover,
+        .pp-taxonomy-trigger:focus {
           border-color: var(--blue-500);
           box-shadow: 0 0 0 3px rgba(59,130,246,0.10);
           background: #fff;
         }
-        .pp-specialty-input:disabled { opacity: 0.55; cursor: not-allowed; }
-        .pp-specialty-input::placeholder { color: var(--muted-light); }
-        .pp-specialty-clear {
-          position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
-          background: none; border: none; cursor: pointer;
-          color: var(--muted); font-size: 14px; padding: 2px; line-height: 1;
+        .pp-taxonomy-trigger:disabled { opacity: 0.55; cursor: not-allowed; }
+        .pp-taxonomy-caret {
+          position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+          pointer-events: none; font-size: 10px; color: var(--muted);
         }
-        .pp-specialty-clear:hover { color: var(--ink); }
+        .pp-taxonomy-dropdown {
+          position: absolute; top: calc(100% + 4px); left: 0;
+          width: 300px; background: #fff;
+          border: 1px solid var(--border); border-radius: var(--radius-md);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.13);
+          z-index: 100; overflow: hidden;
+          animation: fadeIn 0.12s ease both;
+        }
+        .pp-taxonomy-search {
+          width: 100%; height: 34px; padding: 0 10px;
+          border: none; border-bottom: 1px solid var(--border);
+          font-size: 12px; color: var(--ink); outline: none;
+          font-family: var(--font-sans); background: var(--surface);
+          box-sizing: border-box;
+        }
+        .pp-taxonomy-search:focus { background: #fff; }
+        .pp-taxonomy-list {
+          max-height: 260px; overflow-y: auto;
+          padding: 4px 0;
+        }
+        .pp-taxonomy-group-label {
+          padding: 6px 10px 2px;
+          font-size: 9px; font-weight: 800; color: var(--muted);
+          text-transform: uppercase; letter-spacing: 0.8px;
+          background: var(--surface);
+          border-top: 1px solid var(--border);
+          position: sticky; top: 0; z-index: 1;
+        }
+        .pp-taxonomy-group-label:first-child { border-top: none; }
+        .pp-taxonomy-item {
+          display: flex; align-items: center; gap: 8px;
+          padding: 5px 10px; cursor: pointer;
+          font-size: 11px; color: var(--ink);
+          transition: background 0.1s;
+          user-select: none;
+        }
+        .pp-taxonomy-item:hover { background: var(--blue-50); }
+        .pp-taxonomy-item.selected { background: rgba(37,99,235,0.06); font-weight: 600; }
+        .pp-taxonomy-checkbox {
+          width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+          border: 1.5px solid var(--border); background: var(--surface);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 9px; color: #fff; transition: all 0.12s;
+        }
+        .pp-taxonomy-item.selected .pp-taxonomy-checkbox {
+          background: var(--blue-600); border-color: var(--blue-600);
+        }
+        .pp-taxonomy-footer {
+          padding: 6px 10px; border-top: 1px solid var(--border);
+          display: flex; align-items: center; justify-content: space-between;
+          background: var(--surface);
+        }
+        .pp-taxonomy-count { font-size: 10px; color: var(--muted); font-weight: 600; }
+        .pp-taxonomy-clear {
+          font-size: 10px; color: var(--blue-600); font-weight: 700;
+          background: none; border: none; cursor: pointer; padding: 0;
+          font-family: var(--font-sans);
+        }
+        .pp-taxonomy-clear:hover { text-decoration: underline; }
+
         .pp-radius-select {
           flex: 0 0 86px; height: 32px; padding: 0 7px;
           border: 1px solid var(--border); border-radius: var(--radius-md);
@@ -240,7 +399,7 @@ export default function PhysicianPanel({
           animation: spinAnim 0.65s linear infinite; flex-shrink: 0;
         }
 
-        /* Specialty chips */
+        /* Selected taxonomy chips bar */
         .pp-chips-bar {
           display: flex; align-items: center; gap: 6px;
           padding: 5px 14px; background: var(--blue-50);
@@ -251,7 +410,7 @@ export default function PhysicianPanel({
           letter-spacing: 0.5px; text-transform: uppercase; flex-shrink: 0;
         }
         .pp-chip {
-          display: inline-flex; align-items: center;
+          display: inline-flex; align-items: center; gap: 4px;
           background: var(--blue-600); color: #fff;
           border-radius: 20px; padding: 2px 9px;
           font-size: 10px; font-weight: 600;
@@ -352,22 +511,74 @@ export default function PhysicianPanel({
             </div>
           </div>
 
-          {/* FIX 1: input shows resolved NUCC name, not raw CT.gov condition */}
-          <div className="pp-specialty-wrap">
-            <input
-              className="pp-specialty-input"
-              value={userInput}
+          {/* Taxonomy multi-select dropdown */}
+          <div className="pp-taxonomy-wrap" ref={dropdownRef}>
+            <button
+              className="pp-taxonomy-trigger"
               disabled={resolving}
-              onChange={(e) => setUserInput(e.target.value)}
-              placeholder={resolving ? "Resolving specialty…" : "Specialty / condition"}
-              onKeyDown={(e) => e.key === "Enter" && !resolving && handleSearch()}
-            />
-            {userInput && !resolving && (
-              <button
-                className="pp-specialty-clear"
-                onClick={() => setUserInput(resolvedSpecialty)}
-                title="Reset to resolved specialty"
-              >×</button>
+              onClick={() => !resolving && setDropdownOpen((o) => !o)}
+              title={selectedLabels.join(", ") || "Select taxonomy"}
+            >
+              <span style={{
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                color: selectedCodes.length === 0 ? "var(--muted-light)" : "var(--ink)",
+              }}>
+                {resolving ? "Resolving specialty…" : triggerLabel}
+              </span>
+            </button>
+            <span className="pp-taxonomy-caret">{dropdownOpen ? "▲" : "▼"}</span>
+
+            {dropdownOpen && (
+              <div className="pp-taxonomy-dropdown">
+                <input
+                  className="pp-taxonomy-search"
+                  placeholder="Search specialties…"
+                  value={dropdownSearch}
+                  onChange={(e) => setDropdownSearch(e.target.value)}
+                  autoFocus
+                />
+                <div className="pp-taxonomy-list">
+                  {GROUPS.map((group) => {
+                    const groupItems = filteredOptions.filter((o) => o.group === group);
+                    if (groupItems.length === 0) return null;
+                    return (
+                      <React.Fragment key={group}>
+                        <div className="pp-taxonomy-group-label">{group}</div>
+                        {groupItems.map((opt) => {
+                          const isSelected = selectedCodes.includes(opt.code);
+                          return (
+                            <div
+                              key={opt.code}
+                              className={`pp-taxonomy-item${isSelected ? " selected" : ""}`}
+                              onClick={() => toggleCode(opt.code)}
+                            >
+                              <div className="pp-taxonomy-checkbox">
+                                {isSelected && "✓"}
+                              </div>
+                              {opt.label}
+                            </div>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  })}
+                  {filteredOptions.length === 0 && (
+                    <div style={{ padding: "10px", fontSize: 11, color: "var(--muted)", textAlign: "center" }}>
+                      No matches for "{dropdownSearch}"
+                    </div>
+                  )}
+                </div>
+                <div className="pp-taxonomy-footer">
+                  <span className="pp-taxonomy-count">
+                    {selectedCodes.length} selected
+                  </span>
+                  {selectedCodes.length > 0 && (
+                    <button className="pp-taxonomy-clear" onClick={() => setSelectedCodes([])}>
+                      Clear all
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
@@ -387,7 +598,6 @@ export default function PhysicianPanel({
           </button>
         </div>
 
-        {/* FIX 1: resolving indicator */}
         {resolving && (
           <div className="pp-resolving">
             <div className="pp-resolving-spinner" />
@@ -395,8 +605,18 @@ export default function PhysicianPanel({
           </div>
         )}
 
-        {/* Specialty chips — shown after search, reflect actual NPPES query */}
-        {searchSpecialties.length > 0 && !resolving && (
+        {/* Selected taxonomy chips */}
+        {selectedLabels.length > 0 && !resolving && (
+          <div className="pp-chips-bar">
+            <span className="pp-chips-label">Taxonomy</span>
+            {selectedLabels.map(s => (
+              <span key={s} className="pp-chip">{s}</span>
+            ))}
+          </div>
+        )}
+
+        {/* Search result specialty chips */}
+        {searchSpecialties.length > 0 && !resolving && selectedLabels.length === 0 && (
           <div className="pp-chips-bar">
             <span className="pp-chips-label">Matching</span>
             {searchSpecialties.map(s => <span key={s} className="pp-chip">{s}</span>)}
@@ -457,9 +677,11 @@ export default function PhysicianPanel({
               <span className="pp-empty-icon">👨‍⚕️</span>
               <span className="pp-empty-title">No physicians found</span>
               <span className="pp-empty-sub">
-                {resolvedSpecialty
+                {selectedLabels.length > 0
+                  ? `No ${selectedLabels[0]} physicians found within ${radius} miles. Try a different taxonomy or increase the radius.`
+                  : resolvedSpecialty
                   ? `No ${resolvedSpecialty} physicians found within ${radius} miles. Try increasing the radius.`
-                  : "Try increasing the radius or changing the specialty."}
+                  : "Try increasing the radius or selecting a different taxonomy."}
               </span>
             </div>
           )}

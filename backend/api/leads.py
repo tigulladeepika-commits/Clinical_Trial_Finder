@@ -23,6 +23,10 @@ router = APIRouter()
 
 _FALSY_STRINGS = {"", "undefined", "null", "none", "n/a"}
 
+# ── Notification email ─────────────────────────────────────────────────────────
+# Update this address to route lead notification emails to the right inbox.
+LEAD_NOTIFICATION_EMAIL = "leads@aquarient.com"
+
 # Accepts standard emails AND .local / internal hostnames
 _EMAIL_RE = re.compile(
     r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
@@ -102,12 +106,28 @@ def _append_lead(lead: dict) -> None:
 
 
 def _push_to_salesforce(lead: dict) -> None:
+    """
+    Push a lead dict to Salesforce.
+
+    Fields forwarded to Salesforce:
+      - Standard contact fields: first_name, last_name, email, phone, company, title
+      - Lead metadata: lead_source, nct_id, site, message
+      - Physician context: physician_name, npi  ← NPI is explicitly included here
+      - Internal tracking: id (our UUID), auto (boolean flag)
+
+    The `npi` field is mapped to the Salesforce custom field configured in
+    services/salesforce.py (e.g. NPI_ID__c or similar). Ensure the Salesforce
+    push_lead() implementation maps lead["npi"] to the correct SF field.
+    """
     if not cfg.SF_OID:
         return
     try:
         from services.salesforce import push_lead
         push_lead(lead)
-        logger.info("Lead %s pushed to Salesforce", lead["id"])
+        logger.info(
+            "Lead %s pushed to Salesforce | npi=%s",
+            lead["id"], lead.get("npi") or "-",
+        )
     except Exception as exc:
         logger.warning("Salesforce push failed for lead %s: %s", lead["id"], exc)
 
@@ -149,22 +169,25 @@ async def capture_lead(request: Request, body: LeadRequest):
     last_name  = name_parts[1] if len(name_parts) > 1 else ""
 
     lead = {
-        "id":             lead_id,
-        "created_at":     datetime.now(timezone.utc).isoformat(),
-        "name":           body.name,
-        "first_name":     first_name,
-        "last_name":      last_name,
-        "email":          body.email,
-        "phone":          body.phone,
-        "lead_source":    body.lead_source,
-        "company":        body.company,
-        "title":          body.title,
-        "physician_name": body.physician_name,
-        "npi":            body.npi,
-        "nct_id":         body.nct_id,
-        "site":           body.site,
-        "message":        body.message,
-        "auto":           body.auto,
+        "id":                       lead_id,
+        "created_at":               datetime.now(timezone.utc).isoformat(),
+        "name":                     body.name,
+        "first_name":               first_name,
+        "last_name":                last_name,
+        "email":                    body.email,
+        "phone":                    body.phone,
+        "lead_source":              body.lead_source,
+        "company":                  body.company,
+        "title":                    body.title,
+        "physician_name":           body.physician_name,
+        # NPI ID — included in every lead record and forwarded to Salesforce
+        "npi":                      body.npi,
+        "nct_id":                   body.nct_id,
+        "site":                     body.site,
+        "message":                  body.message,
+        "auto":                     body.auto,
+        # Internal routing — notification email used by any email dispatch layer
+        "notification_email":       LEAD_NOTIFICATION_EMAIL,
     }
 
     try:
