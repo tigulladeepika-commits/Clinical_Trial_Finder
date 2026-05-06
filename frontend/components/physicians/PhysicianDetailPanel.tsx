@@ -21,6 +21,12 @@ function initials(name: string): string {
     .join("");
 }
 
+function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  const last4 = digits.slice(-4);
+  return `•••-•••-${last4}`;
+}
+
 export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsLead }: Props) {
   const [leadState, setLeadState] = useState<"idle" | "loading" | "done" | "error">("idle");
 
@@ -89,7 +95,6 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           background: var(--surface-2); border-color: var(--border-mid);
           color: var(--blue-600);
         }
-        /* Change 2: "Find Physicians" nav label */
         .pdp-back-icon { font-size: 14px; }
         .pdp-header-title { font-size: 13px; font-weight: 600; color: var(--ink); flex: 1; }
         .pdp-lead-btn {
@@ -188,7 +193,6 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
 
       <div className="pdp-shell">
         <div className="pdp-header">
-          {/* Change 2: Navigation label updated to "Find Physicians" */}
           <button className="pdp-back" onClick={onBack} title="Back to Find Physicians">
             <span className="pdp-back-icon">←</span>
             Find Physicians
@@ -245,11 +249,9 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
                   <span className="pdp-info-icon">📞</span>
                   <div>
                     <div className="pdp-info-label">Phone</div>
-                    {/* Phone shown in full in detail panel (not masked) — 
-                        masking is only on the card list view per Change 1 */}
                     <a href={"tel:" + physician.phone}
                       style={{ color: "var(--blue-600)", fontWeight: 600, textDecoration: "none" }}>
-                      {physician.phone}
+                      {maskPhone(physician.phone)}
                     </a>
                   </div>
                 </div>
