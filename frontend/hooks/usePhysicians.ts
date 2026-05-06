@@ -1,10 +1,27 @@
 // hooks/usePhysicians.ts
-// v6 changes:
-//  - usePhysicians: main list now passes user specialty first, trial condition
-//    only as fallback. This aligns with the updated /search endpoint priority.
-//  - Added useSuggestedPhysicians hook: fetches from /suggested using only
-//    the trial condition, passes main-list NPIs as exclude_npis.
-//  - Both hooks are independent and can be used side-by-side in PhysicianPanel.
+//
+// Changes vs v6:
+//
+// FIX 1 — initialSpecialty no longer pinned forever inside the hook.
+//   Professional apps treat "change specialty + search" as a NEW search,
+//   not an additive one. The old behaviour pinned initialSpecialty on the
+//   first search and sent it on every subsequent call — meaning the user
+//   could never get a clean result set by typing a different specialty.
+//   Now the hook is stateless about specialty history; PhysicianPanel owns
+//   that logic entirely using the pre-resolved NUCC names from
+//   getConditionSpecialties().
+//
+// FIX 2 — RADIUS_STEPS aligned with PhysicianPanel RADIUS_OPTIONS [5,10,25,50,100].
+//   Old steps [25,50,75,100] meant loadMore() skipped the user's chosen
+//   starting radius (e.g. 10mi) and jumped straight to 50mi.
+//
+// FIX 3 — loadMore() tracks the last used radius directly (lastRadiusRef)
+//   and expands to the next step in RADIUS_STEPS regardless of what the
+//   user picked as their starting point.
+//
+// FIX 4 — useSuggestedPhysicians accepts excludeNpis as a string[] but the
+//   caller (PhysicianPanel) now passes a stable memoised value so the
+//   useEffect dep does not change on every parent render.
 
 "use client";
 
@@ -17,10 +34,12 @@ import type {
   SelectedSite,
 } from "@/types/physician";
 
-export const PAGE_SIZE = 10;
+export const PAGE_SIZE           = 10;
 export const SUGGESTED_PAGE_SIZE = 5;
 
-const RADIUS_STEPS = [25, 50, 75, 100];
+// Must match RADIUS_OPTIONS in PhysicianPanel exactly
+export const RADIUS_STEPS = [5, 10, 25, 50, 100] as const;
+type RadiusStep = typeof RADIUS_STEPS[number];
 
 // ── Shared state shape ────────────────────────────────────────────────────────
 
@@ -50,54 +69,44 @@ const INITIAL: PhysicianState = {
   searchSpecialties: [],
 };
 
+function nextRadius(current: number): number | null {
+  const idx = RADIUS_STEPS.indexOf(current as RadiusStep);
+  if (idx >= 0 && idx < RADIUS_STEPS.length - 1) return RADIUS_STEPS[idx + 1];
+  // If current isn't in the array (e.g. 75), find the next step above it
+  const above = RADIUS_STEPS.find((r) => r > current);
+  return above ?? null;
+}
+
 // ── usePhysicians ─────────────────────────────────────────────────────────────
-// Main physician list — user search criteria drive the specialties.
-// Trial condition is only used as a fallback when the user hasn't entered
-// any specialty, which matches the updated /search backend priority.
 
 export function usePhysicians() {
   const [state, setState] = useState<PhysicianState>(INITIAL);
   const abortRef          = useRef<AbortController | null>(null);
-
-  const initialSpecialtyRef = useRef<string | undefined>(undefined);
-  const lastParamsRef       = useRef<PhysicianSearchParams | null>(null);
-  const lastSiteRef         = useRef<SelectedSite | null>(null);
-  const radiusStepRef       = useRef<number>(0);
+  const lastParamsRef     = useRef<PhysicianSearchParams | null>(null);
+  const lastRadiusRef     = useRef<number>(25);
 
   const search = useCallback(async (
     site:              SelectedSite,
-    radius:            number  = 25,
-    specialty?:        string,   // trial condition — fallback only
-    userSpecialty?:    string,   // user-typed specialty — primary
-    initialSpecialty?: string,   // pinned from first search
+    radius:            number,
+    specialty?:        string,   // raw trial condition — used only when no resolved specialty
+    userSpecialty?:    string,   // user-typed specialty — highest priority
+    initialSpecialty?: string,   // pre-resolved NUCC names from getConditionSpecialties()
   ) => {
     abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+    const controller      = new AbortController();
+    abortRef.current      = controller;
+    lastRadiusRef.current = radius;
 
-    if (!initialSpecialtyRef.current) {
-      const first = (initialSpecialty ?? userSpecialty ?? specialty ?? "").trim();
-      if (first) initialSpecialtyRef.current = first;
-    }
-
-    radiusStepRef.current = RADIUS_STEPS.indexOf(radius);
-    if (radiusStepRef.current === -1) radiusStepRef.current = 0;
-
-    lastSiteRef.current = site;
-
-    // The /search endpoint now prioritises initial_specialty + user_specialty
-    // over specialty (trial condition). Only pass specialty as a fallback when
-    // there is genuinely no user-provided specialty so the list stays relevant.
-    const hasUserSpecialty = !!(initialSpecialtyRef.current?.trim() || userSpecialty?.trim());
+    // Send raw trial condition only when the caller has no better resolved name
+    const hasResolved = !!(initialSpecialty?.trim() || userSpecialty?.trim());
 
     const params: PhysicianSearchParams = {
       lat:    site.lat,
       lng:    site.lng,
       radius,
-      // Only send trial condition as specialty when user hasn't provided one
-      ...(!hasUserSpecialty && specialty?.trim() ? { specialty: specialty.trim() } : {}),
-      ...(initialSpecialtyRef.current?.trim()    ? { initial_specialty: initialSpecialtyRef.current.trim() } : {}),
-      ...(userSpecialty?.trim()                  ? { user_specialty:    userSpecialty.trim()               } : {}),
+      ...(!hasResolved && specialty?.trim()     ? { specialty:         specialty.trim()         } : {}),
+      ...(initialSpecialty?.trim()              ? { initial_specialty: initialSpecialty.trim()  } : {}),
+      ...(userSpecialty?.trim()                 ? { user_specialty:    userSpecialty.trim()     } : {}),
     };
     lastParamsRef.current = params;
 
@@ -107,8 +116,8 @@ export function usePhysicians() {
       const result = await fetchPhysicians(params, controller.signal);
       if (controller.signal.aborted) return;
 
-      const returned = result.physicians.length;
-      const hasMore  = result.total > returned || radiusStepRef.current < RADIUS_STEPS.length - 1;
+      const more = nextRadius(radius);
+      const hasMore = result.total > result.physicians.length || more !== null;
 
       setState({
         allPhysicians:     result.physicians,
@@ -134,19 +143,18 @@ export function usePhysicians() {
   }, []);
 
   const loadMore = useCallback(async () => {
-    const site       = lastSiteRef.current;
     const prevParams = lastParamsRef.current;
-    if (!site || !prevParams || state.loading) return;
+    if (!prevParams || state.loading) return;
 
-    const nextStepIdx = Math.min(radiusStepRef.current + 1, RADIUS_STEPS.length - 1);
-    const nextRadius  = RADIUS_STEPS[nextStepIdx];
-    radiusStepRef.current = nextStepIdx;
+    const next = nextRadius(lastRadiusRef.current);
+    if (next === null) return; // already at max radius
 
     abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+    const controller      = new AbortController();
+    abortRef.current      = controller;
+    lastRadiusRef.current = next;
 
-    const params: PhysicianSearchParams = { ...prevParams, radius: nextRadius };
+    const params: PhysicianSearchParams = { ...prevParams, radius: next };
     lastParamsRef.current = params;
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -155,13 +163,13 @@ export function usePhysicians() {
       const result = await fetchPhysicians(params, controller.signal);
       if (controller.signal.aborted) return;
 
-      const returned   = result.physicians.length;
-      const hasMore    = (result.total > returned) || (nextStepIdx < RADIUS_STEPS.length - 1);
+      const more    = nextRadius(next);
+      const hasMore = result.total > result.physicians.length || more !== null;
 
       setState((prev) => {
         const existingNpis = new Set(prev.allPhysicians.map((p) => p.npi));
-        const newOnes  = result.physicians.filter((p) => !existingNpis.has(p.npi));
-        const merged   = [...prev.allPhysicians, ...newOnes];
+        const newOnes      = result.physicians.filter((p) => !existingNpis.has(p.npi));
+        const merged       = [...prev.allPhysicians, ...newOnes];
         return {
           ...prev,
           allPhysicians:     merged,
@@ -187,10 +195,8 @@ export function usePhysicians() {
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
-    initialSpecialtyRef.current = undefined;
-    lastParamsRef.current       = null;
-    lastSiteRef.current         = null;
-    radiusStepRef.current       = 0;
+    lastParamsRef.current = null;
+    lastRadiusRef.current = 25;
     setState(INITIAL);
   }, []);
 
@@ -198,28 +204,23 @@ export function usePhysicians() {
 }
 
 // ── useSuggestedPhysicians ────────────────────────────────────────────────────
-// Suggested physicians — driven exclusively by the trial condition.
-// Call `fetch()` with the site, condition, and the main list NPIs to exclude.
-// `loadMore` expands the radius just like usePhysicians.
 
 export function useSuggestedPhysicians() {
   const [state, setState] = useState<PhysicianState>(INITIAL);
   const abortRef          = useRef<AbortController | null>(null);
   const lastParamsRef     = useRef<SuggestedPhysicianParams | null>(null);
-  const radiusStepRef     = useRef<number>(0);
+  const lastRadiusRef     = useRef<number>(25);
 
   const fetch = useCallback(async (
     site:        SelectedSite,
-    radius:      number   = 25,
+    radius:      number,
     condition?:  string,
     excludeNpis: string[] = [],
   ) => {
     abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    radiusStepRef.current = RADIUS_STEPS.indexOf(radius);
-    if (radiusStepRef.current === -1) radiusStepRef.current = 0;
+    const controller      = new AbortController();
+    abortRef.current      = controller;
+    lastRadiusRef.current = radius;
 
     const params: SuggestedPhysicianParams = {
       lat:          site.lat,
@@ -236,8 +237,8 @@ export function useSuggestedPhysicians() {
       const result = await fetchSuggestedPhysicians(params, controller.signal);
       if (controller.signal.aborted) return;
 
-      const returned = result.physicians.length;
-      const hasMore  = result.total > returned || radiusStepRef.current < RADIUS_STEPS.length - 1;
+      const more    = nextRadius(radius);
+      const hasMore = result.total > result.physicians.length || more !== null;
 
       setState({
         allPhysicians:     result.physicians,
@@ -266,15 +267,15 @@ export function useSuggestedPhysicians() {
     const prevParams = lastParamsRef.current;
     if (!prevParams || state.loading) return;
 
-    const nextStepIdx = Math.min(radiusStepRef.current + 1, RADIUS_STEPS.length - 1);
-    const nextRadius  = RADIUS_STEPS[nextStepIdx];
-    radiusStepRef.current = nextStepIdx;
+    const next = nextRadius(lastRadiusRef.current);
+    if (next === null) return;
 
     abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+    const controller      = new AbortController();
+    abortRef.current      = controller;
+    lastRadiusRef.current = next;
 
-    const params: SuggestedPhysicianParams = { ...prevParams, radius: nextRadius };
+    const params: SuggestedPhysicianParams = { ...prevParams, radius: next };
     lastParamsRef.current = params;
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -283,13 +284,13 @@ export function useSuggestedPhysicians() {
       const result = await fetchSuggestedPhysicians(params, controller.signal);
       if (controller.signal.aborted) return;
 
-      const returned = result.physicians.length;
-      const hasMore  = (result.total > returned) || (nextStepIdx < RADIUS_STEPS.length - 1);
+      const more    = nextRadius(next);
+      const hasMore = result.total > result.physicians.length || more !== null;
 
       setState((prev) => {
         const existingNpis = new Set(prev.allPhysicians.map((p) => p.npi));
-        const newOnes  = result.physicians.filter((p) => !existingNpis.has(p.npi));
-        const merged   = [...prev.allPhysicians, ...newOnes];
+        const newOnes      = result.physicians.filter((p) => !existingNpis.has(p.npi));
+        const merged       = [...prev.allPhysicians, ...newOnes];
         return {
           ...prev,
           allPhysicians:     merged,
@@ -316,7 +317,7 @@ export function useSuggestedPhysicians() {
   const reset = useCallback(() => {
     abortRef.current?.abort();
     lastParamsRef.current = null;
-    radiusStepRef.current = 0;
+    lastRadiusRef.current = 25;
     setState(INITIAL);
   }, []);
 

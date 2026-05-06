@@ -13,6 +13,9 @@ v5: Added 200+ missing clinical-trial condition keys (metastatic/castrate-resist
     Added _ALWAYS_ONCOLOGY_PREFIXES guard so conditions starting with "metastatic",
     "advanced", "recurrent", "refractory", "relapsed" default to Medical Oncology
     instead of falling through to a generic key.
+v6: Pass 3 now deprioritises generic staging/status modifier words (e.g. "recurrent",
+    "metastatic") so specific disease keys (e.g. "glioma", "sarcoma") always win
+    when both appear in the condition string.
 """
 
 import csv
@@ -825,6 +828,18 @@ _ONCOLOGY_MODIFIER_PREFIXES = (
     "stage iv", "stage 4", "stage iii", "stage 3",
 )
 
+# ─────────────────────────────────────────────
+#  PASS 3 GENERIC MODIFIER SET
+#  Generic staging/status modifiers — valid keys but should only win as last
+#  resort when no specific disease key is present in the condition string.
+#  The modifier set mirrors _ONCOLOGY_MODIFIER_PREFIXES above.
+# ─────────────────────────────────────────────
+_PASS3_GENERIC_MODIFIERS: frozenset = frozenset({
+    "metastatic", "advanced", "recurrent", "refractory",
+    "relapsed", "unresectable", "inoperable", "locally advanced",
+    "stage iv", "stage 4", "stage iii", "stage 3",
+})
+
 
 # ─────────────────────────────────────────────
 #  SEED TAXONOMY
@@ -1025,8 +1040,10 @@ def _condition_map_lookup(q: str) -> Optional[List[str]]:
 
       1. Exact match
       2. Prefix match (q starts with a known key)
-      3. Substring key match — LONGEST matching key wins
-         (prevents "metastatic" from beating "metastatic prostate cancer")
+      3. Substring key match — LONGEST non-modifier key wins; falls back to
+         longest modifier key only if no specific disease key matched.
+         (Fix: prevents "recurrent" from beating "glioma" in
+          "Recurrent High-Grade Glioma")
       4. Token overlap — meaningful tokens in q match start of a key
 
     After all passes, if nothing matched but the condition starts with a known
@@ -1046,11 +1063,15 @@ def _condition_map_lookup(q: str) -> Optional[List[str]]:
     if prefix_candidates:
         return CONDITION_MAP[max(prefix_candidates, key=len)]
 
-    # Pass 3: a map key is a substring of q — prefer the most specific (longest) key
+    # Pass 3: a map key is a substring of q — prefer specific disease keys
+    # over generic staging/status modifiers.
     if len(q_lower) >= 4:
         contained = [k for k in CONDITION_MAP if len(k) >= 4 and k in q_lower]
         if contained:
-            return CONDITION_MAP[max(contained, key=len)]
+            # Prefer non-modifier (disease-specific) keys first
+            specific = [k for k in contained if k not in _PASS3_GENERIC_MODIFIERS]
+            best_key = max(specific, key=len) if specific else max(contained, key=len)
+            return CONDITION_MAP[best_key]
 
     # Pass 4: token overlap — any word (≥4 chars) in q matches the start of a key
     tokens = [t for t in q_lower.split() if len(t) >= 4]

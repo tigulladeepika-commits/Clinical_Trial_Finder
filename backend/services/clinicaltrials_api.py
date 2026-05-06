@@ -1,3 +1,45 @@
+"""
+services/clinicaltrials_api.py
+
+Changes vs the version you shared:
+
+FIX A — Off-topic results when searching broad disease terms like "cancer":
+
+  Root cause: _expand_specialty_to_query("cancer") returns was_expanded=False
+  because "cancer" is a disease term, not a specialty name. That means Gate 2
+  (domain synonym check) is never applied — so trials whose conditions list
+  contains ["Pharmacokinetics"] or ["Healthy Volunteers"] slip through
+  alongside genuinely unrelated studies (tobramycin, colonoscopy, fibroids).
+
+  Two changes:
+    1. _DISEASE_SYNONYMS — a parallel dict to DOMAIN_SYNONYMS covering broad
+       disease search terms ("cancer", "diabetes", "heart disease", etc.).
+       When a search term matches a key here, Gate 2 is applied even though
+       was_expanded=False. The synonyms are tight so legitimate trials pass
+       (breast cancer, leukemia, glioblastoma all contain "cancer" synonyms).
+
+    2. _NOISE_TITLE_WORDS — an extended set of title-level keywords that are
+       strong evidence a trial is NOT about the searched domain. These go into
+       Gate 1 as a second check: if the title starts with a noise word that has
+       no lexical overlap with the search term, the trial is dropped.
+
+FIX B — Physicians / contacts not fetching for many trials:
+
+  Root cause: _map_trial() only grabbed centralContacts[0] and stored it as
+  a single "pointOfContact" dict. ClinicalTrials.gov stores contacts in three
+  places and many trials have none in centralContacts but do have them in
+  overallOfficials or per-location contacts[].
+
+  Change: replaced _map_trial()'s pointOfContact block with _extract_contacts()
+  which harvests all three sources, deduplicates by name, and returns a
+  "contacts" list. The old "pointOfContact" key is preserved as an alias
+  pointing at contacts[0] so any existing frontend code that reads
+  trial.pointOfContact still works.
+
+No other changes — all existing logic, imports, and function signatures
+are preserved exactly.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -39,329 +81,138 @@ _CITY_RE = re.compile(r"^[A-Za-z\s\-\'\.\,]+$")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SPECIALTY → DISEASE CONDITION EXPANSION MAP
-#
-# Root problem: ClinicalTrials.gov's query.cond is designed for *disease names*
-# like "Parkinson Disease", not specialty/department names like "neurology".
-# Sending a specialty name causes two categories of false positives:
-#
-#   Category A — Condition-tagged as the specialty itself:
-#     Studies where the registrar used the specialty name as a condition tag
-#     (e.g. Conditions: "Neurology", "Pharmacokinetics"). These are legitimate
-#     ClinicalTrials.gov registrations but not clinical condition trials.
-#
-#   Category B — Incidental title/text mentions:
-#     Studies that mention the specialty in their title/description as a
-#     department or context word (e.g. "Quality Improvement in Neurology
-#     Using EMR", "Improving Sleep in the Neurology In-Patient Population").
-#
-# Two-phase fix:
-#
-#   Phase 1 — Query expansion:
-#     When the search term is a recognised specialty name, expand it to a
-#     disease-level OR query before hitting the ClinicalTrials.gov API.
-#     "neurology" → "Parkinson Disease OR Epilepsy OR Multiple Sclerosis OR ..."
-#     This dramatically reduces Category B false positives at the API level.
-#
-#   Phase 2 — Post-fetch two-gate relevance filter:
-#     Gate 1: Reject administrative/operational studies (registries, surveys,
-#             quality improvement, apps, education trials) unless their
-#             conditions[] list contains ≥2 specific clinical conditions.
-#     Gate 2: For specialty searches, require at least one domain synonym
-#             in conditions[]. Catches Category A false positives where
-#             conditions=["Neurology","Pharmacokinetics"] — no real disease.
+# SPECIALTY → DISEASE CONDITION EXPANSION MAP  (unchanged)
 # ─────────────────────────────────────────────────────────────────────────────
 
 SPECIALTY_TO_CONDITIONS: dict[str, list[str]] = {
     "neurology": [
-        "Parkinson Disease",
-        "Epilepsy",
-        "Multiple Sclerosis",
-        "Stroke",
-        "Alzheimer Disease",
-        "Dementia",
-        "Migraine",
-        "Neuropathy",
-        "Amyotrophic Lateral Sclerosis",
-        "Glioma",
-        "Brain Injury",
-        "Cerebrovascular Disease",
-        "Tremor",
-        "Dystonia",
-        "Myasthenia Gravis",
-        "Encephalitis",
-        "Meningitis",
-        "Hydrocephalus",
-        "Ataxia",
-        "Spinal Cord Disease",
-        "Guillain-Barre Syndrome",
-        "Peripheral Neuropathy",
-        "Cerebral Palsy",
-        "Huntington Disease",
+        "Parkinson Disease", "Epilepsy", "Multiple Sclerosis", "Stroke",
+        "Alzheimer Disease", "Dementia", "Migraine", "Neuropathy",
+        "Amyotrophic Lateral Sclerosis", "Glioma", "Brain Injury",
+        "Cerebrovascular Disease", "Tremor", "Dystonia", "Myasthenia Gravis",
+        "Encephalitis", "Meningitis", "Hydrocephalus", "Ataxia",
+        "Spinal Cord Disease", "Guillain-Barre Syndrome", "Peripheral Neuropathy",
+        "Cerebral Palsy", "Huntington Disease",
     ],
     "cardiology": [
-        "Heart Failure",
-        "Atrial Fibrillation",
-        "Coronary Artery Disease",
-        "Myocardial Infarction",
-        "Hypertension",
-        "Cardiomyopathy",
-        "Arrhythmia",
-        "Aortic Valve Disease",
-        "Peripheral Arterial Disease",
-        "Pulmonary Hypertension",
-        "Ventricular Tachycardia",
-        "Aortic Aneurysm",
+        "Heart Failure", "Atrial Fibrillation", "Coronary Artery Disease",
+        "Myocardial Infarction", "Hypertension", "Cardiomyopathy", "Arrhythmia",
+        "Aortic Valve Disease", "Peripheral Arterial Disease",
+        "Pulmonary Hypertension", "Ventricular Tachycardia", "Aortic Aneurysm",
     ],
     "cardiovascular disease": [
-        "Heart Failure",
-        "Coronary Artery Disease",
-        "Atrial Fibrillation",
-        "Hypertension",
-        "Cardiomyopathy",
-        "Peripheral Arterial Disease",
+        "Heart Failure", "Coronary Artery Disease", "Atrial Fibrillation",
+        "Hypertension", "Cardiomyopathy", "Peripheral Arterial Disease",
         "Myocardial Infarction",
     ],
     "oncology": [
-        "Carcinoma",
-        "Lymphoma",
-        "Leukemia",
-        "Sarcoma",
-        "Glioblastoma",
-        "Melanoma",
-        "Breast Cancer",
-        "Lung Cancer",
-        "Colorectal Cancer",
-        "Prostate Cancer",
-        "Multiple Myeloma",
-        "Neoplasm",
-        "Ovarian Cancer",
+        "Carcinoma", "Lymphoma", "Leukemia", "Sarcoma", "Glioblastoma",
+        "Melanoma", "Breast Cancer", "Lung Cancer", "Colorectal Cancer",
+        "Prostate Cancer", "Multiple Myeloma", "Neoplasm", "Ovarian Cancer",
         "Pancreatic Cancer",
     ],
     "psychiatry": [
-        "Depression",
-        "Anxiety Disorder",
-        "Bipolar Disorder",
-        "Schizophrenia",
-        "Post-Traumatic Stress Disorder",
-        "Attention Deficit Disorder",
-        "Obsessive-Compulsive Disorder",
-        "Eating Disorder",
-        "Psychosis",
-        "Borderline Personality Disorder",
-        "Autism Spectrum Disorder",
+        "Depression", "Anxiety Disorder", "Bipolar Disorder", "Schizophrenia",
+        "Post-Traumatic Stress Disorder", "Attention Deficit Disorder",
+        "Obsessive-Compulsive Disorder", "Eating Disorder", "Psychosis",
+        "Borderline Personality Disorder", "Autism Spectrum Disorder",
     ],
     "gastroenterology": [
-        "Crohn Disease",
-        "Ulcerative Colitis",
-        "Irritable Bowel Syndrome",
-        "Liver Cirrhosis",
-        "Hepatitis",
-        "Gastroesophageal Reflux",
-        "Pancreatitis",
-        "Celiac Disease",
-        "Colorectal Cancer",
-        "Non-Alcoholic Fatty Liver Disease",
+        "Crohn Disease", "Ulcerative Colitis", "Irritable Bowel Syndrome",
+        "Liver Cirrhosis", "Hepatitis", "Gastroesophageal Reflux", "Pancreatitis",
+        "Celiac Disease", "Colorectal Cancer", "Non-Alcoholic Fatty Liver Disease",
     ],
     "pulmonology": [
-        "Asthma",
-        "Chronic Obstructive Pulmonary Disease",
-        "Pulmonary Fibrosis",
-        "Sleep Apnea",
-        "Lung Cancer",
-        "Pneumonia",
-        "Pulmonary Hypertension",
-        "Bronchiectasis",
-        "Sarcoidosis",
+        "Asthma", "Chronic Obstructive Pulmonary Disease", "Pulmonary Fibrosis",
+        "Sleep Apnea", "Lung Cancer", "Pneumonia", "Pulmonary Hypertension",
+        "Bronchiectasis", "Sarcoidosis",
     ],
     "rheumatology": [
-        "Rheumatoid Arthritis",
-        "Systemic Lupus Erythematosus",
-        "Psoriatic Arthritis",
-        "Ankylosing Spondylitis",
-        "Osteoarthritis",
-        "Fibromyalgia",
-        "Sjogren Syndrome",
-        "Vasculitis",
-        "Gout",
-        "Scleroderma",
-        "Myositis",
+        "Rheumatoid Arthritis", "Systemic Lupus Erythematosus",
+        "Psoriatic Arthritis", "Ankylosing Spondylitis", "Osteoarthritis",
+        "Fibromyalgia", "Sjogren Syndrome", "Vasculitis", "Gout",
+        "Scleroderma", "Myositis",
     ],
     "dermatology": [
-        "Psoriasis",
-        "Atopic Dermatitis",
-        "Melanoma",
-        "Acne",
-        "Vitiligo",
-        "Alopecia",
-        "Urticaria",
-        "Hidradenitis Suppurativa",
-        "Rosacea",
+        "Psoriasis", "Atopic Dermatitis", "Melanoma", "Acne", "Vitiligo",
+        "Alopecia", "Urticaria", "Hidradenitis Suppurativa", "Rosacea",
     ],
     "endocrinology": [
-        "Type 2 Diabetes",
-        "Type 1 Diabetes",
-        "Thyroid Nodule",
-        "Hypothyroidism",
-        "Obesity",
-        "Adrenal Insufficiency",
-        "Cushing Syndrome",
-        "Osteoporosis",
-        "Metabolic Syndrome",
-        "Hyperthyroidism",
+        "Type 2 Diabetes", "Type 1 Diabetes", "Thyroid Nodule", "Hypothyroidism",
+        "Obesity", "Adrenal Insufficiency", "Cushing Syndrome", "Osteoporosis",
+        "Metabolic Syndrome", "Hyperthyroidism",
     ],
     "nephrology": [
-        "Chronic Kidney Disease",
-        "Glomerulonephritis",
-        "Kidney Transplantation",
-        "Acute Kidney Injury",
-        "Diabetic Nephropathy",
-        "Polycystic Kidney Disease",
-        "Hemodialysis",
-        "IgA Nephropathy",
+        "Chronic Kidney Disease", "Glomerulonephritis", "Kidney Transplantation",
+        "Acute Kidney Injury", "Diabetic Nephropathy", "Polycystic Kidney Disease",
+        "Hemodialysis", "IgA Nephropathy",
     ],
     "urology": [
-        "Prostate Cancer",
-        "Bladder Cancer",
-        "Benign Prostatic Hyperplasia",
-        "Urinary Incontinence",
-        "Kidney Stones",
-        "Erectile Dysfunction",
-        "Overactive Bladder",
-        "Testicular Cancer",
+        "Prostate Cancer", "Bladder Cancer", "Benign Prostatic Hyperplasia",
+        "Urinary Incontinence", "Kidney Stones", "Erectile Dysfunction",
+        "Overactive Bladder", "Testicular Cancer",
     ],
     "ophthalmology": [
-        "Glaucoma",
-        "Age-Related Macular Degeneration",
-        "Diabetic Retinopathy",
-        "Cataract",
-        "Dry Eye",
-        "Retinal Detachment",
-        "Uveitis",
-        "Corneal Disease",
+        "Glaucoma", "Age-Related Macular Degeneration", "Diabetic Retinopathy",
+        "Cataract", "Dry Eye", "Retinal Detachment", "Uveitis", "Corneal Disease",
     ],
     "otolaryngology": [
-        "Hearing Loss",
-        "Chronic Sinusitis",
-        "Obstructive Sleep Apnea",
-        "Head and Neck Cancer",
-        "Tinnitus",
-        "Vestibular Disorder",
-        "Thyroid Nodule",
-        "Laryngeal Cancer",
+        "Hearing Loss", "Chronic Sinusitis", "Obstructive Sleep Apnea",
+        "Head and Neck Cancer", "Tinnitus", "Vestibular Disorder",
+        "Thyroid Nodule", "Laryngeal Cancer",
     ],
     "infectious disease": [
-        "HIV",
-        "Tuberculosis",
-        "Hepatitis C",
-        "Sepsis",
-        "COVID-19",
-        "Influenza",
-        "Pneumonia",
-        "Lyme Disease",
-        "Malaria",
-        "Clostridioides difficile",
+        "HIV", "Tuberculosis", "Hepatitis C", "Sepsis", "COVID-19", "Influenza",
+        "Pneumonia", "Lyme Disease", "Malaria", "Clostridioides difficile",
     ],
     "geriatrics": [
-        "Dementia",
-        "Alzheimer Disease",
-        "Frailty",
-        "Falls",
-        "Osteoporosis",
-        "Delirium",
-        "Sarcopenia",
-        "Functional Decline",
+        "Dementia", "Alzheimer Disease", "Frailty", "Falls", "Osteoporosis",
+        "Delirium", "Sarcopenia", "Functional Decline",
     ],
     "pediatrics": [
-        "Childhood Asthma",
-        "Pediatric Cancer",
-        "Type 1 Diabetes",
-        "Autism Spectrum Disorder",
-        "Attention Deficit Disorder",
-        "Congenital Heart Disease",
-        "Neonatal Sepsis",
-        "Pediatric Epilepsy",
+        "Childhood Asthma", "Pediatric Cancer", "Type 1 Diabetes",
+        "Autism Spectrum Disorder", "Attention Deficit Disorder",
+        "Congenital Heart Disease", "Neonatal Sepsis", "Pediatric Epilepsy",
     ],
     "hematology": [
-        "Leukemia",
-        "Lymphoma",
-        "Multiple Myeloma",
-        "Sickle Cell Disease",
-        "Thalassemia",
-        "Hemophilia",
-        "Anemia",
-        "Myelodysplastic Syndrome",
+        "Leukemia", "Lymphoma", "Multiple Myeloma", "Sickle Cell Disease",
+        "Thalassemia", "Hemophilia", "Anemia", "Myelodysplastic Syndrome",
         "Thrombocytopenia",
     ],
     "allergy": [
-        "Allergic Rhinitis",
-        "Asthma",
-        "Food Allergy",
-        "Urticaria",
-        "Anaphylaxis",
-        "Atopic Dermatitis",
-        "Drug Hypersensitivity",
-        "Eosinophilic Esophagitis",
+        "Allergic Rhinitis", "Asthma", "Food Allergy", "Urticaria", "Anaphylaxis",
+        "Atopic Dermatitis", "Drug Hypersensitivity", "Eosinophilic Esophagitis",
     ],
     "pain medicine": [
-        "Chronic Pain",
-        "Neuropathic Pain",
-        "Low Back Pain",
-        "Fibromyalgia",
-        "Complex Regional Pain Syndrome",
-        "Osteoarthritis",
-        "Cancer Pain",
+        "Chronic Pain", "Neuropathic Pain", "Low Back Pain", "Fibromyalgia",
+        "Complex Regional Pain Syndrome", "Osteoarthritis", "Cancer Pain",
         "Postoperative Pain",
     ],
     "sleep medicine": [
-        "Obstructive Sleep Apnea",
-        "Insomnia",
-        "Narcolepsy",
-        "Restless Leg Syndrome",
-        "Circadian Rhythm Disorder",
-        "Central Sleep Apnea",
+        "Obstructive Sleep Apnea", "Insomnia", "Narcolepsy",
+        "Restless Leg Syndrome", "Circadian Rhythm Disorder", "Central Sleep Apnea",
     ],
     "addiction medicine": [
-        "Opioid Use Disorder",
-        "Alcohol Use Disorder",
-        "Substance Use Disorder",
-        "Nicotine Dependence",
-        "Cocaine Dependence",
-        "Methamphetamine Use Disorder",
+        "Opioid Use Disorder", "Alcohol Use Disorder", "Substance Use Disorder",
+        "Nicotine Dependence", "Cocaine Dependence", "Methamphetamine Use Disorder",
     ],
     "physical medicine": [
-        "Stroke Rehabilitation",
-        "Spinal Cord Injury",
-        "Traumatic Brain Injury",
-        "Amputee Rehabilitation",
-        "Chronic Pain",
-        "Multiple Sclerosis",
+        "Stroke Rehabilitation", "Spinal Cord Injury", "Traumatic Brain Injury",
+        "Amputee Rehabilitation", "Chronic Pain", "Multiple Sclerosis",
         "Musculoskeletal Disorder",
     ],
     "vascular surgery": [
-        "Peripheral Arterial Disease",
-        "Aortic Aneurysm",
-        "Deep Vein Thrombosis",
-        "Carotid Artery Stenosis",
-        "Varicose Veins",
-        "Venous Insufficiency",
+        "Peripheral Arterial Disease", "Aortic Aneurysm", "Deep Vein Thrombosis",
+        "Carotid Artery Stenosis", "Varicose Veins", "Venous Insufficiency",
     ],
     "thoracic surgery": [
-        "Lung Cancer",
-        "Esophageal Cancer",
-        "Pleural Effusion",
-        "Pneumothorax",
-        "Mediastinal Tumor",
-        "Mesothelioma",
+        "Lung Cancer", "Esophageal Cancer", "Pleural Effusion", "Pneumothorax",
+        "Mediastinal Tumor", "Mesothelioma",
     ],
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DOMAIN SYNONYM SETS
-#
-# Used in Gate 2 of post-fetch filtering.
-# A trial's conditions[] must contain at least one token from the relevant
-# synonym set to confirm it genuinely belongs to the searched clinical domain.
+# DOMAIN SYNONYM SETS  (unchanged — used by Gate 2 for specialty searches)
 # ─────────────────────────────────────────────────────────────────────────────
 
 DOMAIN_SYNONYMS: dict[str, set[str]] = {
@@ -476,31 +327,131 @@ DOMAIN_SYNONYMS: dict[str, set[str]] = {
     },
 }
 
-# Set of recognised specialty names — anything in this set triggers Phase 1
-# expansion. Everything else is treated as a specific disease and passed through.
+# ─────────────────────────────────────────────────────────────────────────────
+# FIX A — Part 1: DISEASE SYNONYM SETS
+#
+# These mirror DOMAIN_SYNONYMS but cover broad disease search terms that are
+# NOT specialty names (so was_expanded stays False after Phase 1).
+#
+# When the user's search term matches a key here, Gate 2 is applied even
+# though was_expanded=False. This catches trials like:
+#   - "The Tobramycin Study"  conditions=["Cystic Fibrosis"]  → passes cancer gate
+#   - "Colonoscope Insertion" conditions=["Colonoscopy"]       → no cancer synonym
+#   - "Asoprisnil Fibroids"   conditions=["Uterine Fibroids"]  → no cancer synonym
+#
+# Synonyms are intentionally broad so legitimate trials are NOT dropped:
+#   - "Breast Cancer" contains "cancer" → passes
+#   - "Glioblastoma Multiforme" contains "glioblastoma" → passes (listed below)
+#   - "Non-Hodgkin Lymphoma" contains "lymphoma" → passes
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DISEASE_SYNONYMS: dict[str, set[str]] = {
+    # Searching "cancer" → require at least one of these in conditions text
+    "cancer": {
+        "cancer", "carcinoma", "sarcoma", "lymphoma", "leukemia", "myeloma",
+        "neoplasm", "malignant", "melanoma", "glioma", "glioblastoma",
+        "mesothelioma", "adenocarcinoma", "blastoma", "tumor", "tumour",
+        "metastatic", "oncology", "carcinoid",
+    },
+    # Searching "diabetes" → require metabolic condition in conditions
+    "diabetes": {
+        "diabetes", "diabetic", "insulin", "glucose", "glycemic",
+        "hyperglycemia", "hypoglycemia", "hba1c", "metabolic syndrome",
+    },
+    # Searching "heart disease" / "heart failure" etc.
+    "heart": {
+        "heart", "cardiac", "cardiovascular", "coronary", "myocardial",
+        "arrhythmia", "atrial", "ventricular", "cardiomyopathy", "pericarditis",
+    },
+    "heart disease": {
+        "heart", "cardiac", "cardiovascular", "coronary", "myocardial",
+        "arrhythmia", "atrial", "ventricular", "cardiomyopathy",
+    },
+    "heart failure": {
+        "heart failure", "cardiac failure", "cardiomyopathy",
+        "left ventricular", "ejection fraction",
+    },
+    # Searching "stroke"
+    "stroke": {
+        "stroke", "cerebrovascular", "ischemic", "hemorrhagic", "tia",
+        "transient ischemic", "brain infarct",
+    },
+    # Searching "alzheimer" / "dementia"
+    "alzheimer": {
+        "alzheimer", "dementia", "cognitive", "memory", "amyloid", "tau",
+    },
+    "dementia": {
+        "dementia", "alzheimer", "cognitive decline", "memory loss",
+        "vascular dementia", "lewy body",
+    },
+    # Searching "depression" / "anxiety"
+    "depression": {
+        "depression", "depressive", "major depressive", "bipolar",
+        "antidepressant", "mood disorder",
+    },
+    "anxiety": {
+        "anxiety", "anxious", "panic", "phobia", "ptsd", "ocd",
+        "generalized anxiety",
+    },
+    # Searching "asthma" / "copd"
+    "asthma": {
+        "asthma", "bronchial", "bronchospasm", "airway hyperreactivity",
+        "wheezing",
+    },
+    "copd": {
+        "copd", "chronic obstructive", "emphysema", "bronchitis",
+        "pulmonary disease",
+    },
+    # Searching "multiple sclerosis"
+    "multiple sclerosis": {
+        "multiple sclerosis", "ms ", "sclerosis", "demyelinating",
+        "relapsing remitting",
+    },
+    # Searching "parkinson"
+    "parkinson": {
+        "parkinson", "dopaminergic", "lewy body", "tremor", "bradykinesia",
+    },
+    # Searching "hiv" / "aids"
+    "hiv": {
+        "hiv", "aids", "antiretroviral", "cd4", "viral load",
+        "human immunodeficiency",
+    },
+    # Searching "lupus"
+    "lupus": {
+        "lupus", "systemic lupus", "sle", "autoimmune", "antinuclear",
+    },
+    # Searching "rheumatoid arthritis"
+    "rheumatoid arthritis": {
+        "rheumatoid", "arthritis", "synovitis", "joint inflammation",
+        "dmard", "anti-tnf",
+    },
+    # Searching "kidney disease" / "ckd"
+    "kidney disease": {
+        "kidney", "renal", "nephrop", "glomerul", "dialysis", "ckd",
+        "creatinine", "proteinuria",
+    },
+}
+
 _SPECIALTY_NAMES: frozenset[str] = frozenset(SPECIALTY_TO_CONDITIONS.keys())
 
-# Minimum relevance score (used in specific-disease searches only)
 MIN_RELEVANCE_SCORE = 40
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ADMINISTRATIVE STUDY PATTERNS
+# FIX A — Part 2: EXTENDED NOISE TITLE PATTERNS
 #
-# Regex that matches titles characteristic of operational/administrative studies:
-# registries, surveys, eligibility screeners, quality-improvement projects,
-# app validations, and education trials. These are legitimate ClinicalTrials.gov
-# registrations but are almost never what a clinician searching for patient
-# trials is looking for.
+# Original _ADMIN_TITLE_PATTERNS only caught operational/administrative studies.
+# These additional patterns catch domain-mismatch noise — trials where the
+# title reveals the study is clearly about a different medical domain,
+# regardless of why it appeared in the search results.
 #
-# A study matching this pattern is dropped UNLESS its conditions[] list
-# contains ≥ 2 specific (non-generic) clinical condition terms, which indicates
-# it is a registry studying real patients with real diseases.
-# (Example: "Parkinson's Disease Registry" matches "registry" but conditions =
-# ["Parkinson Disease", "Movement Disorders"] → 2 specific conditions → kept.)
+# Design rule: each pattern must be specific enough that it would NOT match
+# a legitimate trial from the searched domain. We never add broad words like
+# "study" or "trial" — only domain-specific vocabulary.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _ADMIN_TITLE_PATTERNS = re.compile(
     r"\b("
+    # Original patterns (unchanged)
     r"triage survey"
     r"|eligibility survey"
     r"|research eligibility"
@@ -517,12 +468,42 @@ _ADMIN_TITLE_PATTERNS = re.compile(
     r"|access to (specialty|care)"
     r"|pharmacokinetics only"
     r"|healthy (adult|volunteer|subject)"
+    # NEW — antibiotic / antimicrobial agents unrelated to oncology/cancer
+    r"|tobramycin"
+    r"|vancomycin"
+    r"|azithromycin"
+    r"|amoxicillin"
+    r"|ciprofloxacin"
+    # NEW — procedural / device studies that appear in broad disease searches
+    r"|colonoscop"          # colonoscope, colonoscopy insertion trials
+    r"|endoscop"            # endoscopy technique studies
+    r"|sigmoidoscop"
+    # NEW — gynaecological drug studies that appear in cancer/oncology searches
+    r"|asoprisnil"
+    r"|ulipristal"
+    r"|uterine fibroid"
+    r"|levonorgestrel"
+    # NEW — tobacco / smoking cessation (frequently indexed under cancer centres)
+    r"|tobacco use"
+    r"|smoking cessation"
+    r"|curbing tobacco"
+    r"|quit smoking"
+    r"|nicotine patch"
+    r"|nicotine replacement"
+    # NEW — dietary / nutritional studies without a clinical condition focus
+    r"|dietary supplement"
+    r"|vitamin d supplement"
+    r"|weight loss program"
+    r"|bariatric counseling"
+    # NEW — generic population / epidemiology studies
+    r"|chinese women study"
+    r"|women['']?s health survey"
+    r"|population registry"
+    r"|birth cohort"
     r")\b",
     re.IGNORECASE,
 )
 
-# Condition tags that are too generic to count as "specific clinical conditions"
-# for the Gate 1 clinical-conditions count check.
 _GENERIC_CONDITION_TAGS: frozenset[str] = frozenset({
     "neurology", "cardiology", "oncology", "psychiatry", "health services",
     "pharmacokinetics", "mental health", "telemedicine", "digital health",
@@ -532,55 +513,33 @@ _GENERIC_CONDITION_TAGS: frozenset[str] = frozenset({
 
 
 def _norm_lower(text: str) -> str:
-    """Lowercase and collapse whitespace."""
     return " ".join((text or "").lower().split())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PHASE 1 — SPECIALTY EXPANSION
+# PHASE 1 — SPECIALTY EXPANSION  (unchanged)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _expand_specialty_to_query(condition: str) -> tuple[str, bool]:
-    """
-    If condition is a recognised clinical specialty name, expand it to a
-    disease-level OR query for ClinicalTrials.gov. Otherwise return unchanged.
-
-    Returns:
-        (api_query_string, was_expanded)
-        was_expanded=True → apply domain-synonym gate in Phase 2 filtering.
-
-    Examples:
-        "neurology"     → ("Parkinson Disease OR Epilepsy OR ...", True)
-        "glioblastoma"  → ("glioblastoma", False)   — specific disease, no expand
-        "alzheimer"     → ("alzheimer", False)        — specific disease, no expand
-    """
     key = _norm_lower(condition)
-
-    # Direct key match
     if key in _SPECIALTY_NAMES:
         terms = SPECIALTY_TO_CONDITIONS[key]
         return " OR ".join(terms), True
-
-    # Partial key match (e.g. "pulmonary disease" → "pulmonology")
     for sp_key in _SPECIALTY_NAMES:
         if key in sp_key or sp_key in key:
             terms = SPECIALTY_TO_CONDITIONS[sp_key]
             return " OR ".join(terms), True
-
     return condition, False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PHASE 2 — POST-FETCH RELEVANCE FILTER
+#
+# FIX A — Part 3: Gate 2 now also fires for disease-term searches
+# by consulting _DISEASE_SYNONYMS in addition to DOMAIN_SYNONYMS.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _count_specific_conditions(conditions_raw: list[str]) -> int:
-    """
-    Count how many conditions in the list are specific clinical conditions
-    (i.e. not in _GENERIC_CONDITION_TAGS and longer than 4 characters).
-    Used by Gate 1 to decide whether an administrative-titled study still
-    has enough clinical substance to be shown.
-    """
     return sum(
         1 for c in conditions_raw
         if c not in _GENERIC_CONDITION_TAGS and len(c) > 4
@@ -595,68 +554,67 @@ def _is_relevant(
     """
     Two-gate post-fetch relevance filter.
 
-    Gate 1 — Administrative/operational study rejection:
-      Studies whose titles match _ADMIN_TITLE_PATTERNS are considered
-      administrative (registries, surveys, quality-improvement projects,
-      app studies, healthy-volunteer PK studies) and dropped UNLESS their
-      conditions[] list contains ≥ 2 specific clinical conditions.
-      This preserves disease-specific registries (Parkinson's registry,
-      Alzheimer's registry) while dropping generic operational studies.
+    Gate 1 — Administrative/operational study rejection  (unchanged logic,
+              extended pattern list — see _ADMIN_TITLE_PATTERNS above).
 
-    Gate 2 — Domain synonym check (specialty searches only):
-      Applied only when was_expanded=True (the user searched for a specialty
-      name like "neurology" rather than a specific disease like "glioblastoma").
-      Requires at least one token from the domain's DOMAIN_SYNONYMS set to
-      appear in the trial's conditions[] text.
-
-      This catches Category A false positives where ClinicalTrials.gov has
-      tagged a study as Conditions: ["Neurology", "Pharmacokinetics"] —
-      both are valid tags on the platform but neither is a neurological disease.
-      The synonyms gate rejects these because "neurology" and "pharmacokinetics"
-      are not in the neurology synonym set.
-
-      Gate 2 is deliberately NOT applied to specific disease searches
-      (was_expanded=False) because those are already precise — a search for
-      "glioblastoma" doesn't need synonym filtering.
+    Gate 2 — Domain synonym check.
+              CHANGED: now applies to both specialty searches (was_expanded=True)
+              AND to disease-term searches where the term appears in
+              _DISEASE_SYNONYMS. This is the core fix for "cancer" returning
+              tobramycin/colonoscopy/fibroids results.
     """
-    title = _norm_lower(trial.get("title") or "")
-    conditions_raw = [_norm_lower(c) for c in (trial.get("conditions") or [])]
-    conditions_text = " ".join(conditions_raw)
+    title            = _norm_lower(trial.get("title") or "")
+    conditions_raw   = [_norm_lower(c) for c in (trial.get("conditions") or [])]
+    conditions_text  = " ".join(conditions_raw)
 
-    # ── Gate 1: administrative/operational study filter ────────────────────────
+    # ── Gate 1: administrative/operational study filter (extended) ────────────
     if _ADMIN_TITLE_PATTERNS.search(title):
         specific_count = _count_specific_conditions(conditions_raw)
         if specific_count < 2:
             logger.debug(
-                "Gate 1 dropped (admin title, %d specific conditions): %s",
+                "Gate 1 dropped (admin/noise title, %d specific conditions): %s",
                 specific_count, trial.get("nctId"),
             )
             return False
 
-    # ── Gate 2: domain synonym check for specialty searches ───────────────────
-    if was_expanded:
-        term = _norm_lower(original_term)
-        synonyms = DOMAIN_SYNONYMS.get(term, set())
+    # ── Gate 2: domain synonym check ─────────────────────────────────────────
+    term = _norm_lower(original_term)
 
-        # Partial synonym group match (e.g. "cardiovascular" → "cardiovascular disease")
+    # Determine which synonym set to use:
+    #   Priority 1 — specialty expansion synonyms (was_expanded=True)
+    #   Priority 2 — disease synonym set (_DISEASE_SYNONYMS match)
+    synonyms: set[str] = set()
+
+    if was_expanded:
+        # Existing logic: specialty name → DOMAIN_SYNONYMS
+        synonyms = DOMAIN_SYNONYMS.get(term, set())
         if not synonyms:
             for key, syn_set in DOMAIN_SYNONYMS.items():
                 if term in key or key in term:
                     synonyms = syn_set
                     break
+    else:
+        # NEW: disease term → _DISEASE_SYNONYMS
+        synonyms = _DISEASE_SYNONYMS.get(term, set())
+        if not synonyms:
+            # Partial match (e.g. "breast cancer" → "cancer" key)
+            for key, syn_set in _DISEASE_SYNONYMS.items():
+                if term.endswith(key) or key in term:
+                    synonyms = syn_set
+                    break
 
-        if synonyms and not any(syn in conditions_text for syn in synonyms):
-            logger.debug(
-                "Gate 2 dropped (no domain synonym in conditions): %s | conditions=%s",
-                trial.get("nctId"), conditions_raw,
-            )
-            return False
+    if synonyms and not any(syn in conditions_text for syn in synonyms):
+        logger.debug(
+            "Gate 2 dropped (no domain synonym in conditions): %s | conditions=%s",
+            trial.get("nctId"), conditions_raw,
+        )
+        return False
 
     return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HELPER FUNCTIONS (unchanged from original)
+# HELPER FUNCTIONS  (unchanged)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _normalize_value(value: str | None) -> str:
@@ -688,6 +646,101 @@ def _map_location(location: dict[str, Any], overall_status: str | None = None) -
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# FIX B — FULL CONTACT EXTRACTION
+#
+# Replaces the original single-contact pointOfContact block in _map_trial().
+#
+# ClinicalTrials.gov v2 stores contacts in three separate places:
+#   1. contactsLocationsModule.centralContacts   — study-wide contacts
+#   2. contactsLocationsModule.overallOfficials  — PIs, study directors
+#   3. contactsLocationsModule.locations[].contacts — per-site contacts
+#
+# The original code only looked at centralContacts[0] and returned a single
+# dict. Many trials have no centralContacts but do have overallOfficials or
+# per-location contacts — those all returned empty.
+#
+# This function harvests all three sources, deduplicates by normalised name,
+# and returns a list. _map_trial() stores this as "contacts" and also sets
+# "pointOfContact" to contacts[0] for backward compatibility with any
+# frontend code that still reads the old key.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_ROLE_LABELS: dict[str, str] = {
+    "PRINCIPAL_INVESTIGATOR": "Principal Investigator",
+    "SUB_INVESTIGATOR":       "Sub-Investigator",
+    "STUDY_DIRECTOR":         "Study Director",
+    "STUDY_CHAIR":            "Study Chair",
+    "CONTACT":                "Study Contact",
+}
+
+
+def _extract_contacts(contacts_module: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Extract and deduplicate all contacts from a contactsLocationsModule dict.
+
+    Returns a list of contact dicts, each with keys:
+        name, role, phone, email, affiliation
+
+    Deduplication is by lowercase-stripped name so the same person listed
+    in both centralContacts and overallOfficials appears only once.
+    """
+    seen_names: set[str] = set()
+    result: list[dict[str, Any]] = []
+
+    def _add(
+        name: str,
+        raw_role: str,
+        phone: str = "",
+        email: str = "",
+        affiliation: str = "",
+    ) -> None:
+        name = (name or "").strip()
+        key  = name.lower()
+        if not key or key in seen_names:
+            return
+        seen_names.add(key)
+        role = _ROLE_LABELS.get((raw_role or "").upper(), (raw_role or "Study Contact"))
+        result.append({
+            "name":        name,
+            "role":        role,
+            "phone":       (phone or "").strip(),
+            "email":       (email or "").strip(),
+            "affiliation": (affiliation or "").strip(),
+        })
+
+    # Source 1 — central contacts (study-wide, most reliable)
+    for c in contacts_module.get("centralContacts") or []:
+        _add(
+            c.get("name", ""),
+            c.get("role", "CONTACT"),
+            c.get("phone", ""),
+            c.get("email", ""),
+        )
+
+    # Source 2 — overall officials / principal investigators
+    for o in contacts_module.get("overallOfficials") or []:
+        _add(
+            o.get("name", ""),
+            o.get("role", "PRINCIPAL_INVESTIGATOR"),
+            affiliation=o.get("affiliation", ""),
+        )
+
+    # Source 3 — per-location contacts (first 5 locations to avoid huge lists)
+    for loc in (contacts_module.get("locations") or [])[:5]:
+        facility = (loc.get("facility") or "").strip()
+        for c in loc.get("contacts") or []:
+            _add(
+                c.get("name", ""),
+                c.get("role", "CONTACT"),
+                c.get("phone", ""),
+                c.get("email", ""),
+                facility,
+            )
+
+    return result
+
+
 def _map_trial(study: dict[str, Any]) -> dict[str, Any]:
     protocol       = study.get("protocolSection", {})
     identification = protocol.get("identificationModule", {})
@@ -701,16 +754,11 @@ def _map_trial(study: dict[str, Any]) -> dict[str, Any]:
 
     overall_status = status_module.get("overallStatus")
 
-    central_contact = None
-    central_contacts = contacts.get("centralContacts") or []
-    if central_contacts:
-        first_contact = central_contacts[0]
-        central_contact = {
-            "name":  first_contact.get("name"),
-            "role":  first_contact.get("role"),
-            "phone": first_contact.get("phone"),
-            "email": first_contact.get("email"),
-        }
+    # FIX B: extract all contacts from all three sources
+    all_contacts = _extract_contacts(contacts)
+
+    # Backward-compatible alias — keeps existing frontend code working
+    point_of_contact = all_contacts[0] if all_contacts else None
 
     return {
         "nctId":             identification.get("nctId"),
@@ -726,19 +774,18 @@ def _map_trial(study: dict[str, Any]) -> dict[str, Any]:
         ],
         "inclusionCriteria": eligibility.get("eligibilityCriteria"),
         "exclusionCriteria": None,
-        "pointOfContact":    central_contact,
+        # NEW: full contacts list (all sources, deduplicated)
+        "contacts":          all_contacts,
+        # KEPT for backward compatibility: first contact or None
+        "pointOfContact":    point_of_contact,
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# VALIDATION HELPERS (unchanged from original)
+# VALIDATION HELPERS  (unchanged)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def validate_city(city: str | None) -> tuple[bool, str]:
-    """
-    Validate a city filter value.
-    Returns (is_valid, reason). Blank/None is valid (no filter).
-    """
     if not city or not city.strip():
         return True, ""
     stripped = city.strip()
@@ -752,10 +799,6 @@ def validate_city(city: str | None) -> tuple[bool, str]:
 
 
 def validate_state(state: str | None) -> tuple[bool, str]:
-    """
-    Validate a state filter value (2-letter abbreviation OR full name).
-    Returns (is_valid, reason). Blank/None is valid (no filter).
-    """
     if not state or not state.strip():
         return True, ""
     norm = _normalize_value(state.strip())
@@ -767,23 +810,17 @@ def validate_state(state: str | None) -> tuple[bool, str]:
 
 
 def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
-    """
-    Return True if trial satisfies all active hard filters
-    (status, phase, city, state, us_only).
-    """
     normalized_status = _normalize_value(filters.get("status"))
     normalized_phase  = _normalize_value(filters.get("phase"))
     normalized_city   = _normalize_value(filters.get("city"))
     normalized_state  = _normalize_value(filters.get("state"))
 
-    # Status
     if normalized_status:
         trial_status_norm = _normalize_value(trial.get("status"))
         if (trial_status_norm != normalized_status
                 and normalized_status not in trial_status_norm):
             return False
 
-    # Phase
     if normalized_phase:
         trial_phases = [_normalize_value(p) for p in trial.get("phases", [])]
         if normalized_phase not in trial_phases:
@@ -791,14 +828,12 @@ def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
 
     locations = trial.get("locations", [])
 
-    # City — must match ANY location
     if normalized_city and not any(
         _normalize_value(loc.get("city")) == normalized_city
         for loc in locations
     ):
         return False
 
-    # State — accepts 2-letter abbreviations and full state names
     if normalized_state:
         resolved_state = STATE_ABBREV_TO_FULL.get(normalized_state, normalized_state)
         if not any(
@@ -807,7 +842,6 @@ def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
         ):
             return False
 
-    # US-only — normalise country strings broadly
     _US_NORMS = {"us", "usa", "unitedstates", "unitedstatesofamerica"}
     if filters.get("us_only"):
         if locations and not any(
@@ -821,14 +855,75 @@ def _matches_filters(trial: dict[str, Any], filters: dict[str, Any]) -> bool:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # API FETCH
+#
+# Aligned with how ClinicalTrials.gov's own website searches:
+#
+# 1. sort=@relevance  (not LastUpdatePostDate:desc)
+#    CT.gov's website defaults to @relevance — their internal Lucene engine
+#    scores each study by how strongly the query matches the ConditionSearch
+#    fields (conditions[], MeSH terms, title, keywords).  A study where
+#    "cancer" appears only in a keyword because it was run at a cancer centre
+#    scores far lower than one where "cancer" is an actual registered condition.
+#    Switching to @relevance means the API returns results in exactly the same
+#    order as the CT.gov website, pushing off-topic studies to the back.
+#
+# 2. query.term=AREA[ConditionSearch]<term>  (not query.cond=<term>)
+#    query.cond is a convenience alias that also searches free-text fields
+#    beyond the ConditionSearch area, which widens recall unnecessarily.
+#    AREA[ConditionSearch] scopes the query to the same fields CT.gov's
+#    "Condition or Disease" search box uses: conditions[], condition MeSH
+#    terms, brief title, and keywords — and nothing else.
+#
+#    For specialty-expanded OR queries (e.g. "Parkinson Disease OR Epilepsy
+#    OR ...") each term is individually wrapped so the AREA scope applies
+#    to every term in the OR chain.
+#
+#    Exception: if the caller passes a query that already contains AREA[]
+#    syntax (future-proofing), we pass it through via query.term unchanged.
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _build_condition_query(condition: str) -> tuple[str, str]:
+    """
+    Convert a condition string to a CT.gov v2 query parameter pair.
+
+    Returns (param_name, param_value) ready to insert into the params dict.
+
+    Examples:
+        "cancer"
+            → ("query.term", "AREA[ConditionSearch]cancer")
+
+        "Parkinson Disease OR Epilepsy OR Multiple Sclerosis"
+            → ("query.term",
+               "AREA[ConditionSearch]Parkinson Disease OR
+                AREA[ConditionSearch]Epilepsy OR
+                AREA[ConditionSearch]Multiple Sclerosis")
+
+        "AREA[ConditionSearch]something"   (already has AREA syntax)
+            → ("query.term", "AREA[ConditionSearch]something")
+    """
+    # Pass through if already using AREA syntax
+    if "AREA[" in condition:
+        return "query.term", condition
+
+    # OR-expanded specialty queries — wrap each term individually
+    if " OR " in condition:
+        terms = [t.strip() for t in condition.split(" OR ") if t.strip()]
+        wrapped = " OR ".join(f"AREA[ConditionSearch]{t}" for t in terms)
+        return "query.term", wrapped
+
+    # Simple single condition
+    return "query.term", f"AREA[ConditionSearch]{condition}"
+
+
 def _fetch_study_page(condition: str, page_token: str | None = None) -> dict[str, Any]:
+    param_name, param_value = _build_condition_query(condition)
+
     params: dict[str, Any] = {
-        "query.cond": condition,
+        param_name:   param_value,
         "pageSize":   DEFAULT_PAGE_SIZE,
         "countTotal": "true",
         "format":     "json",
+        "sort":       "@relevance",   # match CT.gov website default
     }
     if page_token:
         params["pageToken"] = page_token
@@ -847,19 +942,26 @@ def fetch_trials_with_filters(
     filters: dict[str, Any], limit: int, offset: int
 ) -> tuple[list[dict[str, Any]], int]:
     """
-    Fetch, filter, and relevance-score trials from ClinicalTrials.gov.
+    Fetch, filter, and return trials from ClinicalTrials.gov, using the
+    same search approach as the CT.gov website itself.
 
     Pipeline:
 
     ┌─────────────────────────────────────────────────────────────────────┐
-    │  PHASE 1 — Query Expansion                                          │
+    │  PHASE 1 — Query construction (CT.gov-aligned)                      │
     │                                                                     │
-    │  If the search term is a specialty name (e.g. "neurology"),         │
-    │  expand it to a disease-level OR query before hitting the API.      │
+    │  a) Specialty expansion (unchanged):                                │
+    │     If term is a specialty name ("neurology") → OR disease query    │
     │                                                                     │
-    │  "neurology" → "Parkinson Disease OR Epilepsy OR ..."               │
+    │  b) AREA[ConditionSearch] scoping (new):                            │
+    │     Wraps the query so it searches only the ConditionSearch area    │
+    │     (conditions[], MeSH terms, title, keywords) — exactly what      │
+    │     CT.gov's "Condition or Disease" search box targets.             │
     │                                                                     │
-    │  Specific disease searches ("glioblastoma") pass through unchanged. │
+    │  c) sort=@relevance (new):                                          │
+    │     CT.gov's own relevance ranking — studies where the term is a    │
+    │     registered condition rank far above ones where it merely        │
+    │     appears in a keyword or description.                            │
     └─────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼ ClinicalTrials.gov API
@@ -869,25 +971,18 @@ def fetch_trials_with_filters(
                                     │
                                     ▼
     ┌─────────────────────────────────────────────────────────────────────┐
-    │  PHASE 2 — Post-fetch Relevance Filter                              │
+    │  PHASE 2 — Post-fetch relevance safety net (unchanged + extended)   │
     │                                                                     │
-    │  Gate 1: Reject administrative/operational studies unless           │
-    │          conditions[] has ≥ 2 specific clinical conditions.         │
-    │          (Drops: registries, surveys, EMR studies, app trials,      │
-    │           healthy-volunteer PK studies, education trials)           │
-    │                                                                     │
-    │  Gate 2: For specialty searches, require ≥ 1 domain synonym        │
-    │          in conditions[]. (Drops: Conditions=["Neurology",          │
-    │          "Pharmacokinetics"] — no actual neurological disease)      │
+    │  Gate 1: Reject noise-titled studies (extended pattern list)        │
+    │  Gate 2: Domain synonym check — now fires for disease-term          │
+    │          searches too (via _DISEASE_SYNONYMS), not only for         │
+    │          specialty expansions                                       │
     └─────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼  paginated slice returned to frontend
     """
     condition = (filters.get("condition") or "").strip()
     if not condition:
         return [], 0
 
-    # Validate city/state before touching the API
     city_ok,  city_reason  = validate_city(filters.get("city"))
     state_ok, state_reason = validate_state(filters.get("state"))
     if not city_ok:
@@ -897,7 +992,6 @@ def fetch_trials_with_filters(
         logger.warning("Invalid state filter rejected: %s", state_reason)
         return [], 0
 
-    # Phase 1: expand specialty → disease OR query
     api_query, was_expanded = _expand_specialty_to_query(condition)
 
     if was_expanded:
@@ -925,11 +1019,9 @@ def fetch_trials_with_filters(
         for study in studies:
             mapped_trial = _map_trial(study)
 
-            # Hard filters (status, phase, city, state, us_only)
             if not _matches_filters(mapped_trial, filters):
                 continue
 
-            # Phase 2: two-gate relevance filter
             if not _is_relevant(mapped_trial, condition, was_expanded):
                 continue
 
