@@ -1222,7 +1222,83 @@ def resolve_with_broader(q: str) -> List[str]:
 
     return all_specialties
 
+def get_fallback_specialties(condition: str) -> List[str]:
+    """
+    Generic fallback specialty resolver for any condition that could not be
+    resolved through resolve_with_broader().
 
+    Strategy:
+      1. Strip NOS / modifier suffixes and retry resolve_with_broader()
+         on the cleaned first meaningful phrase
+      2. Try each individual word (>=5 chars) in the condition
+      3. Score all CONDITION_MAP keys by keyword overlap with the condition
+         and return the top 3 matching specialties
+      4. Return empty list if nothing matches — caller handles final fallback
+    """
+    if not condition:
+        return []
+
+    condition_lower = condition.lower().strip()
+
+    # Step 1: Strip NOS and common modifier suffixes, retry on first phrase
+    # e.g. "Pancreatic Malignant Neoplasm, NOS" → "Pancreatic Malignant Neoplasm"
+    # e.g. "Cancer, NOS" → "Cancer"
+    nos_stripped = condition_lower.replace(", nos", "").replace(" nos", "").strip()
+    first_phrase = nos_stripped.split(",")[0].strip()
+
+    if first_phrase and first_phrase != condition_lower:
+        result = resolve_with_broader(first_phrase)
+        if result:
+            return result
+
+    # Step 2: Try each meaningful word individually
+    # e.g. "Recurrent High-Grade Glioma" → try "glioma", "grade", "recurrent"
+    words = sorted(
+        [w.strip("-.") for w in nos_stripped.replace("-", " ").split() if len(w.strip("-.")) >= 5],
+        key=len,
+        reverse=True,  # try longest/most-specific words first
+    )
+    for word in words:
+        result = resolve_with_broader(word)
+        if result:
+            return result
+
+    # Step 3: Score CONDITION_MAP keys by overlap with the condition string
+    # Works for any medical domain — not just oncology
+    scored: List[tuple] = []
+    for key, specialties in CONDITION_MAP.items():
+        if len(key) < 4:
+            continue
+        # Score = number of words in the key that appear in the condition
+        key_words = [w for w in key.split() if len(w) >= 4]
+        if not key_words:
+            continue
+        score = sum(1 for w in key_words if w in condition_lower)
+        if score > 0:
+            # Prefer longer, more specific keys
+            weighted_score = score * len(key)
+            for specialty in specialties:
+                scored.append((weighted_score, specialty))
+
+    if scored:
+        # Deduplicate and return top 3 specialties by score
+        seen: set = set()
+        result_specialties: List[str] = []
+        for _, specialty in sorted(scored, reverse=True):
+            if specialty not in seen:
+                seen.add(specialty)
+                result_specialties.append(specialty)
+            if len(result_specialties) >= 3:
+                break
+        # Validate each against the taxonomy before returning
+        validated = []
+        for s in result_specialties:
+            if _find_direct_taxonomy_match(s):
+                validated.append(s)
+        if validated:
+            return validated
+
+    return []
 # ─────────────────────────────────────────────
 #  STATUS / INFO
 # ─────────────────────────────────────────────
