@@ -164,7 +164,8 @@ export default function TrialSiteMap({
         marker.bindPopup(popupContent, {
           className: "trial-popup", offset: [0, -10], maxWidth: 310, closeButton: true,
         });
-        marker.on("click", () => marker.openPopup());
+        marker.on("mouseover", () => marker.openPopup());
+        marker.on("mouseout", () => marker.closePopup());
         marker.on("popupopen", () => {
           setTimeout(() => {
             const btn = document.getElementById(`fp-btn-${site.lat}-${site.lon}`);

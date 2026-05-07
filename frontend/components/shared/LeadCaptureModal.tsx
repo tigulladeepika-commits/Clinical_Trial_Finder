@@ -251,6 +251,9 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
                     {physician.taxonomy_desc && (
                       <div className="lcm-physician-spec">{physician.taxonomy_desc}</div>
                     )}
+                    <div style={{ fontSize: "10px", color: "var(--muted)", fontFamily: "var(--font-mono)" }}>
+                      NPI: {physician.npi}
+                    </div>
                   </div>
                 </div>
               )}

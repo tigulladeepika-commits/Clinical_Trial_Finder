@@ -640,6 +640,24 @@ function HomeInner() {
             </div>
           </div>
         )}
+
+        {/* ── Footer ── */}
+        <div style={{
+          background: "#fff",
+          borderTop: "1px solid var(--border)",
+          padding: "20px",
+          textAlign: "center",
+          fontSize: "12px",
+          color: "var(--muted)",
+          marginTop: "auto",
+        }}>
+          <div style={{ marginBottom: "8px" }}>
+            <strong>Contact:</strong> leads@aquarient.com
+          </div>
+          <div>
+            Powered by Aquarient Technologies
+          </div>
+        </div>
       </div>
     </>
   );
