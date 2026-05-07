@@ -9,6 +9,7 @@ interface Props {
   nctId:     string;
   siteName?: string | null;
   onClick:   (physician: Physician) => void;
+  onAddLead?: (physician: Physician) => void;
 }
 
 function initials(name: string): string {
@@ -49,12 +50,16 @@ function maskPhone(phone: string): string {
   return phone;
 }
 
-export default function PhysicianCard({ physician, nctId, siteName, onClick }: Props) {
+export default function PhysicianCard({ physician, nctId, siteName, onClick, onAddLead }: Props) {
   const [leadState, setLeadState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const av = avatarColor(physician.name);
 
   const handleAddLead = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (onAddLead) {
+      onAddLead(physician);
+      return;
+    }
     if (leadState !== "idle") return;
     setLeadState("loading");
     try {

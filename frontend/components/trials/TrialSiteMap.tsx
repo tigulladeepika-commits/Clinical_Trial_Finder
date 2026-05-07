@@ -239,7 +239,7 @@ export default function TrialSiteMap({
           box-shadow: 0 4px 14px rgba(37,99,235,0.15);
         }
         .tsm-legend-toggle {
-          position: absolute; bottom: 12px; left: 12px; z-index: 1000;
+          position: absolute; top: 12px; left: 12px; z-index: 1000;
           background: white; border: 1px solid var(--border);
           border-radius: var(--radius-md); padding: 7px 12px;
           box-shadow: var(--shadow-md); cursor: pointer;
@@ -249,7 +249,7 @@ export default function TrialSiteMap({
         }
         .tsm-legend-toggle:hover { background: var(--surface); border-color: var(--border-mid); }
         .tsm-legend-panel {
-          position: absolute; bottom: 46px; left: 12px; z-index: 1000;
+          position: absolute; top: 46px; left: 12px; z-index: 1000;
           background: rgba(255,255,255,0.97); border: 1px solid var(--border);
           border-radius: var(--radius-lg); padding: 12px 16px;
           box-shadow: var(--shadow-lg);

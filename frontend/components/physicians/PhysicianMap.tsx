@@ -368,7 +368,7 @@ export default function PhysicianMap({
 
       {/* Legend — three entries */}
       <div style={{
-        position: "absolute", bottom: 10, left: 10, zIndex: 1000,
+        position: "absolute", top: 10, left: 10, zIndex: 1000,
         background: "rgba(255,255,255,0.95)",
         border: "1px solid #e2e8f0", borderRadius: 10,
         padding: "9px 13px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",

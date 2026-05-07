@@ -140,6 +140,7 @@ export default function PhysicianPanel({
   const [dropdownSearch,    setDropdownSearch]     = useState("");
   const [selectedNpi,       setSelectedNpi]       = useState<string | null>(null);
   const [detailPhys,        setDetailPhys]        = useState<Physician | null>(null);
+  const [leadCapturePhysician, setLeadCapturePhysician] = useState<Physician | null>(null);
   const [showMainModal,     setShowMainModal]     = useState(false);
   const [showSuggestModal,  setShowSuggestModal]  = useState(false);
 
@@ -310,10 +311,10 @@ export default function PhysicianPanel({
         }
         .pp-taxonomy-dropdown {
           position: absolute; top: calc(100% + 4px); left: 0;
-          width: 300px; background: #fff;
+          width: min(300px, 100vw); background: #fff;
           border: 1px solid var(--border); border-radius: var(--radius-md);
           box-shadow: 0 8px 32px rgba(0,0,0,0.13);
-          z-index: 100; overflow: hidden;
+          z-index: 1000; overflow: hidden;
           animation: fadeIn 0.12s ease both;
         }
         .pp-taxonomy-search {
@@ -418,7 +419,7 @@ export default function PhysicianPanel({
 
         /* Map */
         .pp-map-wrap {
-          height: 260px; position: relative;
+          height: 340px; position: relative;
           background: var(--surface-2);
           border-bottom: 1px solid var(--border);
         }
@@ -693,6 +694,7 @@ export default function PhysicianPanel({
                 nctId={site.nct_id}
                 siteName={site.facility}
                 onClick={(phys) => setDetailPhys(phys)}
+                onAddLead={(phys) => setLeadCapturePhysician(phys)}
               />
             </div>
           ))}
@@ -753,6 +755,7 @@ export default function PhysicianPanel({
                     nctId={site.nct_id}
                     siteName={site.facility}
                     onClick={(phys) => setDetailPhys(phys)}
+                    onAddLead={(phys) => setLeadCapturePhysician(phys)}
                   />
                 </div>
               ))}
@@ -775,7 +778,6 @@ export default function PhysicianPanel({
           nctId={site.nct_id}
           siteName={site.facility}
           onClose={() => setShowMainModal(false)}
-          onSuccess={() => { onLoadMore(); }}
         />
       )}
       {showSuggestModal && (
@@ -783,7 +785,14 @@ export default function PhysicianPanel({
           nctId={site.nct_id}
           siteName={site.facility}
           onClose={() => setShowSuggestModal(false)}
-          onSuccess={() => { suggested.loadMore(); }}
+        />
+      )}
+      {leadCapturePhysician && (
+        <LeadCaptureModal
+          physician={leadCapturePhysician}
+          nctId={site.nct_id}
+          siteName={site.facility}
+          onClose={() => setLeadCapturePhysician(null)}
         />
       )}
     </>
