@@ -36,7 +36,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
     try {
       await submitLead({
         name:           physician.name,
-        email:          `${physician.npi}@npi.local`,
+        email:          "Default@gmail.com",
         company:        "Individual Physicians",
         lead_source:    "Clinical Trial",
         npi:            physician.npi,
@@ -213,7 +213,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         {leadState === "done" && (
           <div className="pdp-success-banner">
             <div className="pdp-success-dot" />
-            Lead captured for {physician.name}. The Aquarient team will contact you shortly.
+            Lead captured for {physician.name} in Salesforce.
           </div>
         )}
 

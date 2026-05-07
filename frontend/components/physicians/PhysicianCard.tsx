@@ -60,7 +60,7 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
     try {
       await submitLead({
         name:           physician.name,
-        email:          `${physician.npi}@npi.local`,
+        email:          "Default@gmail.com",
         npi:            physician.npi,
         nct_id:         nctId,
         ...(siteName                ? { site:           siteName                } : {}),
@@ -232,7 +232,7 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
         </div>
         {leadState === "done" && (
           <div className="phys-success">
-            Lead captured for {physician.name}. The Aquarient team will contact you shortly.
+            Lead captured for {physician.name} in Salesforce.
           </div>
         )}
       </div>
