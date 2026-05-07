@@ -134,12 +134,6 @@ export default function TrialSiteMap({
         const marker = L.marker([site.lat, site.lon], { icon }).addTo(map);
         const loc    = [site.city, site.state, site.country].filter(Boolean).join(", ");
 
-        marker.bindTooltip(
-          `<div style="font-weight:700;font-size:13px;">${site.facility || "Unknown Facility"}</div>
-           ${loc ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">📍 ${loc}</div>` : ""}`,
-          { permanent: false, direction: "top", offset: [0, -16], className: "trial-tooltip" }
-        );
-
         const popupContent = `
           <div>
             <div style="background:${color}10;border-bottom:1px solid ${color}25;padding:14px 16px 12px;">
@@ -165,13 +159,13 @@ export default function TrialSiteMap({
           className: "trial-popup", offset: [0, -10], maxWidth: 310, closeButton: true,
         });
         marker.on("mouseover", () => marker.openPopup());
-        marker.on("mouseout", () => marker.closePopup());
+        marker.on("click", () => marker.openPopup());
         marker.on("popupopen", () => {
           setTimeout(() => {
             const btn = document.getElementById(`fp-btn-${site.lat}-${site.lon}`);
             if (btn) {
               btn.addEventListener("click", () => {
-                marker.closePopup();
+                marker.openPopup();
                 onFindPhysicians({
                   lat: site.lat as number, lng: site.lon as number,
                   facility: site.facility, city: site.city, state: site.state,

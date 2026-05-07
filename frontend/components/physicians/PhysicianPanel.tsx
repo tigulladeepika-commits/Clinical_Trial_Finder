@@ -775,7 +775,7 @@ export default function PhysicianPanel({
           nctId={site.nct_id}
           siteName={site.facility}
           onClose={() => setShowMainModal(false)}
-          onSuccess={() => { setShowMainModal(false); onLoadMore(); }}
+          onSuccess={() => { onLoadMore(); }}
         />
       )}
       {showSuggestModal && (
@@ -783,7 +783,7 @@ export default function PhysicianPanel({
           nctId={site.nct_id}
           siteName={site.facility}
           onClose={() => setShowSuggestModal(false)}
-          onSuccess={() => { setShowSuggestModal(false); suggested.loadMore(); }}
+          onSuccess={() => { suggested.loadMore(); }}
         />
       )}
     </>

@@ -213,7 +213,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         {leadState === "done" && (
           <div className="pdp-success-banner">
             <div className="pdp-success-dot" />
-            Lead captured for {physician.name} — queued for CRM sync.
+            Lead captured for {physician.name} — the Aquarient team will contact you shortly.
           </div>
         )}
 
