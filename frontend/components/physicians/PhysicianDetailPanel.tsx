@@ -59,7 +59,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
     leadState === "loading" ? "Adding…"      :
     leadState === "done"    ? "✓ Lead Added" :
     leadState === "error"   ? "⚠ Retry"      :
-    "★ Add as Lead";
+    "Add as Lead";
 
   const btnBg =
     leadState === "done"  ? "var(--green-600)" :
@@ -213,7 +213,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         {leadState === "done" && (
           <div className="pdp-success-banner">
             <div className="pdp-success-dot" />
-            Lead captured for {physician.name} — the Aquarient team will contact you shortly.
+            Lead captured for {physician.name}. The Aquarient team will contact you shortly.
           </div>
         )}
 

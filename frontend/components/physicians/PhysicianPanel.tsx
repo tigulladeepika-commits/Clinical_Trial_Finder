@@ -140,7 +140,6 @@ export default function PhysicianPanel({
   const [dropdownSearch,    setDropdownSearch]     = useState("");
   const [selectedNpi,       setSelectedNpi]       = useState<string | null>(null);
   const [detailPhys,        setDetailPhys]        = useState<Physician | null>(null);
-  const [leadCapturePhysician, setLeadCapturePhysician] = useState<Physician | null>(null);
   const [showMainModal,     setShowMainModal]     = useState(false);
   const [showSuggestModal,  setShowSuggestModal]  = useState(false);
 
@@ -419,7 +418,7 @@ export default function PhysicianPanel({
 
         /* Map */
         .pp-map-wrap {
-          height: 340px; position: relative;
+          height: 380px; min-height: 380px; position: relative;
           background: var(--surface-2);
           border-bottom: 1px solid var(--border);
         }
@@ -515,6 +514,7 @@ export default function PhysicianPanel({
           {/* Taxonomy multi-select dropdown */}
           <div className="pp-taxonomy-wrap" ref={dropdownRef}>
             <button
+              type="button"
               className="pp-taxonomy-trigger"
               disabled={resolving}
               onClick={() => !resolving && setDropdownOpen((o) => !o)}
@@ -526,8 +526,8 @@ export default function PhysicianPanel({
               }}>
                 {resolving ? "Resolving specialty…" : triggerLabel}
               </span>
+              <span className="pp-taxonomy-caret">{dropdownOpen ? "▲" : "▼"}</span>
             </button>
-            <span className="pp-taxonomy-caret">{dropdownOpen ? "▲" : "▼"}</span>
 
             {dropdownOpen && (
               <div className="pp-taxonomy-dropdown">
@@ -694,7 +694,6 @@ export default function PhysicianPanel({
                 nctId={site.nct_id}
                 siteName={site.facility}
                 onClick={(phys) => setDetailPhys(phys)}
-                onAddLead={(phys) => setLeadCapturePhysician(phys)}
               />
             </div>
           ))}
@@ -755,7 +754,6 @@ export default function PhysicianPanel({
                     nctId={site.nct_id}
                     siteName={site.facility}
                     onClick={(phys) => setDetailPhys(phys)}
-                    onAddLead={(phys) => setLeadCapturePhysician(phys)}
                   />
                 </div>
               ))}
@@ -785,14 +783,6 @@ export default function PhysicianPanel({
           nctId={site.nct_id}
           siteName={site.facility}
           onClose={() => setShowSuggestModal(false)}
-        />
-      )}
-      {leadCapturePhysician && (
-        <LeadCaptureModal
-          physician={leadCapturePhysician}
-          nctId={site.nct_id}
-          siteName={site.facility}
-          onClose={() => setLeadCapturePhysician(null)}
         />
       )}
     </>

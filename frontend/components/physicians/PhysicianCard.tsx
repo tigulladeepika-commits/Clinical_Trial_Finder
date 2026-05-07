@@ -9,7 +9,6 @@ interface Props {
   nctId:     string;
   siteName?: string | null;
   onClick:   (physician: Physician) => void;
-  onAddLead?: (physician: Physician) => void;
 }
 
 function initials(name: string): string {
@@ -50,16 +49,12 @@ function maskPhone(phone: string): string {
   return phone;
 }
 
-export default function PhysicianCard({ physician, nctId, siteName, onClick, onAddLead }: Props) {
+export default function PhysicianCard({ physician, nctId, siteName, onClick }: Props) {
   const [leadState, setLeadState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const av = avatarColor(physician.name);
 
   const handleAddLead = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onAddLead) {
-      onAddLead(physician);
-      return;
-    }
     if (leadState !== "idle") return;
     setLeadState("loading");
     try {
@@ -84,7 +79,7 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick, onA
 
   const btnLabel =
     leadState === "loading" ? "Adding…"      :
-    leadState === "done"    ? "✓ Added"      :
+    leadState === "done"    ? "✓ Lead Added" :
     leadState === "error"   ? "⚠ Retry"      :
     "Add as Lead";
 
@@ -152,6 +147,12 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick, onA
           justify-content: space-between;
           margin-top: 10px; gap: 8px;
         }
+        .phys-success {
+          margin-top: 10px;
+          font-size: 12px; color: var(--green-700);
+          background: #ecfdf5; border: 1px solid #bbf7d0;
+          border-radius: 12px; padding: 8px 10px;
+        }
         .phys-view-link {
           font-size: 11px; color: var(--muted);
           display: flex; align-items: center; gap: 4px;
@@ -212,6 +213,7 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick, onA
             View details →
           </span>
           <button
+            type="button"
             className="phys-lead-btn"
             onClick={handleAddLead}
             disabled={leadState === "loading" || leadState === "done"}
@@ -228,6 +230,11 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick, onA
             {btnLabel}
           </button>
         </div>
+        {leadState === "done" && (
+          <div className="phys-success">
+            Lead captured for {physician.name}. The Aquarient team will contact you shortly.
+          </div>
+        )}
       </div>
     </>
   );
