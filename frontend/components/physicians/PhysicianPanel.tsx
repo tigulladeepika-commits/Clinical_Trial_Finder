@@ -30,7 +30,6 @@ interface Props {
 const RADIUS_OPTIONS = [5, 10, 25, 50, 100] as const;
 
 // ── NUCC Taxonomy groups ──────────────────────────────────────────────────────
-// Doctors (MD/DO), HCPs (non-physician health care providers), HCOs (organisations)
 interface TaxonomyOption {
   code:  string;
   label: string;
@@ -138,6 +137,7 @@ export default function PhysicianPanel({
   const [selectedCodes,     setSelectedCodes]     = useState<string[]>([]);
   const [dropdownOpen,      setDropdownOpen]       = useState(false);
   const [dropdownSearch,    setDropdownSearch]     = useState("");
+  const [dropdownPos,       setDropdownPos]       = useState<{ top: number; left: number; width: number } | null>(null);
   const [selectedNpi,       setSelectedNpi]       = useState<string | null>(null);
   const [detailPhys,        setDetailPhys]        = useState<Physician | null>(null);
   const [showMainModal,     setShowMainModal]     = useState(false);
@@ -149,6 +149,7 @@ export default function PhysicianPanel({
   const suggested          = useSuggestedPhysicians();
   const siteConditionRef   = useRef<string>("");
   const dropdownRef        = useRef<HTMLDivElement>(null);
+  const triggerRef         = useRef<HTMLButtonElement>(null);
 
   // ── Resolve specialty on mount / site change ─────────────────────────────
   useEffect(() => {
@@ -164,7 +165,6 @@ export default function PhysicianPanel({
       .then((specialties) => {
         const primary = specialties[0] ?? condition;
         setResolvedSpecialty(primary);
-        // Auto-select the first matching taxonomy code
         const match = TAXONOMY_OPTIONS.find(
           (o) => o.label.toLowerCase() === primary.toLowerCase()
         );
@@ -179,7 +179,10 @@ export default function PhysicianPanel({
   // ── Close dropdown on outside click ─────────────────────────────────────
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
+        triggerRef.current && !triggerRef.current.contains(e.target as Node)
+      ) {
         setDropdownOpen(false);
       }
     };
@@ -187,7 +190,28 @@ export default function PhysicianPanel({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // ── Stable NPI key (FIX 3) ───────────────────────────────────────────────
+  // ── Reposition dropdown on scroll/resize while open ──────────────────────
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const reposition = () => {
+      if (triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        setDropdownPos({
+          top:   rect.bottom + 6,
+          left:  rect.left,
+          width: Math.min(300, window.innerWidth - rect.left - 8),
+        });
+      }
+    };
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [dropdownOpen]);
+
+  // ── Stable NPI key ───────────────────────────────────────────────────────
   const npis   = physicians.map((p) => p.npi);
   const npiKey = useMemo(
     () => [...npis].sort().join(","),
@@ -215,9 +239,23 @@ export default function PhysicianPanel({
     [selectedCodes]
   );
 
+  // ── Open dropdown — measure trigger position for fixed placement ─────────
+  const openDropdown = useCallback(() => {
+    if (resolving) return;
+    if (!dropdownOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top:   rect.bottom + 6,
+        left:  rect.left,
+        width: Math.min(300, window.innerWidth - rect.left - 8),
+      });
+    }
+    setDropdownOpen((o) => !o);
+  }, [resolving, dropdownOpen]);
+
   // ── handleSearch ─────────────────────────────────────────────────────────
   const handleSearch = useCallback(() => {
-    const userSpecialty  = selectedLabels.join(", ");
+    const userSpecialty    = selectedLabels.join(", ");
     const initialSpecialty = resolvedSpecialty;
     onSearch(
       radius,
@@ -266,7 +304,6 @@ export default function PhysicianPanel({
           padding: 8px 14px; background: #fff;
           border-bottom: 1px solid var(--border);
           position: sticky; top: 0; z-index: 20; flex-wrap: wrap;
-          overflow: visible;
         }
         .pp-back-btn {
           display: flex; align-items: center; justify-content: center;
@@ -283,10 +320,9 @@ export default function PhysicianPanel({
         }
         .pp-site-sub { font-size: 10px; color: var(--muted); font-weight: 500; }
 
-        /* ── Taxonomy dropdown ── */
+        /* ── Taxonomy dropdown trigger ── */
         .pp-taxonomy-wrap {
           flex: 2 1 150px; position: relative; min-width: 0;
-          overflow: visible;
         }
         .pp-taxonomy-trigger {
           width: 100%; height: 32px; padding: 0 28px 0 11px;
@@ -310,12 +346,14 @@ export default function PhysicianPanel({
           position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
           pointer-events: none; font-size: 10px; color: var(--muted);
         }
+
+        /* ── Dropdown — fixed position, always on top ── */
         .pp-taxonomy-dropdown {
-          position: absolute; top: calc(100% + 6px); left: 0;
-          width: min(300px, 100vw); background: #fff;
+          position: fixed;
+          background: #fff;
           border: 1px solid var(--border); border-radius: var(--radius-md);
-          box-shadow: 0 8px 32px rgba(0,0,0,0.13);
-          z-index: 10050; overflow: hidden;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+          z-index: 99999; overflow: hidden;
           animation: fadeIn 0.12s ease both;
         }
         .pp-taxonomy-search {
@@ -513,13 +551,14 @@ export default function PhysicianPanel({
             </div>
           </div>
 
-          {/* Taxonomy multi-select dropdown */}
-          <div className="pp-taxonomy-wrap" ref={dropdownRef}>
+          {/* Taxonomy multi-select — trigger only (dropdown rendered as fixed portal below) */}
+          <div className="pp-taxonomy-wrap">
             <button
+              ref={triggerRef}
               type="button"
               className="pp-taxonomy-trigger"
               disabled={resolving}
-              onClick={() => !resolving && setDropdownOpen((o) => !o)}
+              onClick={openDropdown}
               title={selectedLabels.join(", ") || "Select taxonomy"}
             >
               <span style={{
@@ -530,59 +569,6 @@ export default function PhysicianPanel({
               </span>
               <span className="pp-taxonomy-caret">{dropdownOpen ? "▲" : "▼"}</span>
             </button>
-
-            {dropdownOpen && (
-              <div className="pp-taxonomy-dropdown">
-                <input
-                  className="pp-taxonomy-search"
-                  placeholder="Search specialties…"
-                  value={dropdownSearch}
-                  onChange={(e) => setDropdownSearch(e.target.value)}
-                  autoFocus
-                />
-                <div className="pp-taxonomy-list">
-                  {GROUPS.map((group) => {
-                    const groupItems = filteredOptions.filter((o) => o.group === group);
-                    if (groupItems.length === 0) return null;
-                    return (
-                      <React.Fragment key={group}>
-                        <div className="pp-taxonomy-group-label">{group}</div>
-                        {groupItems.map((opt) => {
-                          const isSelected = selectedCodes.includes(opt.code);
-                          return (
-                            <div
-                              key={opt.code}
-                              className={`pp-taxonomy-item${isSelected ? " selected" : ""}`}
-                              onClick={() => toggleCode(opt.code)}
-                            >
-                              <div className="pp-taxonomy-checkbox">
-                                {isSelected && "✓"}
-                              </div>
-                              {opt.label}
-                            </div>
-                          );
-                        })}
-                      </React.Fragment>
-                    );
-                  })}
-                  {filteredOptions.length === 0 && (
-                    <div style={{ padding: "10px", fontSize: 11, color: "var(--muted)", textAlign: "center" }}>
-                      No matches for "{dropdownSearch}"
-                    </div>
-                  )}
-                </div>
-                <div className="pp-taxonomy-footer">
-                  <span className="pp-taxonomy-count">
-                    {selectedCodes.length} selected
-                  </span>
-                  {selectedCodes.length > 0 && (
-                    <button className="pp-taxonomy-clear" onClick={() => setSelectedCodes([])}>
-                      Clear all
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
           <select
@@ -772,6 +758,68 @@ export default function PhysicianPanel({
           </>
         )}
       </div>
+
+      {/* ── Taxonomy dropdown — rendered as fixed portal, always above the map ── */}
+      {dropdownOpen && dropdownPos && (
+        <div
+          ref={dropdownRef}
+          className="pp-taxonomy-dropdown"
+          style={{
+            top:   dropdownPos.top,
+            left:  dropdownPos.left,
+            width: dropdownPos.width,
+          }}
+        >
+          <input
+            className="pp-taxonomy-search"
+            placeholder="Search specialties…"
+            value={dropdownSearch}
+            onChange={(e) => setDropdownSearch(e.target.value)}
+            autoFocus
+          />
+          <div className="pp-taxonomy-list">
+            {GROUPS.map((group) => {
+              const groupItems = filteredOptions.filter((o) => o.group === group);
+              if (groupItems.length === 0) return null;
+              return (
+                <React.Fragment key={group}>
+                  <div className="pp-taxonomy-group-label">{group}</div>
+                  {groupItems.map((opt) => {
+                    const isSelected = selectedCodes.includes(opt.code);
+                    return (
+                      <div
+                        key={opt.code}
+                        className={`pp-taxonomy-item${isSelected ? " selected" : ""}`}
+                        onClick={() => toggleCode(opt.code)}
+                      >
+                        <div className="pp-taxonomy-checkbox">
+                          {isSelected && "✓"}
+                        </div>
+                        {opt.label}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
+            {filteredOptions.length === 0 && (
+              <div style={{ padding: "10px", fontSize: 11, color: "var(--muted)", textAlign: "center" }}>
+                No matches for "{dropdownSearch}"
+              </div>
+            )}
+          </div>
+          <div className="pp-taxonomy-footer">
+            <span className="pp-taxonomy-count">
+              {selectedCodes.length} selected
+            </span>
+            {selectedCodes.length > 0 && (
+              <button className="pp-taxonomy-clear" onClick={() => setSelectedCodes([])}>
+                Clear all
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {showMainModal && (
         <LeadCaptureModal
