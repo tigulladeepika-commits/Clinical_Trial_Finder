@@ -266,6 +266,7 @@ export default function PhysicianPanel({
           padding: 8px 14px; background: #fff;
           border-bottom: 1px solid var(--border);
           position: sticky; top: 0; z-index: 20; flex-wrap: wrap;
+          overflow: visible;
         }
         .pp-back-btn {
           display: flex; align-items: center; justify-content: center;
@@ -285,6 +286,7 @@ export default function PhysicianPanel({
         /* ── Taxonomy dropdown ── */
         .pp-taxonomy-wrap {
           flex: 2 1 150px; position: relative; min-width: 0;
+          overflow: visible;
         }
         .pp-taxonomy-trigger {
           width: 100%; height: 32px; padding: 0 28px 0 11px;
@@ -309,11 +311,11 @@ export default function PhysicianPanel({
           pointer-events: none; font-size: 10px; color: var(--muted);
         }
         .pp-taxonomy-dropdown {
-          position: absolute; top: calc(100% + 4px); left: 0;
+          position: absolute; top: calc(100% + 6px); left: 0;
           width: min(300px, 100vw); background: #fff;
           border: 1px solid var(--border); border-radius: var(--radius-md);
           box-shadow: 0 8px 32px rgba(0,0,0,0.13);
-          z-index: 1000; overflow: hidden;
+          z-index: 10050; overflow: hidden;
           animation: fadeIn 0.12s ease both;
         }
         .pp-taxonomy-search {
