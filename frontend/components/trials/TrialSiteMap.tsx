@@ -1,9 +1,33 @@
+// components/trials/TrialSiteMap.tsx
+// v3 changes:
+//  - Map type switcher: Standard | Hybrid | Satellite | Light | Dark
+//  - Retina (@2x) high-res tile scaling via { retina: true }
+//  - Zoom range clamped to 0–20 (minZoom / maxZoom)
+//  - tileLayerRef tracks current layer — switching type never re-mounts the map
+//  - Zoom level badge above zoom controls
+//  - Map type menu opens upward from bottom-right corner
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import StatusBadge          from "@/components/shared/StatusBadge";
-import type { TrialSite }   from "@/types/trial";
+import StatusBadge         from "@/components/shared/StatusBadge";
+import type { TrialSite }  from "@/types/trial";
 import type { SelectedSite } from "@/types/physician";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type MapType = "map" | "hybrid" | "sat" | "light" | "dark";
+
+const MAP_TYPES: { id: MapType; label: string; icon: string }[] = [
+  { id: "map",    label: "Standard",  icon: "🗺" },
+  { id: "hybrid", label: "Hybrid",    icon: "🛰" },
+  { id: "sat",    label: "Satellite", icon: "🌍" },
+  { id: "light",  label: "Light",     icon: "☀️" },
+  { id: "dark",   label: "Dark",      icon: "🌙" },
+];
+
+const MIN_ZOOM = 0;
+const MAX_ZOOM = 20;
 
 interface Props {
   sites:              TrialSite[];
@@ -15,6 +39,10 @@ interface Props {
   exclusionCriteria?: string | null;
   onFindPhysicians:   (site: SelectedSite) => void;
 }
+
+declare global { interface Window { L: any; } }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function statusColor(status: string | null): string {
   const s = (status || "").toUpperCase().trim();
@@ -32,25 +60,26 @@ function statusLabel(status: string | null): string {
 }
 
 function hospitalMarkerHtml(color: string, size = 28): string {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 28 28">
-      <circle cx="14" cy="14" r="13" fill="${color}" stroke="white" stroke-width="2.5"/>
-      <rect x="11" y="7" width="6" height="14" rx="1.5" fill="white"/>
-      <rect x="7" y="11" width="14" height="6" rx="1.5" fill="white"/>
-    </svg>`.trim();
-  return `<div style="filter:drop-shadow(0 3px 8px rgba(0,0,0,0.28));cursor:pointer;animation:pinDrop 0.4s cubic-bezier(.34,1.56,.64,1) both;">${svg}</div>`;
+  return `
+    <div style="filter:drop-shadow(0 3px 8px rgba(0,0,0,0.28));cursor:pointer;animation:pinDrop 0.4s cubic-bezier(.34,1.56,.64,1) both;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 28 28">
+        <circle cx="14" cy="14" r="13" fill="${color}" stroke="white" stroke-width="2.5"/>
+        <rect x="11" y="7" width="6" height="14" rx="1.5" fill="white"/>
+        <rect x="7" y="11" width="14" height="6" rx="1.5" fill="white"/>
+      </svg>
+    </div>`.trim();
 }
 
-declare global { interface Window { L: any; } }
-
 const LEGEND = [
-  { color: "#059669", label: "Recruiting" },
-  { color: "#d97706", label: "Not Yet / Suspended" },
-  { color: "#2563eb", label: "Active (not recruiting)" },
-  { color: "#64748b", label: "Completed" },
-  { color: "#dc2626", label: "Terminated / Withdrawn" },
-  { color: "#94a3b8", label: "Other / Unknown" },
+  { color: "#059669", label: "Recruiting"                   },
+  { color: "#d97706", label: "Not Yet / Suspended"          },
+  { color: "#2563eb", label: "Active (not recruiting)"      },
+  { color: "#64748b", label: "Completed"                    },
+  { color: "#dc2626", label: "Terminated / Withdrawn"       },
+  { color: "#94a3b8", label: "Other / Unknown"              },
 ];
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TrialSiteMap({
   sites, nctId, description, condition,
@@ -59,11 +88,49 @@ export default function TrialSiteMap({
   const mapKey         = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
   const mapDivRef      = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  const tileLayerRef   = useRef<any>(null);
+
   const [showCriteria, setShowCriteria] = useState(false);
   const [showLegend,   setShowLegend]   = useState(false);
+  const [mapType,      setMapType]      = useState<MapType>("map");
+  const [currentZoom,  setCurrentZoom]  = useState(3);
+  const [showTypeMenu, setShowTypeMenu] = useState(false);
 
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
 
+  // ── Switch tile layer without destroying the map ──────────────────────────
+  const switchMapType = (type: MapType) => {
+    if (!mapInstanceRef.current || !window.L?.mapquest) return;
+    const L = window.L;
+    if (tileLayerRef.current) mapInstanceRef.current.removeLayer(tileLayerRef.current);
+    const layer = L.mapquest.tileLayer(type, { retina: true });
+    layer.addTo(mapInstanceRef.current);
+    layer.bringToBack();
+    tileLayerRef.current = layer;
+    setMapType(type);
+    setShowTypeMenu(false);
+  };
+
+  // ── Zoom helpers (clamped 0–20) ───────────────────────────────────────────
+  const zoomIn = () => {
+    if (!mapInstanceRef.current) return;
+    const z = mapInstanceRef.current.getZoom();
+    if (z < MAX_ZOOM) { mapInstanceRef.current.setZoom(z + 1); setCurrentZoom(z + 1); }
+  };
+  const zoomOut = () => {
+    if (!mapInstanceRef.current) return;
+    const z = mapInstanceRef.current.getZoom();
+    if (z > MIN_ZOOM) { mapInstanceRef.current.setZoom(z - 1); setCurrentZoom(z - 1); }
+  };
+  const fitAll = () => {
+    if (!mapInstanceRef.current || mappableSites.length === 0) return;
+    mapInstanceRef.current.fitBounds(
+      window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])),
+      { padding: [44, 44] }
+    );
+  };
+
+  // ── Map init ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapKey || mappableSites.length === 0) return;
 
@@ -74,9 +141,9 @@ export default function TrialSiteMap({
 
       L.mapquest.key = mapKey;
 
-      if (!document.getElementById("trial-map-style-v2")) {
+      if (!document.getElementById("trial-map-style-v3")) {
         const style = document.createElement("style");
-        style.id = "trial-map-style-v2";
+        style.id = "trial-map-style-v3";
         style.textContent = `
           @keyframes pinDrop {
             0%  { transform: translateY(-14px) scale(0.6); opacity: 0; }
@@ -117,15 +184,25 @@ export default function TrialSiteMap({
 
       const lats = mappableSites.map((s) => s.lat as number);
       const lons = mappableSites.map((s) => s.lon as number);
-      const map  = L.mapquest.map(mapDivRef.current, {
-        center: [(Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2],
-        layers:      L.mapquest.tileLayer("map"),
+
+      // Initial tile layer with retina
+      const initialLayer = L.mapquest.tileLayer("map", { retina: true });
+      tileLayerRef.current = initialLayer;
+
+      const map = L.mapquest.map(mapDivRef.current, {
+        center:      [(Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2],
+        layers:      initialLayer,
         zoom:        3,
+        minZoom:     MIN_ZOOM,
+        maxZoom:     MAX_ZOOM,
         zoomControl: false,
       });
       mapInstanceRef.current = map;
 
-      mappableSites.forEach((site, idx) => {
+      // Sync zoom badge with map
+      map.on("zoomend", () => setCurrentZoom(map.getZoom()));
+
+      mappableSites.forEach((site) => {
         const color  = statusColor(site.status);
         const icon   = L.divIcon({
           html: hospitalMarkerHtml(color, 28),
@@ -159,7 +236,7 @@ export default function TrialSiteMap({
           className: "trial-popup", offset: [0, -10], maxWidth: 310, closeButton: true,
         });
         marker.on("mouseover", () => marker.openPopup());
-        marker.on("click", () => marker.openPopup());
+        marker.on("click",     () => marker.openPopup());
         marker.on("popupopen", () => {
           setTimeout(() => {
             const btn = document.getElementById(`fp-btn-${site.lat}-${site.lon}`);
@@ -168,8 +245,8 @@ export default function TrialSiteMap({
                 marker.openPopup();
                 onFindPhysicians({
                   lat: site.lat as number, lng: site.lon as number,
-                  facility: site.facility, city: site.city, state: site.state,
-                  nct_id: nctId, condition: condition ?? null,
+                  facility: site.facility, city: site.city,
+                  state: site.state, nct_id: nctId, condition: condition ?? null,
                 });
               });
             }
@@ -178,7 +255,10 @@ export default function TrialSiteMap({
       });
 
       if (mappableSites.length > 1) {
-        map.fitBounds(window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])), { padding: [44, 44] });
+        map.fitBounds(
+          window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])),
+          { padding: [44, 44] }
+        );
       }
     };
 
@@ -205,18 +285,12 @@ export default function TrialSiteMap({
 
     return () => {
       if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; }
+      tileLayerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapKey, sites, nctId]);
 
-  const zoomIn  = () => mapInstanceRef.current?.zoomIn();
-  const zoomOut = () => mapInstanceRef.current?.zoomOut();
-  const fitAll  = () => {
-    if (!mapInstanceRef.current || mappableSites.length === 0) return;
-    mapInstanceRef.current.fitBounds(
-      window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])), { padding: [44, 44] }
-    );
-  };
+  const activeType = MAP_TYPES.find((t) => t.id === mapType)!;
 
   return (
     <>
@@ -224,7 +298,15 @@ export default function TrialSiteMap({
         .tsm-map-wrap { position: relative; flex-shrink: 0; }
         .tsm-map-controls {
           position: absolute; top: 12px; right: 12px; z-index: 1000;
-          display: flex; flex-direction: column; gap: 6px;
+          display: flex; flex-direction: column; gap: 4px; align-items: center;
+        }
+        .tsm-zoom-badge {
+          width: 36px; height: 20px; background: white;
+          border: 1px solid var(--border); border-radius: 6px;
+          font-size: 10px; font-weight: 700; color: var(--ink-3);
+          display: flex; align-items: center; justify-content: center;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+          font-family: 'IBM Plex Mono', monospace;
         }
         .tsm-map-btn {
           width: 36px; height: 36px; background: white;
@@ -233,11 +315,41 @@ export default function TrialSiteMap({
           cursor: pointer; display: flex; align-items: center; justify-content: center;
           box-shadow: var(--shadow-md); transition: all 0.15s;
         }
-        .tsm-map-btn:hover {
+        .tsm-map-btn:disabled {
+          background: #f8fafc; color: #cbd5e1; cursor: default;
+          box-shadow: none;
+        }
+        .tsm-map-btn:not(:disabled):hover {
           background: var(--blue-50); color: var(--blue-600);
           border-color: var(--blue-200);
           box-shadow: 0 4px 14px rgba(37,99,235,0.15);
         }
+        .tsm-type-wrap {
+          position: absolute; bottom: 12px; right: 12px; z-index: 1000;
+        }
+        .tsm-type-btn {
+          display: flex; align-items: center; gap: 5px;
+          padding: 6px 10px; background: white;
+          border: 1px solid var(--border); border-radius: var(--radius-md);
+          cursor: pointer; font-size: 11px; font-weight: 600; color: var(--ink-3);
+          box-shadow: var(--shadow-md); font-family: var(--font-sans);
+          transition: all 0.15s;
+        }
+        .tsm-type-btn:hover { border-color: var(--blue-400); }
+        .tsm-type-menu {
+          position: absolute; bottom: calc(100% + 6px); right: 0;
+          background: white; border: 1px solid var(--border);
+          border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+          overflow: hidden; min-width: 140px;
+        }
+        .tsm-type-item {
+          display: flex; align-items: center; gap: 8px;
+          width: 100%; padding: 8px 14px;
+          border: none; cursor: pointer;
+          font-size: 12px; font-family: var(--font-sans);
+          transition: background 0.1s;
+        }
+        .tsm-type-item:hover { background: var(--surface); }
         .tsm-legend-toggle {
           position: absolute; top: 12px; left: 12px; z-index: 1000;
           background: white; border: 1px solid var(--border);
@@ -269,13 +381,8 @@ export default function TrialSiteMap({
           padding: 18px 20px 8px; border-bottom: 1px solid var(--border);
           background: #fff; position: sticky; top: 0; z-index: 5;
         }
-        .tsm-desc {
-          font-size: 13px; color: var(--ink-3); line-height: 1.75;
-          padding: 14px 20px 18px;
-        }
-        .tsm-criteria-wrap {
-          padding: 0 20px 18px;
-        }
+        .tsm-desc { font-size: 13px; color: var(--ink-3); line-height: 1.75; padding: 14px 20px 18px; }
+        .tsm-criteria-wrap { padding: 0 20px 18px; }
         .tsm-criteria-toggle {
           width: 100%; padding: 11px 16px;
           background: var(--surface); border: 1px solid var(--border);
@@ -309,52 +416,31 @@ export default function TrialSiteMap({
           content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
           background: transparent; transition: background 0.14s;
         }
-        .tsm-site-card:hover {
-          border-color: var(--blue-400);
-          box-shadow: 0 4px 16px rgba(37,99,235,0.10);
-          transform: translateY(-1px);
-        }
+        .tsm-site-card:hover { border-color: var(--blue-400); box-shadow: 0 4px 16px rgba(37,99,235,0.10); transform: translateY(-1px); }
         .tsm-site-card:hover::before { background: var(--green-500); }
         .tsm-site-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
         .tsm-facility { font-size: 13px; font-weight: 500; color: var(--ink); flex: 1; }
         .tsm-location { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
-        .tsm-site-focus {
-          opacity: 0; transition: opacity 0.15s;
-          font-size: 11px; font-weight: 600; color: var(--blue-600);
-          letter-spacing: 0.3px;
-        }
+        .tsm-site-focus { opacity: 0; transition: opacity 0.15s; font-size: 11px; font-weight: 600; color: var(--blue-600); letter-spacing: 0.3px; }
         .tsm-site-card:hover .tsm-site-focus { opacity: 1; }
         .tsm-find-btn {
           display: flex; align-items: center; justify-content: center; gap: 6px;
           width: 100%; margin-top: 9px; padding: 8px 0; border-radius: var(--radius-md);
           border: 1px solid var(--blue-200); background: var(--blue-50);
           color: var(--blue-600); font-size: 11px; font-weight: 700;
-          cursor: pointer; font-family: var(--font-sans);
-          transition: all 0.15s;
+          cursor: pointer; font-family: var(--font-sans); transition: all 0.15s;
         }
-        .tsm-find-btn:hover {
-          background: var(--blue-600); color: #fff;
-          border-color: var(--blue-600);
-          box-shadow: 0 3px 10px rgba(37,99,235,0.25);
-        }
-        .tsm-no-coords {
-          display: flex; align-items: center; gap: 5px;
-          font-size: 11px; color: var(--muted-light); margin-top: 5px;
-        }
+        .tsm-find-btn:hover { background: var(--blue-600); color: #fff; border-color: var(--blue-600); box-shadow: 0 3px 10px rgba(37,99,235,0.25); }
+        .tsm-no-coords { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted-light); margin-top: 5px; }
         .tsm-sites-list { padding: 12px 20px 24px; }
-        .tsm-empty-map {
-          display: flex; flex-direction: column;
-          align-items: center; justify-content: center;
-          gap: 14px; background: var(--surface-2); color: var(--muted);
-        }
+        .tsm-empty-map { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--surface-2); color: var(--muted); }
       `}</style>
 
-      {/* Map */}
+      {/* ── Map ──────────────────────────────────────────────────────────── */}
       <div className="tsm-map-wrap">
         {!mapKey || mappableSites.length === 0 ? (
           <div className="tsm-empty-map" style={{ height: 420 }}>
-            <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"
-              style={{ opacity: 0.35 }}>
+            <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.35 }}>
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
               <circle cx="12" cy="10" r="3"/>
             </svg>
@@ -371,24 +457,60 @@ export default function TrialSiteMap({
           <>
             <div ref={mapDivRef} style={{ height: 420, width: "100%", background: "#e8edf2" }} />
 
-            {/* Zoom controls */}
+            {/* Zoom controls + badge — top-right */}
             <div className="tsm-map-controls">
+              <div className="tsm-zoom-badge">{currentZoom}</div>
               {[
-                { icon: "+", title: "Zoom in",  fn: zoomIn  },
-                { icon: "−", title: "Zoom out", fn: zoomOut },
-                { icon: "⊡", title: "Fit all",  fn: fitAll  },
+                { icon: "+", title: "Zoom in",  fn: zoomIn,  disabled: currentZoom >= MAX_ZOOM },
+                { icon: "−", title: "Zoom out", fn: zoomOut, disabled: currentZoom <= MIN_ZOOM },
+                { icon: "⊡", title: "Fit all",  fn: fitAll,  disabled: false },
               ].map((b) => (
-                <button key={b.title} title={b.title} onClick={b.fn} className="tsm-map-btn">
+                <button
+                  key={b.title} title={b.title} onClick={b.fn}
+                  disabled={b.disabled} className="tsm-map-btn"
+                >
                   {b.icon}
                 </button>
               ))}
             </div>
 
-            {/* Legend toggle */}
-            <button
-              className="tsm-legend-toggle"
-              onClick={() => setShowLegend(v => !v)}
-            >
+            {/* Map type switcher — bottom-right */}
+            <div className="tsm-type-wrap">
+              {showTypeMenu && (
+                <div className="tsm-type-menu">
+                  {MAP_TYPES.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => switchMapType(t.id)}
+                      className="tsm-type-item"
+                      style={{
+                        background:  t.id === mapType ? "var(--blue-50)"  : "transparent",
+                        fontWeight:  t.id === mapType ? 700 : 500,
+                        color:       t.id === mapType ? "var(--blue-600)" : "var(--ink-3)",
+                        borderLeft:  t.id === mapType ? "3px solid var(--blue-500)" : "3px solid transparent",
+                      }}
+                    >
+                      <span style={{ fontSize: 14 }}>{t.icon}</span>
+                      {t.label}
+                      {t.id === mapType && <span style={{ marginLeft: "auto", fontSize: 10 }}>✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                className="tsm-type-btn"
+                style={{ borderColor: showTypeMenu ? "var(--blue-400)" : "var(--border)" }}
+                onClick={() => setShowTypeMenu((v) => !v)}
+                title="Change map type"
+              >
+                <span style={{ fontSize: 13 }}>{activeType.icon}</span>
+                {activeType.label}
+                <span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 2 }}>▲</span>
+              </button>
+            </div>
+
+            {/* Legend toggle — top-left */}
+            <button className="tsm-legend-toggle" onClick={() => setShowLegend((v) => !v)}>
               <span>◎</span>
               {showLegend ? "Hide legend" : "Status legend"}
             </button>
@@ -412,7 +534,7 @@ export default function TrialSiteMap({
         )}
       </div>
 
-      {/* Below-map content */}
+      {/* ── Below-map content (unchanged) ────────────────────────────────── */}
       <div>
         {description && (
           <>
@@ -426,7 +548,7 @@ export default function TrialSiteMap({
             <button
               className="tsm-criteria-toggle"
               style={{ borderRadius: showCriteria ? "var(--radius-lg) var(--radius-lg) 0 0" : "var(--radius-lg)" }}
-              onClick={() => setShowCriteria(v => !v)}
+              onClick={() => setShowCriteria((v) => !v)}
             >
               <span>Eligibility Criteria</span>
               <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 500 }}>
@@ -437,17 +559,13 @@ export default function TrialSiteMap({
               <div className="tsm-criteria-body">
                 {inclusionCriteria && (
                   <div>
-                    <div className="tsm-crit-label" style={{ color: "var(--green-700)" }}>
-                      Inclusion criteria
-                    </div>
+                    <div className="tsm-crit-label" style={{ color: "var(--green-700)" }}>Inclusion criteria</div>
                     <p className="tsm-crit-text">{inclusionCriteria}</p>
                   </div>
                 )}
                 {exclusionCriteria && (
                   <div>
-                    <div className="tsm-crit-label" style={{ color: "var(--coral-600)" }}>
-                      Exclusion criteria
-                    </div>
+                    <div className="tsm-crit-label" style={{ color: "var(--coral-600)" }}>Exclusion criteria</div>
                     <p className="tsm-crit-text">{exclusionCriteria}</p>
                   </div>
                 )}
@@ -510,8 +628,7 @@ export default function TrialSiteMap({
                     </>
                   ) : (
                     <div className="tsm-no-coords">
-                      <span>○</span>
-                      No map coordinates available
+                      <span>○</span> No map coordinates available
                     </div>
                   )}
                 </div>

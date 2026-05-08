@@ -1,13 +1,32 @@
 // components/physicians/PhysicianMap.tsx
-// v3 changes:
-//  - Tooltip (hover) and Popup (click) for both main and suggested physicians
-//    now show ONLY: Name, Specialization, and NPI.
+// v4 changes:
+//  - Map type switcher: Standard | Hybrid | Satellite | Light | Dark
+//  - Retina (@2x) high-res tile scaling via { retina: true }
+//  - Zoom range clamped to 0–20 (minZoom / maxZoom)
+//  - tileLayerRef tracks current layer — switching type never re-mounts the map
+//  - Active map-type button highlights in the toolbar
+//  - Zoom level indicator badge above zoom controls
 
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Physician }    from "@/types/physician";
 import type { SelectedSite } from "@/types/physician";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type MapType = "map" | "hybrid" | "sat" | "light" | "dark";
+
+const MAP_TYPES: { id: MapType; label: string; icon: string }[] = [
+  { id: "map",    label: "Standard",  icon: "🗺" },
+  { id: "hybrid", label: "Hybrid",    icon: "🛰" },
+  { id: "sat",    label: "Satellite", icon: "🌍" },
+  { id: "light",  label: "Light",     icon: "☀️" },
+  { id: "dark",   label: "Dark",      icon: "🌙" },
+];
+
+const MIN_ZOOM = 0;
+const MAX_ZOOM = 20;
 
 type Props = {
   physicians:           Physician[];
@@ -33,7 +52,9 @@ function hospitalMarkerHtml(color = "#ef4444", size = 30): string {
 }
 
 function doctorMarkerHtml(color: string, size: number, selected: boolean): string {
-  const glow = selected ? `filter:drop-shadow(0 0 8px ${color});` : "filter:drop-shadow(0 2px 6px rgba(0,0,0,0.25));";
+  const glow = selected
+    ? `filter:drop-shadow(0 0 8px ${color});`
+    : "filter:drop-shadow(0 2px 6px rgba(0,0,0,0.25));";
   return `
     <div style="${glow}cursor:pointer;transition:transform 0.15s;">
       <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 30 30">
@@ -62,6 +83,8 @@ function suggestedMarkerHtml(color: string, size: number, selected: boolean): st
     </div>`.trim();
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function PhysicianMap({
   physicians,
   suggestedPhysicians = [],
@@ -69,14 +92,54 @@ export default function PhysicianMap({
   selectedNpi,
   onSelect,
 }: Props) {
-  const mapKey     = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
-  const mapDivRef  = useRef<HTMLDivElement>(null);
-  const mapRef     = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
+  const mapKey       = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
+  const mapDivRef    = useRef<HTMLDivElement>(null);
+  const mapRef       = useRef<any>(null);
+  const markersRef   = useRef<any[]>([]);
+  const tileLayerRef = useRef<any>(null);
+
+  const [mapType,      setMapType]      = useState<MapType>("map");
+  const [currentZoom,  setCurrentZoom]  = useState(10);
+  const [showTypeMenu, setShowTypeMenu] = useState(false);
 
   const mappable          = physicians.filter((p) => p.lat != null && p.lng != null);
   const mappableSuggested = suggestedPhysicians.filter((p) => p.lat != null && p.lng != null);
 
+  // ── Switch tile layer without destroying the map ──────────────────────────
+  const switchMapType = (type: MapType) => {
+    if (!mapRef.current || !window.L?.mapquest) return;
+    const L = window.L;
+    if (tileLayerRef.current) mapRef.current.removeLayer(tileLayerRef.current);
+    const layer = L.mapquest.tileLayer(type, { retina: true });
+    layer.addTo(mapRef.current);
+    layer.bringToBack();
+    tileLayerRef.current = layer;
+    setMapType(type);
+    setShowTypeMenu(false);
+  };
+
+  // ── Zoom helpers (clamped 0–20) ───────────────────────────────────────────
+  const zoomIn = () => {
+    if (!mapRef.current) return;
+    const z = mapRef.current.getZoom();
+    if (z < MAX_ZOOM) { mapRef.current.setZoom(z + 1); setCurrentZoom(z + 1); }
+  };
+  const zoomOut = () => {
+    if (!mapRef.current) return;
+    const z = mapRef.current.getZoom();
+    if (z > MIN_ZOOM) { mapRef.current.setZoom(z - 1); setCurrentZoom(z - 1); }
+  };
+  const fitAll = () => {
+    if (!mapRef.current || !window.L) return;
+    const pts: [number, number][] = [
+      [selectedSite.lat, selectedSite.lng],
+      ...mappable.map((p) => [p.lat!, p.lng!] as [number, number]),
+      ...mappableSuggested.map((p) => [p.lat!, p.lng!] as [number, number]),
+    ];
+    mapRef.current.fitBounds(window.L.latLngBounds(pts), { padding: [40, 40] });
+  };
+
+  // ── Map init ──────────────────────────────────────────────────────────────
   const initMap = () => {
     if (!mapDivRef.current || mapRef.current) return;
     const L = window.L;
@@ -84,9 +147,9 @@ export default function PhysicianMap({
 
     L.mapquest.key = mapKey;
 
-    if (!document.getElementById("phys-map-style-v3")) {
+    if (!document.getElementById("phys-map-style-v4")) {
       const style = document.createElement("style");
-      style.id = "phys-map-style-v3";
+      style.id = "phys-map-style-v4";
       style.textContent = `
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap');
         .phys-tooltip {
@@ -146,20 +209,27 @@ export default function PhysicianMap({
       ? allMappable.reduce((s, p) => s + p.lng!, 0) / allMappable.length
       : selectedSite.lng;
 
+    // Initial tile layer with retina
+    const initialLayer = L.mapquest.tileLayer("map", { retina: true });
+    tileLayerRef.current = initialLayer;
+
     const map = L.mapquest.map(mapDivRef.current, {
       center:      [centerLat, centerLng],
-      layers:      L.mapquest.tileLayer("map"),
+      layers:      initialLayer,
       zoom:        10,
+      minZoom:     MIN_ZOOM,
+      maxZoom:     MAX_ZOOM,
       zoomControl: false,
     });
     mapRef.current = map;
 
-    // Trial site marker (red hospital cross)
+    // Sync zoom badge with map
+    map.on("zoomend", () => setCurrentZoom(map.getZoom()));
+
+    // Trial site marker
     const siteIcon = L.divIcon({
-      html:      hospitalMarkerHtml("#ef4444", 30),
-      className: "",
-      iconSize:  [30, 30],
-      iconAnchor:[15, 15],
+      html: hospitalMarkerHtml("#ef4444", 30),
+      className: "", iconSize: [30, 30], iconAnchor: [15, 15],
     });
     const siteMarker = L.marker([selectedSite.lat, selectedSite.lng], { icon: siteIcon }).addTo(map);
     siteMarker.bindTooltip(
@@ -168,7 +238,7 @@ export default function PhysicianMap({
       { permanent: false, direction: "top", offset: [0, -18], className: "site-tooltip" }
     );
 
-    // ── Helper: shared popup HTML (Name + Spec + NPI only) ───────────────────
+    // ── Shared popup builder ────────────────────────────────────────────────
     const buildPopupHtml = (
       p: Physician,
       accentColor: string,
@@ -187,73 +257,54 @@ export default function PhysicianMap({
         </div>
       </div>`;
 
-    // ── Main physician markers (blue) ─────────────────────────────────────────
+    // ── Main physician markers (blue) ───────────────────────────────────────
     const mainMarkers = mappable.map((p) => {
       const isSelected = p.npi === selectedNpi;
       const color      = isSelected ? "#1d4ed8" : "#2563eb";
       const size       = isSelected ? 30 : 24;
-
       const icon = L.divIcon({
-        html:      doctorMarkerHtml(color, size, isSelected),
-        className: "",
-        iconSize:  [size, size],
-        iconAnchor:[size / 2, size / 2],
+        html: doctorMarkerHtml(color, size, isSelected),
+        className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
       });
-
       const marker = L.marker([p.lat, p.lng], { icon }).addTo(map);
-
-      // Tooltip — hover
       marker.bindTooltip(
         `<div style="font-weight:700;">${p.name}</div>
          ${p.taxonomy_desc ? `<div style="font-size:11px;color:#3b82f6;">${p.taxonomy_desc}</div>` : ""}
          <div style="font-size:10px;color:#94a3b8;margin-top:3px;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>`,
         { permanent: false, direction: "top", offset: [0, -12], className: "phys-tooltip" }
       );
-
-      // Popup — click
-      marker.bindPopup(
-        buildPopupHtml(p, "#2563eb", "#f0f9ff", "#dbeafe"),
-        { className: "phys-popup", offset: [0, -10], maxWidth: 280, closeButton: true }
-      );
+      marker.bindPopup(buildPopupHtml(p, "#2563eb", "#f0f9ff", "#dbeafe"), {
+        className: "phys-popup", offset: [0, -10], maxWidth: 280, closeButton: true,
+      });
       marker.on("click", () => { onSelect(p); marker.openPopup(); });
       return marker;
     });
 
-    // ── Suggested physician markers (teal) ────────────────────────────────────
+    // ── Suggested physician markers (teal) ──────────────────────────────────
     const suggestedMarkers = mappableSuggested.map((p) => {
       const isSelected = p.npi === selectedNpi;
       const color      = isSelected ? "#0f766e" : "#14b8a6";
       const size       = isSelected ? 30 : 24;
-
       const icon = L.divIcon({
-        html:      suggestedMarkerHtml(color, size, isSelected),
-        className: "",
-        iconSize:  [size, size],
-        iconAnchor:[size / 2, size / 2],
+        html: suggestedMarkerHtml(color, size, isSelected),
+        className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
       });
-
       const marker = L.marker([p.lat, p.lng], { icon }).addTo(map);
-
-      // Tooltip — hover
       marker.bindTooltip(
         `<div style="font-weight:700;">⭐ ${p.name}</div>
          ${p.taxonomy_desc ? `<div style="font-size:11px;color:#14b8a6;">${p.taxonomy_desc}</div>` : ""}
          <div style="font-size:10px;color:#0d9488;margin-top:3px;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>`,
         { permanent: false, direction: "top", offset: [0, -12], className: "phys-tooltip-suggested" }
       );
-
-      // Popup — click
-      marker.bindPopup(
-        buildPopupHtml(p, "#14b8a6", "#f0fdfa", "#99f6e4", "SUGGESTED"),
-        { className: "phys-popup-suggested", offset: [0, -10], maxWidth: 280, closeButton: true }
-      );
+      marker.bindPopup(buildPopupHtml(p, "#14b8a6", "#f0fdfa", "#99f6e4", "SUGGESTED"), {
+        className: "phys-popup-suggested", offset: [0, -10], maxWidth: 280, closeButton: true,
+      });
       marker.on("click", () => { onSelect(p); marker.openPopup(); });
       return marker;
     });
 
     markersRef.current = [...mainMarkers, ...suggestedMarkers];
 
-    // Fit bounds to include all points
     const allPoints: [number, number][] = [
       [selectedSite.lat, selectedSite.lng],
       ...mappable.map((p) => [p.lat!, p.lng!] as [number, number]),
@@ -266,14 +317,10 @@ export default function PhysicianMap({
 
   useEffect(() => {
     if (!mapKey) return;
-
     const loadAndInit = () => {
       if (window.L?.mapquest) { initMap(); return; }
-      const iv = setInterval(() => {
-        if (window.L?.mapquest) { clearInterval(iv); initMap(); }
-      }, 100);
+      const iv = setInterval(() => { if (window.L?.mapquest) { clearInterval(iv); initMap(); } }, 100);
     };
-
     if (!document.getElementById("mq-css")) {
       const css = document.createElement("link");
       css.id = "mq-css"; css.rel = "stylesheet";
@@ -289,25 +336,13 @@ export default function PhysicianMap({
     } else {
       loadAndInit();
     }
-
     return () => {
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
-      markersRef.current = [];
+      markersRef.current   = [];
+      tileLayerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapKey, physicians, suggestedPhysicians, selectedSite]);
-
-  const zoomIn  = () => mapRef.current?.zoomIn();
-  const zoomOut = () => mapRef.current?.zoomOut();
-  const fitAll  = () => {
-    if (!mapRef.current || !window.L) return;
-    const pts: [number, number][] = [
-      [selectedSite.lat, selectedSite.lng],
-      ...mappable.map((p) => [p.lat!, p.lng!] as [number, number]),
-      ...mappableSuggested.map((p) => [p.lat!, p.lng!] as [number, number]),
-    ];
-    mapRef.current.fitBounds(window.L.latLngBounds(pts), { padding: [40, 40] });
-  };
 
   if (!mapKey) {
     return (
@@ -324,28 +359,99 @@ export default function PhysicianMap({
     );
   }
 
+  const activeType = MAP_TYPES.find((t) => t.id === mapType)!;
+
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
 
-      {/* Zoom controls */}
-      <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, display: "flex", flexDirection: "column", gap: 6 }}>
+      {/* ── Map type switcher — bottom-right ─────────────────────────────── */}
+      <div style={{ position: "absolute", bottom: 14, right: 10, zIndex: 1000 }}>
+        {showTypeMenu && (
+          <div style={{
+            position: "absolute", bottom: "calc(100% + 6px)", right: 0,
+            background: "white", border: "1px solid #e2e8f0", borderRadius: 10,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.12)", overflow: "hidden", minWidth: 140,
+          }}>
+            {MAP_TYPES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => switchMapType(t.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  width: "100%", padding: "8px 14px",
+                  background: t.id === mapType ? "#eff6ff" : "transparent",
+                  border: "none", cursor: "pointer",
+                  fontSize: 12, fontWeight: t.id === mapType ? 700 : 500,
+                  color: t.id === mapType ? "#2563eb" : "#334155",
+                  fontFamily: "'Sora', sans-serif",
+                  borderLeft: t.id === mapType ? "3px solid #2563eb" : "3px solid transparent",
+                }}
+              >
+                <span style={{ fontSize: 14 }}>{t.icon}</span>
+                {t.label}
+                {t.id === mapType && <span style={{ marginLeft: "auto", fontSize: 10 }}>✓</span>}
+              </button>
+            ))}
+          </div>
+        )}
+        <button
+          onClick={() => setShowTypeMenu((v) => !v)}
+          title="Change map type"
+          style={{
+            display: "flex", alignItems: "center", gap: 5,
+            padding: "6px 10px", background: "white",
+            border: `1px solid ${showTypeMenu ? "#2563eb" : "#e2e8f0"}`,
+            borderRadius: 8, cursor: "pointer",
+            fontSize: 11, fontWeight: 600, color: "#334155",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+            fontFamily: "'Sora', sans-serif",
+          }}
+        >
+          <span style={{ fontSize: 13 }}>{activeType.icon}</span>
+          {activeType.label}
+          <span style={{ fontSize: 9, color: "#94a3b8", marginLeft: 2 }}>▲</span>
+        </button>
+      </div>
+
+      {/* ── Zoom controls + level badge — top-right ───────────────────────── */}
+      <div style={{
+        position: "absolute", top: 10, right: 10, zIndex: 1000,
+        display: "flex", flexDirection: "column", gap: 4, alignItems: "center",
+      }}>
+        <div style={{
+          width: 32, height: 20, background: "white",
+          border: "1px solid #e2e8f0", borderRadius: 6,
+          fontSize: 10, fontWeight: 700, color: "#475569",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+          fontFamily: "'IBM Plex Mono', monospace",
+        }}>
+          {currentZoom}
+        </div>
         {[
-          { icon: "+", title: "Zoom in",  fn: zoomIn  },
-          { icon: "−", title: "Zoom out", fn: zoomOut },
-          { icon: "⊡", title: "Fit all",  fn: fitAll  },
+          { icon: "+", title: "Zoom in",  fn: zoomIn,  disabled: currentZoom >= MAX_ZOOM },
+          { icon: "−", title: "Zoom out", fn: zoomOut, disabled: currentZoom <= MIN_ZOOM },
+          { icon: "⊡", title: "Fit all",  fn: fitAll,  disabled: false },
         ].map((b) => (
-          <button key={b.title} title={b.title} onClick={b.fn} style={{
-            width: 32, height: 32, background: "white",
-            border: "1px solid #e2e8f0", borderRadius: 8,
-            fontSize: 16, fontWeight: 700, color: "#334155",
-            cursor: "pointer", display: "flex", alignItems: "center",
-            justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
-          }}>{b.icon}</button>
+          <button
+            key={b.title} title={b.title} onClick={b.fn} disabled={b.disabled}
+            style={{
+              width: 32, height: 32, background: b.disabled ? "#f8fafc" : "white",
+              border: "1px solid #e2e8f0", borderRadius: 8,
+              fontSize: 16, fontWeight: 700,
+              color: b.disabled ? "#cbd5e1" : "#334155",
+              cursor: b.disabled ? "default" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+            }}
+          >
+            {b.icon}
+          </button>
         ))}
       </div>
 
-      {/* Legend */}
+      {/* ── Legend — top-left ─────────────────────────────────────────────── */}
       <div style={{
         position: "absolute", top: 10, left: 10, zIndex: 1000,
         background: "rgba(255,255,255,0.95)",
@@ -353,32 +459,30 @@ export default function PhysicianMap({
         padding: "9px 13px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
         display: "flex", flexDirection: "column", gap: 7,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="14" height="14" viewBox="0 0 30 30">
-            <circle cx="15" cy="15" r="14" fill="#ef4444"/>
-            <rect x="12" y="7" width="6" height="16" rx="1.5" fill="white"/>
-            <rect x="7" y="12" width="16" height="6" rx="1.5" fill="white"/>
-          </svg>
-          <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>Trial Site</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="14" height="14" viewBox="0 0 30 30">
-            <circle cx="15" cy="15" r="14" fill="#2563eb"/>
-            <circle cx="15" cy="11" r="4" fill="white"/>
-            <path d="M8 25c0-4.4 3.1-7 7-7s7 2.6 7 7" fill="white"/>
-          </svg>
-          <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>Physician</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="14" height="14" viewBox="0 0 30 30">
-            <circle cx="15" cy="15" r="14" fill="#14b8a6"/>
-            <circle cx="15" cy="11" r="4" fill="white"/>
-            <path d="M8 25c0-4.4 3.1-7 7-7s7 2.6 7 7" fill="white"/>
-            <polygon points="24,5 25,8 28,8 25.5,10 26.5,13 24,11.5 21.5,13 22.5,10 20,8 23,8"
-              fill="#fbbf24" stroke="white" stroke-width="0.5"/>
-          </svg>
-          <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>Suggested</span>
-        </div>
+        {[
+          { fill: "#ef4444", label: "Trial Site", shape: "hospital" },
+          { fill: "#2563eb", label: "Physician",  shape: "doctor"   },
+          { fill: "#14b8a6", label: "Suggested",  shape: "suggested" },
+        ].map(({ fill, label, shape }) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 30 30">
+              <circle cx="15" cy="15" r="14" fill={fill}/>
+              {shape === "hospital" && <>
+                <rect x="12" y="7" width="6" height="16" rx="1.5" fill="white"/>
+                <rect x="7" y="12" width="16" height="6" rx="1.5" fill="white"/>
+              </>}
+              {(shape === "doctor" || shape === "suggested") && <>
+                <circle cx="15" cy="11" r="4" fill="white"/>
+                <path d="M8 25c0-4.4 3.1-7 7-7s7 2.6 7 7" fill="white"/>
+              </>}
+              {shape === "suggested" &&
+                <polygon points="24,5 25,8 28,8 25.5,10 26.5,13 24,11.5 21.5,13 22.5,10 20,8 23,8"
+                  fill="#fbbf24" stroke="white" strokeWidth="0.5"/>
+              }
+            </svg>
+            <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>{label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
