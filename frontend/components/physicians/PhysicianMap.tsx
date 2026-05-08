@@ -1,11 +1,7 @@
 // components/physicians/PhysicianMap.tsx
-// v2 changes:
-//  - Added `suggestedPhysicians` prop — plotted in teal/green to visually
-//    distinguish them from main (blue) physicians.
-//  - Trial site stays red (hospital cross).
-//  - Legend updated with three entries: Trial Site / Physician / Suggested.
-//  - Suggested markers use a slightly different doctor icon with teal colour.
-//  - Popup for suggested physicians shows a "Suggested" badge.
+// v3 changes:
+//  - Tooltip (hover) and Popup (click) for both main and suggested physicians
+//    now show ONLY: Name, Specialization, and NPI.
 
 "use client";
 
@@ -15,7 +11,7 @@ import type { SelectedSite } from "@/types/physician";
 
 type Props = {
   physicians:           Physician[];
-  suggestedPhysicians?: Physician[];   // NEW — plotted in teal
+  suggestedPhysicians?: Physician[];
   selectedSite:         SelectedSite;
   selectedNpi:          string | null;
   onSelect:             (p: Physician) => void;
@@ -50,7 +46,6 @@ function doctorMarkerHtml(color: string, size: number, selected: boolean): strin
     </div>`.trim();
 }
 
-/** Star marker for suggested physicians — teal with a small star accent */
 function suggestedMarkerHtml(color: string, size: number, selected: boolean): string {
   const glow = selected
     ? `filter:drop-shadow(0 0 8px ${color});`
@@ -59,11 +54,8 @@ function suggestedMarkerHtml(color: string, size: number, selected: boolean): st
     <div style="${glow}cursor:pointer;transition:transform 0.15s;">
       <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 30 30">
         <circle cx="15" cy="15" r="14" fill="${color}" stroke="white" stroke-width="${selected ? 3 : 2}"/>
-        <!-- Head -->
         <circle cx="15" cy="11" r="4" fill="white"/>
-        <!-- Body -->
         <path d="M8 25c0-4.4 3.1-7 7-7s7 2.6 7 7" fill="white"/>
-        <!-- Small star top-right to signal "suggested" -->
         <polygon points="24,5 25,8 28,8 25.5,10 26.5,13 24,11.5 21.5,13 22.5,10 20,8 23,8"
           fill="#fbbf24" stroke="white" stroke-width="0.5"/>
       </svg>
@@ -176,6 +168,25 @@ export default function PhysicianMap({
       { permanent: false, direction: "top", offset: [0, -18], className: "site-tooltip" }
     );
 
+    // ── Helper: shared popup HTML (Name + Spec + NPI only) ───────────────────
+    const buildPopupHtml = (
+      p: Physician,
+      accentColor: string,
+      bgColor: string,
+      borderColor: string,
+      badge?: string,
+    ) => `
+      <div>
+        <div style="padding:13px 16px 11px;border-bottom:1px solid ${borderColor};background:${bgColor};">
+          ${badge ? `<div style="margin-bottom:4px;"><span style="background:${accentColor};color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:0.5px;">${badge}</span></div>` : ""}
+          <div style="font-weight:700;font-size:13px;color:#0f172a;padding-right:18px;font-family:'Sora',sans-serif;">${p.name}</div>
+          ${p.taxonomy_desc ? `<div style="font-size:11px;color:${accentColor};margin-top:2px;font-weight:600;">${p.taxonomy_desc}</div>` : ""}
+        </div>
+        <div style="padding:10px 16px 12px;font-family:'IBM Plex Mono',monospace;">
+          <div style="font-size:11px;color:#64748b;">NPI <span style="color:#0f172a;font-weight:600;">${p.npi}</span></div>
+        </div>
+      </div>`;
+
     // ── Main physician markers (blue) ─────────────────────────────────────────
     const mainMarkers = mappable.map((p) => {
       const isSelected = p.npi === selectedNpi;
@@ -191,33 +202,19 @@ export default function PhysicianMap({
 
       const marker = L.marker([p.lat, p.lng], { icon }).addTo(map);
 
+      // Tooltip — hover
       marker.bindTooltip(
         `<div style="font-weight:700;">${p.name}</div>
-         ${p.taxonomy_desc ? `<div style="font-size:11px;color:#3b82f6;">${p.taxonomy_desc}</div>` : ""}`,
+         ${p.taxonomy_desc ? `<div style="font-size:11px;color:#3b82f6;">${p.taxonomy_desc}</div>` : ""}
+         <div style="font-size:10px;color:#94a3b8;margin-top:3px;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>`,
         { permanent: false, direction: "top", offset: [0, -12], className: "phys-tooltip" }
       );
 
-      const distNote = p.distance_miles != null
-        ? `<div style="margin-top:4px;font-weight:700;color:#2563eb;font-size:12px;">📏 ${p.distance_miles} mi from site</div>`
-        : "";
-
-      const popupHtml = `
-        <div>
-          <div style="padding:13px 16px 11px;border-bottom:1px solid #f1f5f9;background:#f0f9ff;">
-            <div style="font-weight:700;font-size:13px;color:#0f172a;padding-right:18px;font-family:'Sora',sans-serif;">${p.name}</div>
-            ${p.taxonomy_desc ? `<div style="font-size:11px;color:#2563eb;margin-top:2px;font-weight:600;">${p.taxonomy_desc}</div>` : ""}
-          </div>
-          <div style="padding:11px 16px 13px;font-size:12px;color:#64748b;font-family:'Sora',sans-serif;">
-            ${p.address ? `<div>📍 ${p.address}</div>` : ""}
-            ${p.phone   ? `<div style="margin-top:4px;">📞 <a href="tel:${p.phone}" style="color:#2563eb;font-weight:600;">${p.phone}</a></div>` : ""}
-            ${distNote}
-            <div style="margin-top:6px;font-size:10px;color:#cbd5e1;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>
-          </div>
-        </div>`;
-
-      marker.bindPopup(popupHtml, {
-        className: "phys-popup", offset: [0, -10], maxWidth: 280, closeButton: true,
-      });
+      // Popup — click
+      marker.bindPopup(
+        buildPopupHtml(p, "#2563eb", "#f0f9ff", "#dbeafe"),
+        { className: "phys-popup", offset: [0, -10], maxWidth: 280, closeButton: true }
+      );
       marker.on("click", () => { onSelect(p); marker.openPopup(); });
       return marker;
     });
@@ -225,7 +222,7 @@ export default function PhysicianMap({
     // ── Suggested physician markers (teal) ────────────────────────────────────
     const suggestedMarkers = mappableSuggested.map((p) => {
       const isSelected = p.npi === selectedNpi;
-      const color      = isSelected ? "#0f766e" : "#14b8a6";   // teal-700 / teal-500
+      const color      = isSelected ? "#0f766e" : "#14b8a6";
       const size       = isSelected ? 30 : 24;
 
       const icon = L.divIcon({
@@ -237,37 +234,19 @@ export default function PhysicianMap({
 
       const marker = L.marker([p.lat, p.lng], { icon }).addTo(map);
 
+      // Tooltip — hover
       marker.bindTooltip(
         `<div style="font-weight:700;">⭐ ${p.name}</div>
          ${p.taxonomy_desc ? `<div style="font-size:11px;color:#14b8a6;">${p.taxonomy_desc}</div>` : ""}
-         <div style="font-size:10px;color:#0d9488;margin-top:2px;">Suggested Physician</div>`,
+         <div style="font-size:10px;color:#0d9488;margin-top:3px;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>`,
         { permanent: false, direction: "top", offset: [0, -12], className: "phys-tooltip-suggested" }
       );
 
-      const distNote = p.distance_miles != null
-        ? `<div style="margin-top:4px;font-weight:700;color:#14b8a6;font-size:12px;">📏 ${p.distance_miles} mi from site</div>`
-        : "";
-
-      const popupHtml = `
-        <div>
-          <div style="padding:13px 16px 11px;border-bottom:1px solid #f0fdfa;background:#f0fdfa;">
-            <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:4px;">
-              <span style="background:#14b8a6;color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:0.5px;">SUGGESTED</span>
-            </div>
-            <div style="font-weight:700;font-size:13px;color:#0f172a;padding-right:18px;font-family:'Sora',sans-serif;">${p.name}</div>
-            ${p.taxonomy_desc ? `<div style="font-size:11px;color:#0d9488;margin-top:2px;font-weight:600;">${p.taxonomy_desc}</div>` : ""}
-          </div>
-          <div style="padding:11px 16px 13px;font-size:12px;color:#64748b;font-family:'Sora',sans-serif;">
-            ${p.address ? `<div>📍 ${p.address}</div>` : ""}
-            ${p.phone   ? `<div style="margin-top:4px;">📞 <a href="tel:${p.phone}" style="color:#0d9488;font-weight:600;">${p.phone}</a></div>` : ""}
-            ${distNote}
-            <div style="margin-top:6px;font-size:10px;color:#cbd5e1;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>
-          </div>
-        </div>`;
-
-      marker.bindPopup(popupHtml, {
-        className: "phys-popup-suggested", offset: [0, -10], maxWidth: 280, closeButton: true,
-      });
+      // Popup — click
+      marker.bindPopup(
+        buildPopupHtml(p, "#14b8a6", "#f0fdfa", "#99f6e4", "SUGGESTED"),
+        { className: "phys-popup-suggested", offset: [0, -10], maxWidth: 280, closeButton: true }
+      );
       marker.on("click", () => { onSelect(p); marker.openPopup(); });
       return marker;
     });
@@ -366,7 +345,7 @@ export default function PhysicianMap({
         ))}
       </div>
 
-      {/* Legend — three entries */}
+      {/* Legend */}
       <div style={{
         position: "absolute", top: 10, left: 10, zIndex: 1000,
         background: "rgba(255,255,255,0.95)",
@@ -374,7 +353,6 @@ export default function PhysicianMap({
         padding: "9px 13px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
         display: "flex", flexDirection: "column", gap: 7,
       }}>
-        {/* Trial Site */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <svg width="14" height="14" viewBox="0 0 30 30">
             <circle cx="15" cy="15" r="14" fill="#ef4444"/>
@@ -383,7 +361,6 @@ export default function PhysicianMap({
           </svg>
           <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>Trial Site</span>
         </div>
-        {/* Main Physician */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <svg width="14" height="14" viewBox="0 0 30 30">
             <circle cx="15" cy="15" r="14" fill="#2563eb"/>
@@ -392,7 +369,6 @@ export default function PhysicianMap({
           </svg>
           <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>Physician</span>
         </div>
-        {/* Suggested Physician */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <svg width="14" height="14" viewBox="0 0 30 30">
             <circle cx="15" cy="15" r="14" fill="#14b8a6"/>
