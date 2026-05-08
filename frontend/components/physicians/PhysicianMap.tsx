@@ -106,11 +106,15 @@ export default function PhysicianMap({
   const mappableSuggested = suggestedPhysicians.filter((p) => p.lat != null && p.lng != null);
 
   // ── Switch tile layer without destroying the map ──────────────────────────
+  // retina only works for vector tiles — sat/hybrid have no @2x endpoint
+  const retinaFor = (_type: MapType) => true; // Enterprise plan — all tile types support @2x retina
+
+  // ── Switch tile layer without destroying the map ──────────────────────────
   const switchMapType = (type: MapType) => {
     if (!mapRef.current || !window.L?.mapquest) return;
     const L = window.L;
     if (tileLayerRef.current) mapRef.current.removeLayer(tileLayerRef.current);
-    const layer = L.mapquest.tileLayer(type, { retina: true });
+    const layer = L.mapquest.tileLayer(type, { retina: retinaFor(type) });
     layer.addTo(mapRef.current);
     layer.bringToBack();
     tileLayerRef.current = layer;
@@ -210,7 +214,7 @@ export default function PhysicianMap({
       : selectedSite.lng;
 
     // Initial tile layer with retina
-    const initialLayer = L.mapquest.tileLayer("map", { retina: true });
+    const initialLayer = L.mapquest.tileLayer("map", { retina: true }); // "map" supports retina
     tileLayerRef.current = initialLayer;
 
     const map = L.mapquest.map(mapDivRef.current, {

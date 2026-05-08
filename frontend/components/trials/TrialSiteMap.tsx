@@ -99,11 +99,14 @@ export default function TrialSiteMap({
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
 
   // ── Switch tile layer without destroying the map ──────────────────────────
+  // retina only works for vector tiles — sat/hybrid have no @2x endpoint
+  const retinaFor = (_type: MapType) => true; // Enterprise plan — all tile types support @2x retina
+
   const switchMapType = (type: MapType) => {
     if (!mapInstanceRef.current || !window.L?.mapquest) return;
     const L = window.L;
     if (tileLayerRef.current) mapInstanceRef.current.removeLayer(tileLayerRef.current);
-    const layer = L.mapquest.tileLayer(type, { retina: true });
+    const layer = L.mapquest.tileLayer(type, { retina: retinaFor(type) });
     layer.addTo(mapInstanceRef.current);
     layer.bringToBack();
     tileLayerRef.current = layer;
