@@ -1,11 +1,5 @@
 // components/trials/TrialSiteMap.tsx
-// v3 changes:
-//  - Map type switcher: Standard | Hybrid | Satellite | Light | Dark
-//  - Retina (@2x) high-res tile scaling via { retina: true }
-//  - Zoom range clamped to 0–20 (minZoom / maxZoom)
-//  - tileLayerRef tracks current layer — switching type never re-mounts the map
-//  - Zoom level badge above zoom controls
-//  - Map type menu opens upward from bottom-right corner
+// v4 fix: removed layer.bringToBack() — not available on MapQuest tile layers
 
 "use client";
 
@@ -16,14 +10,14 @@ import type { SelectedSite } from "@/types/physician";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type MapType = "map" | "hybrid" | "sat" | "light" | "dark";
+type MapType = "map" | "hybrid" | "satellite" | "light" | "dark";
 
 const MAP_TYPES: { id: MapType; label: string; icon: string }[] = [
-  { id: "map",    label: "Standard",  icon: "🗺" },
-  { id: "hybrid", label: "Hybrid",    icon: "🛰" },
-  { id: "sat",    label: "Satellite", icon: "🌍" },
-  { id: "light",  label: "Light",     icon: "☀️" },
-  { id: "dark",   label: "Dark",      icon: "🌙" },
+  { id: "map",       label: "Standard",  icon: "🗺" },
+  { id: "hybrid",    label: "Hybrid",    icon: "🛰" },
+  { id: "satellite", label: "Satellite", icon: "🌍" },
+  { id: "light",     label: "Light",     icon: "☀️" },
+  { id: "dark",      label: "Dark",      icon: "🌙" },
 ];
 
 const MIN_ZOOM = 0;
@@ -99,16 +93,13 @@ export default function TrialSiteMap({
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
 
   // ── Switch tile layer without destroying the map ──────────────────────────
-  // retina only works for vector tiles — sat/hybrid have no @2x endpoint
-  const retinaFor = (_type: MapType) => true; // Enterprise plan — all tile types support @2x retina
-
   const switchMapType = (type: MapType) => {
     if (!mapInstanceRef.current || !window.L?.mapquest) return;
     const L = window.L;
     if (tileLayerRef.current) mapInstanceRef.current.removeLayer(tileLayerRef.current);
-    const layer = L.mapquest.tileLayer(type, { retina: retinaFor(type) });
+    const layer = L.mapquest.tileLayer(type);
     layer.addTo(mapInstanceRef.current);
-    layer.bringToBack();
+    // NOTE: layer.bringToBack() removed — not available on MapQuest tile layers
     tileLayerRef.current = layer;
     setMapType(type);
     setShowTypeMenu(false);
@@ -144,9 +135,9 @@ export default function TrialSiteMap({
 
       L.mapquest.key = mapKey;
 
-      if (!document.getElementById("trial-map-style-v3")) {
+      if (!document.getElementById("trial-map-style-v4")) {
         const style = document.createElement("style");
-        style.id = "trial-map-style-v3";
+        style.id = "trial-map-style-v4";
         style.textContent = `
           @keyframes pinDrop {
             0%  { transform: translateY(-14px) scale(0.6); opacity: 0; }
@@ -188,8 +179,7 @@ export default function TrialSiteMap({
       const lats = mappableSites.map((s) => s.lat as number);
       const lons = mappableSites.map((s) => s.lon as number);
 
-      // Initial tile layer with retina
-      const initialLayer = L.mapquest.tileLayer("map", { retina: true });
+      const initialLayer = L.mapquest.tileLayer("map");
       tileLayerRef.current = initialLayer;
 
       const map = L.mapquest.map(mapDivRef.current, {
@@ -202,7 +192,6 @@ export default function TrialSiteMap({
       });
       mapInstanceRef.current = map;
 
-      // Sync zoom badge with map
       map.on("zoomend", () => setCurrentZoom(map.getZoom()));
 
       mappableSites.forEach((site) => {
@@ -537,7 +526,7 @@ export default function TrialSiteMap({
         )}
       </div>
 
-      {/* ── Below-map content (unchanged) ────────────────────────────────── */}
+      {/* ── Below-map content ─────────────────────────────────────────────── */}
       <div>
         {description && (
           <>

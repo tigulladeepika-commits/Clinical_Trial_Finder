@@ -1,11 +1,5 @@
 // components/physicians/PhysicianMap.tsx
-// v4 changes:
-//  - Map type switcher: Standard | Hybrid | Satellite | Light | Dark
-//  - Retina (@2x) high-res tile scaling via { retina: true }
-//  - Zoom range clamped to 0–20 (minZoom / maxZoom)
-//  - tileLayerRef tracks current layer — switching type never re-mounts the map
-//  - Active map-type button highlights in the toolbar
-//  - Zoom level indicator badge above zoom controls
+// v5 fix: removed layer.bringToBack() — not available on MapQuest tile layers
 
 "use client";
 
@@ -15,14 +9,14 @@ import type { SelectedSite } from "@/types/physician";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type MapType = "map" | "hybrid" | "sat" | "light" | "dark";
+type MapType = "map" | "hybrid" | "satellite" | "light" | "dark";
 
 const MAP_TYPES: { id: MapType; label: string; icon: string }[] = [
-  { id: "map",    label: "Standard",  icon: "🗺" },
-  { id: "hybrid", label: "Hybrid",    icon: "🛰" },
-  { id: "sat",    label: "Satellite", icon: "🌍" },
-  { id: "light",  label: "Light",     icon: "☀️" },
-  { id: "dark",   label: "Dark",      icon: "🌙" },
+  { id: "map",       label: "Standard",  icon: "🗺" },
+  { id: "hybrid",    label: "Hybrid",    icon: "🛰" },
+  { id: "satellite", label: "Satellite", icon: "🌍" },
+  { id: "light",     label: "Light",     icon: "☀️" },
+  { id: "dark",      label: "Dark",      icon: "🌙" },
 ];
 
 const MIN_ZOOM = 0;
@@ -106,17 +100,13 @@ export default function PhysicianMap({
   const mappableSuggested = suggestedPhysicians.filter((p) => p.lat != null && p.lng != null);
 
   // ── Switch tile layer without destroying the map ──────────────────────────
-  // retina only works for vector tiles — sat/hybrid have no @2x endpoint
-  const retinaFor = (_type: MapType) => true; // Enterprise plan — all tile types support @2x retina
-
-  // ── Switch tile layer without destroying the map ──────────────────────────
   const switchMapType = (type: MapType) => {
     if (!mapRef.current || !window.L?.mapquest) return;
     const L = window.L;
     if (tileLayerRef.current) mapRef.current.removeLayer(tileLayerRef.current);
-    const layer = L.mapquest.tileLayer(type, { retina: retinaFor(type) });
+    const layer = L.mapquest.tileLayer(type);
     layer.addTo(mapRef.current);
-    layer.bringToBack();
+    // NOTE: layer.bringToBack() removed — not available on MapQuest tile layers
     tileLayerRef.current = layer;
     setMapType(type);
     setShowTypeMenu(false);
@@ -151,9 +141,9 @@ export default function PhysicianMap({
 
     L.mapquest.key = mapKey;
 
-    if (!document.getElementById("phys-map-style-v4")) {
+    if (!document.getElementById("phys-map-style-v5")) {
       const style = document.createElement("style");
-      style.id = "phys-map-style-v4";
+      style.id = "phys-map-style-v5";
       style.textContent = `
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap');
         .phys-tooltip {
@@ -213,8 +203,7 @@ export default function PhysicianMap({
       ? allMappable.reduce((s, p) => s + p.lng!, 0) / allMappable.length
       : selectedSite.lng;
 
-    // Initial tile layer with retina
-    const initialLayer = L.mapquest.tileLayer("map", { retina: true }); // "map" supports retina
+    const initialLayer = L.mapquest.tileLayer("map");
     tileLayerRef.current = initialLayer;
 
     const map = L.mapquest.map(mapDivRef.current, {
@@ -227,7 +216,6 @@ export default function PhysicianMap({
     });
     mapRef.current = map;
 
-    // Sync zoom badge with map
     map.on("zoomend", () => setCurrentZoom(map.getZoom()));
 
     // Trial site marker
@@ -242,7 +230,7 @@ export default function PhysicianMap({
       { permanent: false, direction: "top", offset: [0, -18], className: "site-tooltip" }
     );
 
-    // ── Shared popup builder ────────────────────────────────────────────────
+    // ── Shared popup builder ──────────────────────────────────────────────
     const buildPopupHtml = (
       p: Physician,
       accentColor: string,
@@ -261,7 +249,7 @@ export default function PhysicianMap({
         </div>
       </div>`;
 
-    // ── Main physician markers (blue) ───────────────────────────────────────
+    // ── Main physician markers (blue) ─────────────────────────────────────
     const mainMarkers = mappable.map((p) => {
       const isSelected = p.npi === selectedNpi;
       const color      = isSelected ? "#1d4ed8" : "#2563eb";
@@ -284,7 +272,7 @@ export default function PhysicianMap({
       return marker;
     });
 
-    // ── Suggested physician markers (teal) ──────────────────────────────────
+    // ── Suggested physician markers (teal) ────────────────────────────────
     const suggestedMarkers = mappableSuggested.map((p) => {
       const isSelected = p.npi === selectedNpi;
       const color      = isSelected ? "#0f766e" : "#14b8a6";
