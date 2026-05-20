@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { submitLead }            from "@/lib/api";
-import type { Physician, SelectedSite } from "@/types/physician";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { submitLead, fetchPhysicianPublications } from "@/lib/api";
+import type { Physician, SelectedSite, Publication } from "@/types/physician";
 
 interface Props {
   physician:   Physician;
@@ -27,8 +27,122 @@ function maskPhone(phone: string): string {
   return `•••-•••-${last4}`;
 }
 
+// ── Publication sub-components ────────────────────────────────────────────────
+
+function PublicationSkeleton() {
+  return (
+    <div className="pub-skeleton-wrap">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="pub-skeleton-card">
+          <div className="pub-skel-line pub-skel-title" />
+          <div className="pub-skel-line pub-skel-journal" />
+          <div className="pub-skel-line pub-skel-authors" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PublicationCard({ pub }: { pub: Publication }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="pub-card">
+      {/* Year badge + journal */}
+      <div className="pub-card-meta-row">
+        {pub.year && <span className="pub-year-badge">{pub.year}</span>}
+        {pub.journal && (
+          <span className="pub-journal">{pub.journal}</span>
+        )}
+      </div>
+
+      {/* Title — links to PubMed */}
+      <a
+        href={pub.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="pub-title-link"
+      >
+        {pub.title}
+      </a>
+
+      {/* Authors */}
+      {pub.authors.length > 0 && (
+        <div className="pub-authors">
+          {pub.authors.slice(0, 4).join(", ")}
+          {pub.authors.length > 4 && (
+            <span className="pub-authors-more"> +{pub.authors.length - 4} more</span>
+          )}
+        </div>
+      )}
+
+      {/* Abstract expand/collapse */}
+      {pub.abstract && (
+        <div className="pub-abstract-wrap">
+          <p className={`pub-abstract-text ${expanded ? "pub-abstract-expanded" : ""}`}>
+            {pub.abstract}
+          </p>
+          <button
+            className="pub-abstract-toggle"
+            onClick={() => setExpanded((v) => !v)}
+            type="button"
+          >
+            {expanded ? "Show less ↑" : "Show abstract ↓"}
+          </button>
+        </div>
+      )}
+
+      {/* PubMed link */}
+      <a
+        href={pub.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="pub-pmid-link"
+      >
+        PubMed ↗ PMID {pub.pmid}
+      </a>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsLead }: Props) {
   const [leadState, setLeadState] = useState<"idle" | "loading" | "done" | "error">("idle");
+
+  // Publications state
+  const [pubState, setPubState]     = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [publications, setPublications] = useState<Publication[]>([]);
+  const pubFetchedRef = useRef<string>(""); // tracks which NPI we last fetched for
+
+  // Fetch publications when panel mounts or physician changes
+  useEffect(() => {
+    const key = physician.npi;
+    if (pubFetchedRef.current === key) return; // already fetched for this physician
+    pubFetchedRef.current = key;
+
+    const controller = new AbortController();
+    setPubState("loading");
+    setPublications([]);
+
+    fetchPhysicianPublications(
+      physician.npi,
+      physician.name,
+      physician.taxonomy_desc ?? null,
+      controller.signal,
+    )
+      .then((res) => {
+        if (controller.signal.aborted) return;
+        setPublications(res.publications);
+        setPubState("done");
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setPubState("error");
+      });
+
+    return () => controller.abort();
+  }, [physician.npi, physician.name, physician.taxonomy_desc]);
 
   const handleAddAsLead = useCallback(async () => {
     if (leadState !== "idle") return;
@@ -69,6 +183,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
   return (
     <>
       <style>{`
+        /* ── Shell ──────────────────────────────────────────────────────── */
         .pdp-shell {
           display: flex; flex-direction: column;
           background: var(--surface);
@@ -111,14 +226,14 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         }
         .pdp-lead-btn:disabled { opacity: 0.65; cursor: not-allowed; }
         .pdp-success-banner {
-          margin: 0 16px 0;
+          margin: 12px 16px 0;
           padding: 10px 14px;
           background: var(--blue-50); border: 1px solid var(--blue-200);
           border-radius: var(--radius-md);
           display: flex; align-items: center; gap: 9px;
           font-size: 12px; font-weight: 600; color: var(--blue-600);
           animation: fadeIn 0.18s ease both;
-          flex-shrink: 0; margin-top: 12px;
+          flex-shrink: 0;
         }
         .pdp-success-dot {
           width: 8px; height: 8px; border-radius: 50%;
@@ -129,6 +244,8 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           padding: 16px;
           display: flex; flex-direction: column; gap: 14px;
         }
+
+        /* ── Profile card ───────────────────────────────────────────────── */
         .pdp-profile-card {
           background: #fff; border: 1px solid var(--border);
           border-radius: var(--radius-xl); overflow: hidden;
@@ -173,6 +290,8 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           font-size: 12px; font-weight: 700; color: var(--blue-600);
           font-family: var(--font-mono); margin-top: 10px;
         }
+
+        /* ── Trial card ─────────────────────────────────────────────────── */
         .pdp-trial-card {
           background: #fff; border: 1px solid var(--border);
           border-radius: var(--radius-xl); padding: 16px 18px;
@@ -183,6 +302,136 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         }
         .pdp-trial-site { font-size: 13px; font-weight: 600; color: var(--ink); }
         .pdp-trial-loc  { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+        /* ── Publications card ──────────────────────────────────────────── */
+        .pdp-pub-card {
+          background: #fff; border: 1px solid var(--border);
+          border-radius: var(--radius-xl); overflow: hidden;
+        }
+        .pdp-pub-header {
+          padding: 14px 18px 12px;
+          border-bottom: 1px solid var(--border);
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        .pdp-pub-header-left {
+          display: flex; align-items: center; gap: 8px;
+        }
+        .pdp-pub-icon {
+          width: 28px; height: 28px; border-radius: 8px;
+          background: #eff6ff; border: 1px solid var(--blue-200);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 14px; flex-shrink: 0;
+        }
+        .pdp-pub-title {
+          font-size: 12px; font-weight: 700; color: var(--ink);
+        }
+        .pdp-pub-subtitle {
+          font-size: 10px; color: var(--muted); margin-top: 1px;
+        }
+        .pdp-pub-count-badge {
+          font-size: 10px; font-weight: 700;
+          background: var(--blue-50); color: var(--blue-600);
+          border: 1px solid var(--blue-200);
+          border-radius: 20px; padding: 2px 8px;
+          font-family: var(--font-mono);
+        }
+        .pdp-pub-list {
+          display: flex; flex-direction: column;
+        }
+
+        /* ── Individual publication card ────────────────────────────────── */
+        .pub-card {
+          padding: 14px 18px;
+          border-bottom: 1px solid var(--border);
+          display: flex; flex-direction: column; gap: 6px;
+          transition: background 0.12s;
+        }
+        .pub-card:last-child { border-bottom: none; }
+        .pub-card:hover { background: #fafbff; }
+        .pub-card-meta-row {
+          display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .pub-year-badge {
+          font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+          background: #f0fdf4; color: #15803d;
+          border: 1px solid #bbf7d0; border-radius: 4px;
+          padding: 1px 6px; flex-shrink: 0;
+        }
+        .pub-journal {
+          font-size: 10px; color: var(--muted); font-style: italic;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          max-width: 260px;
+        }
+        .pub-title-link {
+          font-size: 12px; font-weight: 600; color: var(--ink);
+          line-height: 1.45; text-decoration: none;
+          display: block;
+          transition: color 0.12s;
+        }
+        .pub-title-link:hover { color: var(--blue-600); text-decoration: underline; }
+        .pub-authors {
+          font-size: 11px; color: var(--muted); line-height: 1.4;
+        }
+        .pub-authors-more {
+          color: var(--blue-500); font-weight: 600;
+        }
+        .pub-abstract-wrap { margin-top: 2px; }
+        .pub-abstract-text {
+          font-size: 11px; color: var(--ink-3); line-height: 1.6;
+          display: -webkit-box; -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical; overflow: hidden;
+          margin: 0;
+        }
+        .pub-abstract-expanded {
+          display: block; -webkit-line-clamp: unset;
+        }
+        .pub-abstract-toggle {
+          font-size: 10px; font-weight: 700; color: var(--blue-600);
+          background: none; border: none; cursor: pointer; padding: 4px 0 0;
+          font-family: var(--font-sans); transition: opacity 0.12s;
+        }
+        .pub-abstract-toggle:hover { opacity: 0.7; }
+        .pub-pmid-link {
+          font-size: 10px; font-weight: 600; color: var(--muted);
+          text-decoration: none; font-family: var(--font-mono);
+          letter-spacing: 0.3px; transition: color 0.12s;
+        }
+        .pub-pmid-link:hover { color: var(--blue-600); }
+
+        /* ── Skeleton ───────────────────────────────────────────────────── */
+        .pub-skeleton-wrap {
+          padding: 4px 0;
+        }
+        .pub-skeleton-card {
+          padding: 14px 18px;
+          border-bottom: 1px solid var(--border);
+          display: flex; flex-direction: column; gap: 8px;
+        }
+        .pub-skeleton-card:last-child { border-bottom: none; }
+        .pub-skel-line {
+          background: linear-gradient(90deg, #f0f4f8 25%, #e2e8f0 50%, #f0f4f8 75%);
+          background-size: 200% 100%;
+          animation: shimmer 1.4s infinite;
+          border-radius: 4px; height: 10px;
+        }
+        .pub-skel-title   { width: 90%; height: 12px; }
+        .pub-skel-journal { width: 55%; }
+        .pub-skel-authors { width: 70%; }
+        @keyframes shimmer {
+          0%   { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+
+        /* ── Empty / error states ───────────────────────────────────────── */
+        .pub-empty {
+          padding: 24px 18px;
+          text-align: center;
+          color: var(--muted); font-size: 12px; line-height: 1.6;
+        }
+        .pub-empty-icon { font-size: 28px; margin-bottom: 8px; display: block; }
+        .pub-empty-title { font-weight: 600; color: var(--ink-3); font-size: 13px; }
+
+        /* ── Spinner ────────────────────────────────────────────────────── */
         .pdp-btn-spinner {
           width: 12px; height: 12px;
           border: 2px solid rgba(255,255,255,0.35);
@@ -192,6 +441,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
       `}</style>
 
       <div className="pdp-shell">
+        {/* Header */}
         <div className="pdp-header">
           <button className="pdp-back" onClick={onBack} title="Back to Find Physicians">
             <span className="pdp-back-icon">←</span>
@@ -249,8 +499,10 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
                   <span className="pdp-info-icon">📞</span>
                   <div>
                     <div className="pdp-info-label">Phone</div>
-                    <a href={"tel:" + physician.phone}
-                      style={{ color: "var(--blue-600)", fontWeight: 600, textDecoration: "none" }}>
+                    <a
+                      href={"tel:" + physician.phone}
+                      style={{ color: "var(--blue-600)", fontWeight: 600, textDecoration: "none" }}
+                    >
                       {maskPhone(physician.phone)}
                     </a>
                   </div>
@@ -279,6 +531,59 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
                 <span style={{ color: "var(--ink-2)", fontWeight: 600 }}>
                   {site.condition}
                 </span>
+              </div>
+            )}
+          </div>
+
+          {/* ── Publications ─────────────────────────────────────────────── */}
+          <div className="pdp-pub-card">
+            <div className="pdp-pub-header">
+              <div className="pdp-pub-header-left">
+                <div className="pdp-pub-icon">📄</div>
+                <div>
+                  <div className="pdp-pub-title">PubMed Publications</div>
+                  <div className="pdp-pub-subtitle">
+                    Recent research by {physician.name.split(" ")[0]}
+                  </div>
+                </div>
+              </div>
+              {pubState === "done" && publications.length > 0 && (
+                <span className="pdp-pub-count-badge">{publications.length}</span>
+              )}
+            </div>
+
+            {/* Loading skeleton */}
+            {pubState === "loading" && (
+              <PublicationSkeleton />
+            )}
+
+            {/* Publications list */}
+            {pubState === "done" && publications.length > 0 && (
+              <div className="pdp-pub-list">
+                {publications.map((pub) => (
+                  <PublicationCard key={pub.pmid} pub={pub} />
+                ))}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {pubState === "done" && publications.length === 0 && (
+              <div className="pub-empty">
+                <span className="pub-empty-icon">🔍</span>
+                <div className="pub-empty-title">No publications found</div>
+                <div style={{ marginTop: 4 }}>
+                  No recent PubMed records match this physician's name
+                  {physician.taxonomy_desc ? ` and specialty` : ""}.
+                </div>
+              </div>
+            )}
+
+            {/* Error state */}
+            {pubState === "error" && (
+              <div className="pub-empty">
+                <span className="pub-empty-icon">⚠️</span>
+                <div className="pub-empty-title">Could not load publications</div>
+                <div style={{ marginTop: 4 }}>PubMed is temporarily unavailable.</div>
               </div>
             )}
           </div>
