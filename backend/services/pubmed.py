@@ -105,23 +105,38 @@ _SPECIALTY_TO_MESH: dict[str, str] = {
 }
 
 
-def _mesh_for_specialty(taxonomy_desc: Optional[str]) -> Optional[str]:
-    """Return the best PubMed MeSH term for a NUCC taxonomy description."""
-    if not taxonomy_desc:
-        return None
-    clean = taxonomy_desc.strip()
-    # Exact match first
-    if clean in _SPECIALTY_TO_MESH:
-        return _SPECIALTY_TO_MESH[clean]
-    # Case-insensitive fallback
-    lower = clean.lower()
+def _mesh_lookup_single(term: str) -> Optional[str]:
+    """Lookup a single specialty term against the MeSH map."""
+    if term in _SPECIALTY_TO_MESH:
+        return _SPECIALTY_TO_MESH[term]
+    lower = term.lower()
     for key, mesh in _SPECIALTY_TO_MESH.items():
         if key.lower() == lower:
             return mesh
-    # Partial match — e.g. "Hematology & Oncology" contains "Oncology"
     for key, mesh in _SPECIALTY_TO_MESH.items():
         if key.lower() in lower or lower in key.lower():
             return mesh
+    return None
+
+
+def _mesh_for_specialty(taxonomy_desc: Optional[str]) -> Optional[str]:
+    """
+    Return the best PubMed MeSH term for a NUCC taxonomy description.
+
+    NPPES taxonomy_desc arrives as a comma-separated compound string like:
+        "Internal Medicine, Cardiovascular Disease"
+        "Internal Medicine, Interventional Cardiology"
+
+    Try each part from most-specific (rightmost) to least and return the
+    first match, so "Cardiovascular Disease" is preferred over "Internal Medicine".
+    """
+    if not taxonomy_desc:
+        return None
+    parts = [p.strip() for p in taxonomy_desc.split(",") if p.strip()]
+    for part in reversed(parts):
+        result = _mesh_lookup_single(part)
+        if result:
+            return result
     return None
 
 
@@ -138,6 +153,70 @@ def _base_params() -> dict[str, str]:
     return p
 
 
+def _clean_physician_name(name: str) -> str:
+    """
+    Normalise a physician name for PubMed author search.
+
+    NPPES names arrive in forms like:
+        "TIFFANY POWELL-WILEY, M.D., MPH"
+        "ROBERT GALLAGHER, M.D."
+        "BRADLEY SERWER, M.D."
+        "Dr. Jane Smith"
+        "JOHN DOE MD"
+
+    PubMed author fields store names without credentials, e.g.:
+        "Powell-Wiley T"  or  "Powell-Wiley Tiffany"
+
+    Steps applied (in order):
+      1. Strip leading honorific prefixes  (Dr., Prof.)
+      2. Strip trailing credential suffixes separated by comma
+         e.g. ", M.D., MPH"  →  ""
+      3. Strip inline credential tokens at the end
+         e.g. "JOHN DOE MD"  →  "JOHN DOE"
+      4. Title-case so "TIFFANY POWELL-WILEY" → "Tiffany Powell-Wiley"
+         (PubMed search is case-insensitive but mixed-case looks cleaner
+         in logs and matches the [Author] field format more closely)
+      5. Collapse extra whitespace
+    """
+    import re
+
+    clean = name.strip()
+
+    # Step 1 — leading honorifics
+    for prefix in ("Dr. ", "Dr.", "Prof. ", "Prof."):
+        if clean.startswith(prefix):
+            clean = clean[len(prefix):].strip()
+            break
+
+    # Step 2 — trailing credentials after first comma
+    # "TIFFANY POWELL-WILEY, M.D., MPH"  →  "TIFFANY POWELL-WILEY"
+    # "ROBERT GALLAGHER, M.D."           →  "ROBERT GALLAGHER"
+    if "," in clean:
+        clean = clean.split(",")[0].strip()
+
+    # Step 3 — inline credential tokens at end of name (no comma separator)
+    # "JOHN DOE MD" → "JOHN DOE"  |  "JANE DOE PHD" → "JANE DOE"
+    # Matches common post-nominal abbreviations as whole words at the end
+    _CREDENTIAL_RE = re.compile(
+        r"\s+\b(M\.?D\.?|D\.?O\.?|Ph\.?D\.?|MPH|MBA|MS|RN|NP|PA|"
+        r"FACC|FACS|FAHA|FACG|FASN|FAAN|FACR|FACEP|Jr\.?|Sr\.?|II|III|IV)\b\.?$",
+        re.IGNORECASE,
+    )
+    # Apply repeatedly to strip multiple trailing tokens
+    prev = None
+    while prev != clean:
+        prev = clean
+        clean = _CREDENTIAL_RE.sub("", clean).strip()
+
+    # Step 4 — title-case (handles hyphenated names correctly)
+    clean = clean.title()
+
+    # Step 5 — collapse extra whitespace
+    clean = " ".join(clean.split())
+
+    return clean
+
+
 def _build_search_query(name: str, mesh_term: Optional[str]) -> str:
     """
     Build a PubMed esearch query string.
@@ -145,14 +224,10 @@ def _build_search_query(name: str, mesh_term: Optional[str]) -> str:
     With specialty:   "John Smith"[Author] AND "Oncology"[MeSH Terms]
     Without specialty: "John Smith"[Author]
 
-    Name normalisation: strip "Dr." prefix, collapse extra spaces.
+    Name normalisation: strips credentials and honorifics before searching.
+    e.g. "TIFFANY POWELL-WILEY, M.D., MPH" → "Tiffany Powell-Wiley"
     """
-    clean_name = name.strip()
-    # Remove honorifics so "Dr. John Smith" → "John Smith"
-    for prefix in ("Dr. ", "Dr.", "Prof. ", "Prof.", "MD ", "PhD "):
-        if clean_name.startswith(prefix):
-            clean_name = clean_name[len(prefix):].strip()
-            break
+    clean_name = _clean_physician_name(name)
 
     query = f'"{clean_name}"[Author]'
 
