@@ -217,24 +217,43 @@ def _clean_physician_name(name: str) -> str:
     return clean
 
 
-def _build_search_query(name: str, mesh_term: Optional[str]) -> str:
+def _to_pubmed_author(clean_name: str) -> str:
+    """
+    Convert a cleaned full name to PubMed author field format.
+
+    PubMed indexes authors as "LastName FI" (last name + first initial).
+    "Jerome Fleg"          stored as "Fleg J"
+    "Tiffany Powell-Wiley" stored as "Powell-Wiley T"
+    """
+    parts = clean_name.strip().split()
+    if len(parts) == 1:
+        return parts[0]
+    last = parts[-1]
+    first_initial = parts[0][0].upper()
+    return f"{last} {first_initial}"
+
+
+def _build_search_query(name: str, mesh_term) -> str:
     """
     Build a PubMed esearch query string.
 
-    With specialty:   "John Smith"[Author] AND "Oncology"[MeSH Terms]
-    Without specialty: "John Smith"[Author]
+    PubMed [Author] field stores names as "LastName FI", NOT "Firstname Lastname".
+    We search BOTH formats joined with OR for maximum recall:
 
-    Name normalisation: strips credentials and honorifics before searching.
-    e.g. "TIFFANY POWELL-WILEY, M.D., MPH" → "Tiffany Powell-Wiley"
+        ("Fleg J"[Author] OR "Jerome Fleg"[Author])
+        AND "Cardiovascular Diseases"[MeSH Terms]
     """
     clean_name = _clean_physician_name(name)
+    pubmed_fmt = _to_pubmed_author(clean_name)
 
-    query = f'"{clean_name}"[Author]'
+    if pubmed_fmt.lower() != clean_name.lower():
+        author_clause = f'("{pubmed_fmt}"[Author] OR "{clean_name}"[Author])'
+    else:
+        author_clause = f'"{clean_name}"[Author]'
 
     if mesh_term:
-        query += f' AND "{mesh_term}"[MeSH Terms]'
-
-    return query
+        return f'{author_clause} AND "{mesh_term}"[MeSH Terms]'
+    return author_clause
 
 
 def _esearch(query: str) -> list[str]:
