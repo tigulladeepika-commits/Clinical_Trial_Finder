@@ -14,11 +14,11 @@ This document defines the expected business behavior of Clinical Trial Finder fr
 
 ## Product Summary
 
-Clinical Trial Finder is a web application that enables a public user to search ClinicalTrials.gov studies, filter result sets, inspect trial summaries, and review study site locations through both a map view and a structured location list.
+Clinical Trial Finder is a comprehensive web application that enables a public user to search ClinicalTrials.gov studies, filter result sets, inspect trial summaries, review study site locations through both a map view and a structured location list, discover specialist physicians near trial sites, and capture interest for follow-up engagement.
 
 ## Business Objective
 
-The product exists to reduce the effort required to move from a general condition search to a shortlist of relevant clinical studies and site locations.
+The product exists to reduce the effort required to move from a general condition search to a shortlist of relevant clinical studies and site locations, while connecting users with appropriate specialists and streamlining lead capture for research coordinators.
 
 ## Primary Actors
 
@@ -36,15 +36,23 @@ The product exists to reduce the effort required to move from a general conditio
 | Paginated result list | Show the first page of trial summaries and allow more results to load | High |
 | Trial detail review | Open one trial and inspect summary, description, and locations | High |
 | Site mapping | Plot available site coordinates on a map | High |
+| Physician search | Find specialist physicians near trial sites with automatic specialty matching | High |
+| Auto-relax physician results | Expand specialty filter if fewer than 5 physicians found | High |
+| Lead capture | Allow users to express interest in trials/physicians and submit contact information | High |
+| Salesforce integration | Auto-push captured leads to Salesforce CRM for coordinator follow-up | Medium |
+| Condition-specialty mapping | Map trial conditions to medical specialties using 4-pass resolution algorithm | High |
+| City/state validation | Validate and suggest city/state combinations from indexed US locations | Medium |
 | Graceful recovery states | Show loading, empty, and error states clearly | High |
 
 ## Out-Of-Scope Capabilities
 
-- User authentication
-- Saved searches
-- Trial enrollment workflows
-- Administrative management
+- User authentication / login systems
+- Saved searches or bookmarks
+- Direct trial enrollment workflows
+- Administrative management interface
 - Persistent reporting or analytics dashboards
+- Physician credentialing or verification (relies on NPPES registry)
+- Insurance eligibility verification
 
 ## User Goals
 
@@ -52,18 +60,30 @@ The product exists to reduce the effort required to move from a general conditio
 2. Narrow results without losing visibility into the original disease area.
 3. Compare multiple studies from one result set.
 4. Review location availability before opening an external registry page.
+5. Find appropriate medical specialists near trial sites.
+6. Express interest in trials/physicians and receive follow-up from research coordinators.
+7. Access specialty-matched physicians automatically without manual research.
 
 ## End-To-End Functional Flow
 
 1. The user lands on the home page.
 2. The user enters a required condition.
-3. The user may add optional filters.
+3. The user may add optional filters (city, state, phase, status).
 4. The system validates that a condition exists before running a search.
 5. The system retrieves and filters studies.
 6. The system displays a results list with summary cards.
 7. The user selects one trial.
 8. The system loads the site detail view.
 9. The system shows a map and a complete site list when available.
+10. The user clicks on a trial site location.
+11. The system enables "Find Physicians" functionality for that site.
+12. The system automatically maps the trial condition to specialist disciplines.
+13. The system searches NPPES registry for physicians within selected radius.
+14. If fewer than 5 results, the system auto-relaxes to parent specialties.
+15. The system displays physician list with suggested related specialties.
+16. The user captures lead interest for a trial and/or physician.
+17. The system stores lead information securely.
+18. The system optionally pushes lead to Salesforce for coordinator follow-up.
 
 ## Detailed Use Cases
 
@@ -135,6 +155,68 @@ The product exists to reduce the effort required to move from a general conditio
 4. The user may zoom or fit the map to all sites.
 5. The user may select a site card to center the map on that location.
 
+### UC-05 Search For Physicians Near A Trial Site
+
+**Goal:** help users find specialist physicians near clinical trial locations.
+
+**Preconditions**
+
+- A trial detail panel is open.
+- At least one site has valid coordinates.
+
+**Trigger**
+
+- The user selects a trial site (on map or in location list).
+- The user clicks "Find Physicians".
+
+**Main Success Flow**
+
+1. The system maps the trial condition to one or more medical specialties.
+2. The system retrieves ZIP codes within the selected radius around the site.
+3. The system queries NPPES registry for physicians in those ZIPs with matched specialty.
+4. The system geocodes addresses for physicians missing coordinates.
+5. The system calculates distance and sorts by proximity.
+6. The system displays up to 10 physicians with NPI, name, address, and distance.
+7. The system suggests related specialties (up to 5) that may be relevant.
+8. The system displays an auto-relaxation notice if specialty was broadened to find results.
+
+**Alternative Flows**
+
+- If fewer than 5 physicians found in initial specialty, system auto-relaxes to parent/related specialties (Level 1).
+- If still fewer than 5, system tries domain-specific fallbacks (Level 2).
+- If still fewer than 5, system tries Internal Medicine as catch-all (Level 3).
+- If no physicians found after all levels, system shows "No physicians found" with suggestion to broaden search.
+
+### UC-06 Capture Lead Interest In Trial And/Or Physician
+
+**Goal:** allow users to express interest and provide contact information for follow-up.
+
+**Preconditions**
+
+- User is viewing a trial detail or physician.
+
+**Trigger**
+
+- User clicks "Express Interest", "Capture Lead", or similar CTA.
+
+**Main Success Flow**
+
+1. A modal form appears with fields: Name, Email, Phone, NPI (optional), Message (optional).
+2. The form is pre-populated with trial ID and/or physician NPI if applicable.
+3. The user enters required information.
+4. The user submits the form.
+5. The system validates email format.
+6. The system stores the lead in persistent JSON storage (backend/data/leads.json).
+7. If Salesforce integration enabled, system submits to Salesforce Web-to-Lead form.
+8. The system shows success message to user.
+9. Research coordinators receive notification for follow-up.
+
+**Alternative Flows**
+
+- If email validation fails, system shows error and allows user to correct.
+- If Salesforce push fails, system stores locally and logs error (data is not lost).
+- If NPI field filled, system passes to Salesforce custom field for provider tracking.
+
 ## Functional Requirements
 
 | ID | Requirement |
@@ -157,6 +239,16 @@ The product exists to reduce the effort required to move from a general conditio
 | FR-16 | The system shall display loading states during both search and site detail retrieval. |
 | FR-17 | The system shall display an empty state when no matching studies are found. |
 | FR-18 | The system shall display recoverable error messaging when search or site retrieval fails. |
+| FR-19 | The system shall map trial conditions to medical specialties using a 4-pass resolution algorithm (exact, prefix, substring, token overlap). |
+| FR-20 | The system shall search NPPES registry for physicians within specified radius and matched specialty. |
+| FR-21 | The system shall auto-relax specialty filters if fewer than 5 physicians are found across three levels (parent specialties, domain fallbacks, catch-all). |
+| FR-22 | The system shall suggest related specialties (up to 5) that may be relevant to the trial condition. |
+| FR-23 | The system shall provide a lead capture modal for trials and physicians with Name, Email, Phone, NPI, and Message fields. |
+| FR-24 | The system shall validate email addresses and reject malformed entries. |
+| FR-25 | The system shall store lead data securely in persistent JSON format. |
+| FR-26 | The system shall auto-push captured leads to Salesforce Web-to-Lead when SF_OID is configured. |
+| FR-27 | The system shall validate city/state combinations against indexed US locations before accepting search input. |
+| FR-28 | The system shall provide HTTP caching headers (5 min for trial search, 24 hr for site detail, 30 days for static data). |
 
 ## Validation Rules
 

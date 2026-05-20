@@ -51,6 +51,30 @@ export interface PhysicianFetchResponse {
 /** Identical shape to PhysicianFetchResponse — typed separately for clarity */
 export type SuggestedPhysicianFetchResponse = PhysicianFetchResponse;
 
+// ── PubMed Publications ───────────────────────────────────────────────────────
+
+export interface Publication {
+  pmid:     string;
+  title:    string;
+  journal:  string;
+  year:     string;
+  /** Up to 6 authors in "LastName Initials" format */
+  authors:  string[];
+  /** Direct link to the PubMed record */
+  url:      string;
+  /** First 600 chars of abstract — empty string when unavailable */
+  abstract: string;
+}
+
+export interface PublicationFetchResponse {
+  npi:          string;
+  name:         string;
+  count:        number;
+  publications: Publication[];
+}
+
+// ── Leads ─────────────────────────────────────────────────────────────────────
+
 export interface LeadPayload {
   name:            string;
   email:           string;

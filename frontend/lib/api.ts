@@ -1,10 +1,12 @@
 // lib/api.ts
 //
-// v9 changes:
-//  - Added fetchSuggestedPhysicians() — calls GET /api/physicians/suggested
-//    with the trial condition and a list of NPIs to exclude (already shown
-//    in the main list). Returns up to 5 supporting/related specialists.
-//  - All other helpers unchanged from v8.
+// v10 changes:
+//  - Added fetchPhysicianPublications() — calls
+//    GET /api/physicians/{npi}/publications?name=...&specialty=...
+//    Returns up to 10 recent PubMed publications for a physician.
+//    Errors are swallowed and returned as an empty publications array
+//    so the UI degrades gracefully without throwing.
+//  - All other helpers unchanged from v9.
 
 import type { TrialFetchParams, TrialFetchResponse, SiteData, Trial } from "@/types/trial";
 import type {
@@ -12,6 +14,7 @@ import type {
   SuggestedPhysicianParams,
   PhysicianFetchResponse,
   SuggestedPhysicianFetchResponse,
+  PublicationFetchResponse,
   LeadPayload,
   Physician,
   SelectedSite,
@@ -128,6 +131,41 @@ export async function fetchSuggestedPhysicians(
     undefined,
     signal,
   );
+}
+
+/**
+ * Fetch recent PubMed publications for a physician.
+ *
+ * The NPI is used as the URL path segment (cache-friendly, unique).
+ * The actual PubMed search uses name + optional specialty since PubMed
+ * indexes by author name, not by NPI.
+ *
+ * Never throws — returns an empty publications array on any error so
+ * the PhysicianDetailPanel degrades gracefully.
+ */
+export async function fetchPhysicianPublications(
+  npi:      string,
+  name:     string,
+  specialty?: string | null,
+  signal?:  AbortSignal,
+): Promise<PublicationFetchResponse> {
+  const empty: PublicationFetchResponse = { npi, name, count: 0, publications: [] };
+
+  if (!npi?.trim() || !name?.trim()) return empty;
+
+  try {
+    const qs = new URLSearchParams({ name: name.trim() });
+    if (specialty?.trim()) qs.append("specialty", specialty.trim());
+
+    return await apiFetch<PublicationFetchResponse>(
+      `/api/physicians/${encodeURIComponent(npi)}/publications?${qs.toString()}`,
+      undefined,
+      signal,
+    );
+  } catch (err) {
+    console.warn(`[fetchPhysicianPublications] Failed for NPI ${npi}:`, err);
+    return empty;
+  }
 }
 
 /**

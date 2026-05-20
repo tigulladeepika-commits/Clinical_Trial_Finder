@@ -1,6 +1,6 @@
 # User Playbook
 
-Clinical Trial Finder is a lightweight search and review tool for publicly listed studies from ClinicalTrials.gov. It helps a user move from a broad disease or condition search to a narrower list of matching trials and finally to a map-based view of available study locations.
+Clinical Trial Finder is a comprehensive web application for discovering clinical trials and finding specialist physicians near trial sites. It helps users move from a disease search to matching trials, then to nearby physicians who specialize in that condition.
 
 ## Visual Walkthrough
 
@@ -16,12 +16,13 @@ Source asset: `docs/assets/playbook-screen-guide.svg`
 
 | Item | Details |
 | --- | --- |
-| Primary purpose | Search public clinical trials and review study sites |
+| Primary purpose | Search public clinical trials, review study sites, and find specialist physicians |
 | Main input | Condition or disease name |
-| Optional filters | City, state, phase, status |
-| Main outputs | Trial list, study summary, site map, site location list |
-| External data source | ClinicalTrials.gov |
+| Optional filters | City, state, phase, status, radius (for physician search) |
+| Main outputs | Trial list, study summary, site map, site location list, physician directory, lead capture |
+| External data sources | ClinicalTrials.gov, NPPES Physician Registry, MapQuest Geocoding |
 | Map dependency | MapQuest browser key for interactive map display |
+| CRM integration | Optional Salesforce lead capture and auto-push |
 
 ## What This Application Helps You Do
 
@@ -30,6 +31,9 @@ Source asset: `docs/assets/playbook-screen-guide.svg`
 - Review a compact list of studies with IDs, phases, and statuses
 - Open one trial and inspect all returned study locations
 - View site locations on an interactive map when coordinates are available
+- **Find specialist physicians near trial sites** with automatic specialty matching
+- **Capture your interest** in a trial and/or physician by providing contact information
+- **Auto-connect with providers** via optional Salesforce integration for follow-up
 
 ### Search To Review Workflow
 
@@ -49,7 +53,9 @@ Source asset: `docs/assets/playbook-screen-guide.svg`
 - Results are based on live or near-live responses from ClinicalTrials.gov.
 - The current implementation only returns studies with US-based locations.
 - The map experience works best when `NEXT_PUBLIC_MAPQUEST_KEY` is configured.
-- The application does not enroll a participant into a study. It is strictly for search and review.
+- Physician search automatically matches specialties to your condition and expands the search radius if fewer than 5 results are found.
+- The application does not enroll a participant into a study. It is strictly for search, review, and provider discovery.
+- Lead capture information is securely stored and can be pushed to Salesforce for follow-up by research coordinators.
 
 ## Screen Guide
 
@@ -58,11 +64,11 @@ Source asset: `docs/assets/playbook-screen-guide.svg`
 The top search area is where the user starts. It contains:
 
 - `Condition / Disease` as the required field
-- `City` as an optional narrowing filter
+- `City` as an optional narrowing filter (with city/state validation)
 - `State` as an optional US state filter
 - `Phase` as an optional study phase filter
 - `Status` as an optional study recruitment filter
-- Quick condition chips for common searches
+- Quick condition chips for common searches (1000+ city/state combinations available)
 
 ### 2. Results Panel
 
@@ -82,8 +88,29 @@ When a result is selected, the right side becomes the detail panel. It presents:
 - Overall trial status
 - Sponsor, when available
 - Study description
+- Inclusion and exclusion criteria
 - A site map
 - A complete location list
+- **Physician Search** button to find specialists near selected trial sites
+
+### 4. Physician Panel (New)
+
+When you search for physicians near a trial site, you'll see:
+
+- A map showing nearby physicians
+- Radius control slider (5, 10, 25, 50, 100 miles)
+- A list of specialists with their NPI, name, address, and distance
+- **Suggested specialists** (related subspecialties)
+- Auto-expansion notice if the specialty was relaxed to find more results
+
+### 5. Lead Capture Modal (New)
+
+You can express interest in a trial and/or physician by:
+
+- Entering your name, email, and phone
+- Optionally providing your NPI (if you're a healthcare provider)
+- Submitting your information
+- Your information is stored securely and may be sent to research coordinators for follow-up
 
 ## Search Inputs Explained
 
@@ -174,6 +201,27 @@ The map panel also includes:
 3. Open one trial at a time to inspect sponsor, phase, and site count.
 4. Use `Load more trials` if the first page is not enough.
 
+### Scenario D: Find Physicians Near A Trial Site (New)
+
+1. Search for and select a trial.
+2. Review the trial details and sites.
+3. Click a trial site on the map or in the location list.
+4. The "Find Physicians" button appears.
+5. Adjust the search radius (default 25 miles).
+6. Review the list of nearby specialists in the matched specialty.
+7. Click a physician to center the map on their location.
+8. Optionally capture your interest in the physician via the lead form.
+
+### Scenario E: Capture Your Interest And Get Follow-Up (New)
+
+1. Find a trial or physician you're interested in.
+2. Click "Express Interest" or "Capture Lead".
+3. Fill in your name, email, phone, and optional NPI.
+4. Submit the form.
+5. Your information is securely stored.
+6. If Salesforce integration is enabled, a research coordinator will follow up with you.
+7. Your information helps match you with study sites and coordinators.
+
 ## Good Search Practices
 
 - Start broad and then narrow
@@ -198,4 +246,8 @@ The map panel also includes:
 - The application currently limits discovery to studies with US locations.
 - Study filtering is applied after data is fetched from ClinicalTrials.gov.
 - The map depends on an external browser-side MapQuest integration.
+- Physician search is limited to specialists registered in the NPPES (National Provider Enumeration System) registry.
+- Physician auto-expansion (when fewer than 5 results are found) may relax specialty matching to parent or related specialties.
+- Lead capture does not constitute enrollment; it only expresses interest for follow-up.
 - The tool is informational and should not be treated as medical advice.
+- Specialty matching uses a 4-pass algorithm: exact match → prefix match → substring match → token overlap.

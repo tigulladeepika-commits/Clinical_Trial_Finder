@@ -3,9 +3,10 @@ main.py
 Clintrial Navigator V3 — FastAPI application entry point.
 
 Mounts:
-  /api/trials       — ClinicalTrials.gov search + detail (V2)
-  /api/physicians   — NPPES physician search (V5)
-  /api/leads        — Lead capture
+  /api/trials           — ClinicalTrials.gov search + detail (V2)
+  /api/physicians       — NPPES physician search (V5)
+  /api/leads            — Lead capture
+  /api/physicians       — PubMed publications (/{npi}/publications)
 
 Startup:
   - Validates configuration
@@ -40,6 +41,7 @@ load_dotenv(Path(__file__).with_name(".env"))
 from core.config import cfg, validate_configuration  # noqa: E402
 from api import physicians as physicians_router_module  # noqa: E402
 from api import leads as leads_router_module            # noqa: E402
+from api import publications as publications_router_module  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -175,9 +177,12 @@ try:
 except ImportError:
     from trials import router as trials_router  # type: ignore[no-redef]
 
-app.include_router(trials_router,                   prefix="/api/trials",     tags=["trials"])
-app.include_router(physicians_router_module.router,  prefix="/api/physicians", tags=["physicians"])
-app.include_router(leads_router_module.router,       prefix="/api/leads",      tags=["leads"])
+app.include_router(trials_router,                        prefix="/api/trials",      tags=["trials"])
+app.include_router(physicians_router_module.router,       prefix="/api/physicians",  tags=["physicians"])
+app.include_router(leads_router_module.router,            prefix="/api/leads",       tags=["leads"])
+# Publications router mounted under /api/physicians so the URL is
+# /api/physicians/{npi}/publications — consistent with the physician resource
+app.include_router(publications_router_module.router,     prefix="/api/physicians",  tags=["publications"])
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
