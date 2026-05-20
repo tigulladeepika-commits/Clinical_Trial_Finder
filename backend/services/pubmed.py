@@ -1,52 +1,3 @@
-"""
-services/pubmed.py
-
-Fetches a physician's publications from the NCBI PubMed E-utilities API.
-
-Strategy
---------
-Tier 1 — Full name + specialty MeSH (tightest, avoids initial-form collisions):
-    "Firstname Lastname"[Author] AND "<Specialty>"[MeSH Terms]
-    Full name search avoids matching other physicians sharing the same
-    last name + first initial (e.g. "Shawn Chawla" vs "Saurabh Chawla").
-
-Tier 2 — Full name only (fires when Tier 1 returns 0):
-    "Firstname Lastname"[Author]
-    Catches papers where the specialty MeSH term wasn't assigned, or
-    where the physician publishes across specialties.
-
-Tier 3 — Initial form + MeSH + US affiliation (fires when Tier 2 returns 0):
-    "LastName FI"[Author] AND "<Specialty>"[MeSH Terms] AND "United States"[Affiliation]
-    Catches older papers (pre-2013) that only indexed last name + initials.
-    US affiliation filter narrows false positives for common last names.
-    Only runs for physicians with zero full-name indexed papers — typically
-    older/retired physicians with fewer publications, so false-positive risk
-    is lower.
-
-NOTE: The initial-form query ("LastName FI") is intentionally absent from
-Tier 1 and Tier 2. "Chawla S" matches Shawn, Saurabh, Sunita, etc.
-Full name "Shawn Chawla" only matches papers where PubMed indexed the
-full first name, which is standard for papers from ~2002 onward.
-
-Both tiers search the last 15 years by default, sorted by publication
-date descending. Returns up to MAX_RESULTS publications.
-
-No API key is required for the NCBI E-utilities read-only endpoints used
-here (esearch + efetch), though rate limits apply (3 req/s unauthenticated).
-Set NCBI_API_KEY in .env to raise the limit to 10 req/s.
-
-Response shape (per publication):
-    {
-      "pmid":     "12345678",
-      "title":    "Effect of X on Y in Z patients",
-      "journal":  "New England Journal of Medicine",
-      "year":     "2023",
-      "authors":  ["Smith J", "Jones A", "Brown K"],
-      "url":      "https://pubmed.ncbi.nlm.nih.gov/12345678/",
-      "abstract": "Background: ..."   # present when available, else ""
-    }
-"""
-
 from __future__ import annotations
 
 import logging
@@ -64,9 +15,9 @@ _ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 _EFETCH_URL  = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 _PUBMED_URL  = "https://pubmed.ncbi.nlm.nih.gov/"
 
-MAX_RESULTS   = 10
-_YEARS_BACK   = 15
-_TIMEOUT      = 12   # seconds per request
+MAX_RESULTS = 10
+_YEARS_BACK = 15
+_TIMEOUT    = 12   # seconds per request
 
 # NCBI asks all callers to identify themselves via email
 _TOOL  = "ClintrialNavigator"
@@ -74,85 +25,6 @@ _EMAIL = "admin@clintrialnavigator.com"
 
 # Optional API key — raises rate limit from 3 → 10 req/s
 _NCBI_API_KEY: str = os.environ.get("NCBI_API_KEY", "")
-
-
-# ── Specialty → PubMed MeSH term map ─────────────────────────────────────────
-# Maps NUCC taxonomy display names (as returned by the NPPES physician record)
-# to PubMed MeSH terms that meaningfully narrow the author search.
-# Only included where the MeSH term is well-indexed (high publication volume).
-
-_SPECIALTY_TO_MESH: dict[str, str] = {
-    "Medical Oncology":                   "Oncology",
-    "Hematology & Oncology":              "Oncology",
-    "Hematology":                         "Hematology",
-    "Radiation Oncology":                 "Radiation Oncology",
-    "Neurology":                          "Neurology",
-    "Cardiology":                         "Cardiology",
-    "Cardiovascular Disease":             "Cardiovascular Diseases",
-    "Internal Medicine":                  "Internal Medicine",
-    "Psychiatry":                         "Psychiatry",
-    "Gastroenterology":                   "Gastroenterology",
-    "Pulmonary Disease":                  "Pulmonary Medicine",
-    "Rheumatology":                       "Rheumatology",
-    "Nephrology":                         "Nephrology",
-    "Endocrinology, Diabetes & Metabolism": "Endocrinology",
-    "Infectious Disease":                 "Communicable Diseases",
-    "Dermatology":                        "Dermatology",
-    "Urology":                            "Urology",
-    "Ophthalmology":                      "Ophthalmology",
-    "Orthopaedic Surgery":                "Orthopedics",
-    "General Surgery":                    "Surgery",
-    "Pediatrics":                         "Pediatrics",
-    "Obstetrics & Gynecology":            "Obstetrics",
-    "Geriatric Medicine":                 "Geriatrics",
-    "Allergy & Immunology":              "Allergy and Immunology",
-    "Physical Medicine & Rehabilitation": "Rehabilitation",
-    "Anesthesiology":                     "Anesthesiology",
-    "Pathology":                          "Pathology",
-    "Radiology":                          "Radiology",
-    "Emergency Medicine":                 "Emergency Medicine",
-    "Family Medicine":                    "Family Practice",
-    "Otolaryngology":                     "Otolaryngology",
-    "Thoracic Surgery":                   "Thoracic Surgery",
-    "Vascular Surgery":                   "Vascular Surgical Procedures",
-    "Plastic Surgery":                    "Surgery, Plastic",
-    "Neurosurgery":                       "Neurosurgery",
-}
-
-
-def _mesh_lookup_single(term: str) -> Optional[str]:
-    """Lookup a single specialty term against the MeSH map."""
-    if term in _SPECIALTY_TO_MESH:
-        return _SPECIALTY_TO_MESH[term]
-    lower = term.lower()
-    for key, mesh in _SPECIALTY_TO_MESH.items():
-        if key.lower() == lower:
-            return mesh
-    for key, mesh in _SPECIALTY_TO_MESH.items():
-        if key.lower() in lower or lower in key.lower():
-            return mesh
-    return None
-
-
-def _mesh_for_specialty(taxonomy_desc: Optional[str]) -> Optional[str]:
-    """
-    Return the best PubMed MeSH term for a NUCC taxonomy description.
-
-    NPPES taxonomy_desc arrives as a comma-separated compound string like:
-        "Internal Medicine, Cardiovascular Disease"
-        "Internal Medicine, Interventional Cardiology"
-
-    Try each part from most-specific (rightmost) to least and return the
-    first match, so "Cardiovascular Disease" is preferred over "Internal Medicine".
-    """
-    if not taxonomy_desc:
-        return None
-    parts = [p.strip() for p in taxonomy_desc.split(",") if p.strip()]
-    for part in reversed(parts):
-        result = _mesh_lookup_single(part)
-        if result:
-            return result
-    return None
 
 
 def _base_params() -> dict[str, str]:
@@ -175,22 +47,14 @@ def _clean_physician_name(name: str) -> str:
     NPPES names arrive in forms like:
         "TIFFANY POWELL-WILEY, M.D., MPH"
         "ROBERT GALLAGHER, M.D."
-        "BRADLEY SERWER, M.D."
         "Dr. Jane Smith"
         "JOHN DOE MD"
-
-    PubMed author fields store names without credentials, e.g.:
-        "Powell-Wiley T"  or  "Powell-Wiley Tiffany"
 
     Steps applied (in order):
       1. Strip leading honorific prefixes  (Dr., Prof.)
       2. Strip trailing credential suffixes separated by comma
-         e.g. ", M.D., MPH"  →  ""
       3. Strip inline credential tokens at the end
-         e.g. "JOHN DOE MD"  →  "JOHN DOE"
-      4. Title-case so "TIFFANY POWELL-WILEY" → "Tiffany Powell-Wiley"
-         (PubMed search is case-insensitive but mixed-case looks cleaner
-         in logs and matches the [Author] field format more closely)
+      4. Title-case
       5. Collapse extra whitespace
     """
     import re
@@ -204,13 +68,10 @@ def _clean_physician_name(name: str) -> str:
             break
 
     # Step 2 — trailing credentials after first comma
-    # "TIFFANY POWELL-WILEY, M.D., MPH"  →  "TIFFANY POWELL-WILEY"
-    # "ROBERT GALLAGHER, M.D."           →  "ROBERT GALLAGHER"
     if "," in clean:
         clean = clean.split(",")[0].strip()
 
-    # Step 3 — inline credential tokens at end of name (no comma separator)
-    # "JOHN DOE MD" → "JOHN DOE"  |  "JANE DOE PHD" → "JANE DOE"
+    # Step 3 — inline credential tokens at end of name
     _CREDENTIAL_RE = re.compile(
         r"\s+\b(M\.?D\.?|D\.?O\.?|Ph\.?D\.?|MPH|MBA|MS|RN|NP|PA|"
         r"FACC|FACS|FAHA|FACG|FASN|FAAN|FACR|FACEP|Jr\.?|Sr\.?|II|III|IV)\b\.?$",
@@ -221,7 +82,7 @@ def _clean_physician_name(name: str) -> str:
         prev = clean
         clean = _CREDENTIAL_RE.sub("", clean).strip()
 
-    # Step 4 — title-case (handles hyphenated names correctly)
+    # Step 4 — title-case
     clean = clean.title()
 
     # Step 5 — collapse extra whitespace
@@ -230,42 +91,48 @@ def _clean_physician_name(name: str) -> str:
     return clean
 
 
-def _to_pubmed_author(clean_name: str) -> str:
+def _extract_specialty_keyword(taxonomy_desc: Optional[str]) -> Optional[str]:
     """
-    Convert a cleaned full name to PubMed initial format.
+    Extract a plain-text specialty keyword from an NPPES taxonomy description.
 
-    PubMed indexes authors as "LastName FI" (last name + first initial).
-    "Jerome Fleg"          → "Fleg J"
-    "Tiffany Powell-Wiley" → "Powell-Wiley T"
+    NPPES taxonomy_desc arrives as a comma-separated compound string like:
+        "Internal Medicine, Cardiovascular Disease"
+        "Internal Medicine, Interventional Cardiology"
 
-    Used only in Tier 3 (fallback for older papers).
+    Returns the most specific part (rightmost token) as-is, since PubMed
+    [Title/Abstract] search treats it as a plain keyword — no mapping needed.
+
+    Examples:
+        "Internal Medicine, Cardiovascular Disease"  → "Cardiovascular Disease"
+        "Medical Oncology"                           → "Medical Oncology"
+        "Cardiology"                                 → "Cardiology"
+        None                                         → None
     """
-    parts = clean_name.strip().split()
-    if len(parts) == 1:
-        return parts[0]
-    last = parts[-1]
-    first_initial = parts[0][0].upper()
-    return f"{last} {first_initial}"
+    if not taxonomy_desc:
+        return None
+    parts = [p.strip() for p in taxonomy_desc.split(",") if p.strip()]
+    # Most specific part is the last (rightmost) token
+    return parts[-1] if parts else None
 
 
-def _build_tier1_query(clean_name: str, mesh_term: str) -> str:
+def _build_tier1_query(clean_name: str, specialty_keyword: str) -> str:
     """
-    Tier 1: Full name + MeSH.
+    Tier 1: Full name + specialty keyword in title/abstract.
 
-    Uses ONLY the full first name form — never the initial form.
-    "Shawn Chawla"[Author] will not match "Saurabh Chawla".
+    Uses [Title/Abstract] instead of [MeSH Terms] so no mapping table
+    is required — the specialty string from NPPES is used directly.
 
     Example:
-        '"Shawn Chawla"[Author] AND "Cardiovascular Diseases"[MeSH Terms]'
+        '"Shawn Chawla"[Author] AND "Cardiovascular Disease"[Title/Abstract]'
     """
-    return f'"{clean_name}"[Author] AND "{mesh_term}"[MeSH Terms]'
+    return f'"{clean_name}"[Author] AND "{specialty_keyword}"[Title/Abstract]'
 
 
 def _build_tier2_query(clean_name: str) -> str:
     """
-    Tier 2: Full name only (no MeSH filter).
+    Tier 2: Full name only (no specialty filter).
 
-    Still full name only — catches papers where MeSH wasn't assigned
+    Catches papers where the specialty isn't mentioned in title/abstract,
     or where the physician publishes outside their primary specialty.
 
     Example:
@@ -274,24 +141,30 @@ def _build_tier2_query(clean_name: str) -> str:
     return f'"{clean_name}"[Author]'
 
 
-def _build_tier3_query(clean_name: str, mesh_term: Optional[str]) -> str:
+def _verify_author(pubs: list[dict], clean_name: str) -> list[dict]:
     """
-    Tier 3: Initial form + MeSH + US affiliation.
+    Post-fetch guard: drop papers where the physician's name doesn't
+    actually appear in the author list.
 
-    Last resort for older papers (pre-2002) that only indexed initials.
-    US affiliation filter reduces false positives for common last names
-    (e.g. eliminates Indian/European physicians sharing the same initial).
+    PubMed's own disambiguation can occasionally return papers where the
+    physician is not listed. This filter eliminates those.
 
-    Example:
-        '"Chawla S"[Author] AND "Cardiovascular Diseases"[MeSH Terms]
-         AND "United States"[Affiliation]'
+    Matches on "LastName FI" prefix (case-insensitive), e.g. "chawla s"
+    will match "Chawla S" or "Chawla Shawn" but not "Chawla Saurabh" once
+    the full author name is indexed.
     """
-    pubmed_fmt = _to_pubmed_author(clean_name)
-    base = f'"{pubmed_fmt}"[Author]'
-    if mesh_term:
-        base += f' AND "{mesh_term}"[MeSH Terms]'
-    base += ' AND "United States"[Affiliation]'
-    return base
+    parts = clean_name.strip().split()
+    if len(parts) < 2:
+        return pubs  # can't verify a single-token name; pass through
+
+    last          = parts[-1].lower()
+    first_initial = parts[0][0].lower()
+    expected      = f"{last} {first_initial}"
+
+    return [
+        p for p in pubs
+        if any(a.lower().startswith(expected) for a in p.get("authors", []))
+    ]
 
 
 def _esearch(query: str) -> list[str]:
@@ -362,7 +235,6 @@ def _parse_pubmed_xml(xml_text: str) -> list[dict]:
             if citation is None:
                 continue
 
-            # PMID
             pmid_node = citation.find("PMID")
             pmid = pmid_node.text.strip() if pmid_node is not None and pmid_node.text else ""
 
@@ -370,20 +242,17 @@ def _parse_pubmed_xml(xml_text: str) -> list[dict]:
             if article is None:
                 continue
 
-            # Title — strip trailing whitespace/period
             title_node = article.find("ArticleTitle")
             title = (title_node.text or "").strip().rstrip(".")
             if not title:
                 continue
 
-            # Journal
             journal_node = article.find(".//Journal/Title")
             journal = (journal_node.text or "").strip() if journal_node is not None else ""
             if not journal:
                 abbr_node = article.find(".//Journal/ISOAbbreviation")
                 journal = (abbr_node.text or "").strip() if abbr_node is not None else ""
 
-            # Year
             year = ""
             year_node = article.find(".//Journal/JournalIssue/PubDate/Year")
             if year_node is not None and year_node.text:
@@ -396,7 +265,6 @@ def _parse_pubmed_xml(xml_text: str) -> list[dict]:
                     if m:
                         year = m.group()
 
-            # Authors
             authors: list[str] = []
             for author_node in article.findall(".//AuthorList/Author"):
                 last = author_node.findtext("LastName", default="").strip()
@@ -408,7 +276,6 @@ def _parse_pubmed_xml(xml_text: str) -> list[dict]:
                     if collective:
                         authors.append(collective)
 
-            # Abstract
             abstract_parts: list[str] = []
             for abstract_text_node in article.findall(".//Abstract/AbstractText"):
                 label = abstract_text_node.get("Label", "")
@@ -449,7 +316,7 @@ def fetch_publications(
     ----------
     name          : Physician's full name (as returned by NPPES)
     taxonomy_desc : NUCC taxonomy description (e.g. "Internal Medicine, Cardiovascular Disease")
-                   Used to build a MeSH-term filter.
+                   The most specific part is used as a plain keyword filter.
 
     Returns
     -------
@@ -457,33 +324,31 @@ def fetch_publications(
 
     Tier waterfall
     --------------
-    Tier 1  Full name + MeSH        "Shawn Chawla"[Author] AND "Cardiovascular Diseases"[MeSH]
-    Tier 2  Full name only           "Shawn Chawla"[Author]
-    Tier 3  Initials + MeSH + US    "Chawla S"[Author] AND "Cardiovascular Diseases"[MeSH]
-                                     AND "United States"[Affiliation]
+    Tier 1  Full name + specialty keyword   "Shawn Chawla"[Author]
+                                             AND "Cardiovascular Disease"[Title/Abstract]
+    Tier 2  Full name only                  "Shawn Chawla"[Author]
 
-    The initial form ("Chawla S") is deliberately withheld from Tiers 1 and 2
-    because it matches any physician sharing that last name and first initial,
-    causing false positives (e.g. Saurabh Chawla papers shown for Shawn Chawla).
-    Tier 3 only fires when the physician has zero full-name indexed papers,
-    suggesting they are older or low-publication, where the risk of collision
-    is more acceptable than returning nothing.
+    The initial-form query ("Chawla S") has been removed entirely — it is
+    the primary source of false positives (matches any S. Chawla worldwide).
+
+    Every result set is passed through _verify_author(), which drops any
+    paper where the physician's name does not appear in the author list.
     """
     if not name or not name.strip():
         logger.warning("fetch_publications called with empty name")
         return []
 
-    clean_name = _clean_physician_name(name)
-    mesh_term  = _mesh_for_specialty(taxonomy_desc)
+    clean_name        = _clean_physician_name(name)
+    specialty_keyword = _extract_specialty_keyword(taxonomy_desc)
 
-    # ── Tier 1: Full name + MeSH ───────────────────────────────────────────
-    if mesh_term:
-        query_t1 = _build_tier1_query(clean_name, mesh_term)
+    # ── Tier 1: Full name + specialty keyword ──────────────────────────────
+    if specialty_keyword:
+        query_t1 = _build_tier1_query(clean_name, specialty_keyword)
         logger.info("PubMed Tier 1 | query=%r", query_t1)
         pmids = _esearch(query_t1)
 
         if pmids:
-            pubs = _efetch(pmids)
+            pubs = _verify_author(_efetch(pmids), clean_name)
             if pubs:
                 logger.info(
                     "PubMed Tier 1 success | name=%r specialty=%r → %d results",
@@ -493,30 +358,16 @@ def fetch_publications(
 
     # ── Tier 2: Full name only ─────────────────────────────────────────────
     query_t2 = _build_tier2_query(clean_name)
-    logger.info("PubMed Tier 2 (full name, no MeSH) | query=%r", query_t2)
+    logger.info("PubMed Tier 2 (full name, no specialty) | query=%r", query_t2)
     pmids = _esearch(query_t2)
-
-    if pmids:
-        pubs = _efetch(pmids)
-        if pubs:
-            logger.info(
-                "PubMed Tier 2 success | name=%r → %d results",
-                name, len(pubs),
-            )
-            return pubs
-
-    # ── Tier 3: Initials + MeSH + US affiliation (old-paper fallback) ─────
-    query_t3 = _build_tier3_query(clean_name, mesh_term)
-    logger.info("PubMed Tier 3 (initials + US affiliation fallback) | query=%r", query_t3)
-    pmids = _esearch(query_t3)
 
     if not pmids:
         logger.info("PubMed | no results across all tiers | name=%r specialty=%r", name, taxonomy_desc)
         return []
 
-    pubs = _efetch(pmids)
+    pubs = _verify_author(_efetch(pmids), clean_name)
     logger.info(
-        "PubMed Tier 3 success | name=%r → %d results",
+        "PubMed Tier 2 success | name=%r → %d results",
         name, len(pubs),
     )
     return pubs
