@@ -5,35 +5,41 @@ Fetches a physician's publications from the NCBI PubMed E-utilities API.
 
 Strategy
 --------
-Tier 1 — Full name + specialty keyword (title/abstract):
+Tier 1 — Full name + specialty keyword (title/abstract), recent 15 years:
     "Firstname Lastname"[Author] AND "Specialty"[Title/Abstract]
 
-Tier 2 — Full name only (fires when Tier 1 returns 0):
+Tier 2 — Full name only, ALL years (fires when Tier 1 returns 0):
     "Firstname Lastname"[Author]
-    No date restriction — catches all indexed years.
+    No date restriction — catches physicians with older publication histories.
 
-Tier 3 — Initial form + specialty + US affiliation (fires when Tier 2 returns 0):
+Tier 3 — Initial form + specialty + US affiliation, ALL years
+         (fires when Tier 2 returns 0):
     "LastName FI"[Author] AND "Specialty"[Title/Abstract]
                            AND "United States"[Affiliation]
-    No date restriction — required for physicians whose full first name
-    was never indexed (proven by PubMed author links resolving to initial
-    form) AND for physicians with older publication histories (pre-2011).
+    Required for physicians whose full first name was never indexed by
+    PubMed (e.g. Mustafa Albakour → "Albakour M" only in the index).
+    _verify_author runs strict=False at Tier 3: initial prefix match is
+    sufficient since US affiliation has already filtered foreign collisions.
 
-_verify_author behaviour per tier
-    Tier 1 / 2  — strict: full forename match when forename is indexed,
-                  initial prefix match when only initials are indexed.
-    Tier 3      — relaxed: if the paper is initial-only (no forename
-                  indexed for any author), trust the US affiliation filter
-                  and accept the initial prefix match without requiring
-                  forename confirmation. This is correct because Tier 3
-                  only fires when Tiers 1+2 found nothing, meaning the
-                  physician almost certainly has no full-name indexed papers.
+Concurrency / timeout design
+-----------------------------
+_NCBI_SEMAPHORE limits the whole process to _MAX_CONCURRENT_NCBI simultaneous
+NCBI HTTP calls. This prevents 10 parallel physician cards from saturating
+NCBI's 3 req/s unauthenticated rate limit and causing cascading slowdowns.
+
+fetch_publications runs inside a ThreadPoolExecutor with a hard
+_FETCH_BUDGET_SECONDS wall-clock cap. Any physician that doesn't resolve
+within budget returns [] immediately, keeping the API responsive.
+
+Set NCBI_API_KEY in .env to raise the NCBI rate limit from 3 → 10 req/s.
 """
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import os
+import threading
 import xml.etree.ElementTree as ET
 from typing import Optional
 
@@ -47,14 +53,19 @@ _ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 _EFETCH_URL  = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 _PUBMED_URL  = "https://pubmed.ncbi.nlm.nih.gov/"
 
-MAX_RESULTS      = 10
-_YEARS_BACK      = 15   # used for Tier 1 only — recent papers
-_TIMEOUT         = 12   # seconds per request
+MAX_RESULTS           = 10
+_YEARS_BACK           = 15   # Tier 1 date window only
+_TIMEOUT              = 5    # seconds per individual NCBI HTTP request
+_FETCH_BUDGET_SECONDS = 8    # hard wall-clock cap for entire fetch_publications call
+_MAX_CONCURRENT_NCBI  = 3    # max simultaneous NCBI calls across all threads
 
 _TOOL  = "ClintrialNavigator"
 _EMAIL = "admin@clintrialnavigator.com"
 
 _NCBI_API_KEY: str = os.environ.get("NCBI_API_KEY", "")
+
+# Semaphore shared across all threads in this process
+_NCBI_SEMAPHORE = threading.Semaphore(_MAX_CONCURRENT_NCBI)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -154,25 +165,17 @@ def _verify_author(
     """
     Drop papers where the physician's name does not appear in the author list.
 
-    Parameters
-    ----------
-    strict : True  (Tiers 1 & 2) — when forename IS indexed for any author
-                   on the paper, require the physician's full forename to
-                   match. Distinguishes "Chawla Shawn" from "Chawla Saurabh".
-             False (Tier 3)       — always accept on initial prefix match.
-                   Safe because Tier 3 only fires when the physician has zero
-                   full-name indexed papers, AND the US affiliation filter has
-                   already eliminated foreign name collisions.
+    strict=True  (Tiers 1 & 2):
+        When the XML <ForeName> field is indexed for any author on the paper,
+        require the physician's full forename to match. This distinguishes
+        "Chawla Shawn" from "Chawla Saurabh" even though both index as "Chawla S".
+        Falls back to initial prefix when no forenames are indexed on the paper.
 
-    Matching logic
-    --------------
-    Full forename path (strict=True, forename indexed):
-        Checks "chawla shawn" or "shawn chawla" appears in the author string.
-
-    Initial prefix path (strict=True, initials only) or (strict=False):
-        Checks author string startswith "chawla s".
-        "Albakour M" → passes for Mustafa Albakour.
-        "Grado G"    → passes for Gordon Grado.
+    strict=False (Tier 3):
+        Always accept on initial prefix match ("grado g", "albakour m").
+        Safe because: (a) US affiliation filter already eliminated foreign
+        collisions, and (b) Tier 3 only fires when the physician has zero
+        full-name indexed papers.
     """
     parts = clean_name.strip().split()
     if len(parts) < 2:
@@ -190,25 +193,20 @@ def _verify_author(
         authors_lower = [a.lower() for a in pub.get("authors", [])]
 
         if not strict:
-            # Tier 3 — initial prefix is sufficient
             matched = any(a.startswith(initial_prefix) for a in authors_lower)
         else:
-            # Tiers 1 & 2 — check whether any author has a full forename indexed
             has_full_forename_in_index = any(
                 len(a.split()) >= 2
                 and a.split()[0] == last
                 and len(a.split()[1]) > 1
                 for a in authors_lower
             )
-
             if has_full_forename_in_index:
-                # Strict: require physician's full name to match
                 matched = any(
                     full_lastfirst in a or full_firstlast in a
                     for a in authors_lower
                 )
             else:
-                # Initials only on this paper — fall back to prefix
                 matched = any(a.startswith(initial_prefix) for a in authors_lower)
 
         if matched:
@@ -219,11 +217,8 @@ def _verify_author(
 
 def _esearch(query: str, use_date_filter: bool = True) -> list[str]:
     """
-    Run an esearch and return a list of PMIDs (up to MAX_RESULTS).
-
-    use_date_filter=False removes the reldate restriction, returning
-    results from the full PubMed history. Used for Tiers 2 and 3 so
-    that physicians with older publication records are not excluded.
+    Run an esearch under the NCBI semaphore and return PMIDs.
+    use_date_filter=False removes the reldate restriction (Tiers 2 & 3).
     """
     params: dict = {
         **_base_params(),
@@ -235,32 +230,37 @@ def _esearch(query: str, use_date_filter: bool = True) -> list[str]:
         params["datetype"] = "pdat"
         params["reldate"]  = str(_YEARS_BACK * 365)
 
-    try:
-        resp = requests.get(_ESEARCH_URL, params=params, timeout=_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("esearchresult", {}).get("idlist", [])
-    except Exception as exc:
-        logger.warning("PubMed esearch failed | query=%r | error=%s", query, exc)
-        return []
+    with _NCBI_SEMAPHORE:
+        try:
+            resp = requests.get(_ESEARCH_URL, params=params, timeout=_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("esearchresult", {}).get("idlist", [])
+        except Exception as exc:
+            logger.warning("PubMed esearch failed | query=%r | error=%s", query, exc)
+            return []
 
 
 def _efetch(pmids: list[str]) -> list[dict]:
+    """Fetch full records for a list of PMIDs under the NCBI semaphore."""
     if not pmids:
         return []
+
     params = {
         **_base_params(),
         "id":      ",".join(pmids),
         "rettype": "abstract",
         "retmode": "xml",
     }
-    try:
-        resp = requests.get(_EFETCH_URL, params=params, timeout=_TIMEOUT)
-        resp.raise_for_status()
-        return _parse_pubmed_xml(resp.text)
-    except Exception as exc:
-        logger.warning("PubMed efetch failed | pmids=%s | error=%s", pmids, exc)
-        return []
+
+    with _NCBI_SEMAPHORE:
+        try:
+            resp = requests.get(_EFETCH_URL, params=params, timeout=_TIMEOUT)
+            resp.raise_for_status()
+            return _parse_pubmed_xml(resp.text)
+        except Exception as exc:
+            logger.warning("PubMed efetch failed | pmids=%s | error=%s", pmids, exc)
+            return []
 
 
 def _parse_pubmed_xml(xml_text: str) -> list[dict]:
@@ -369,36 +369,45 @@ def fetch_publications(
 ) -> list[dict]:
     """
     Fetch up to MAX_RESULTS publications for a physician.
+    Hard wall-clock limit of _FETCH_BUDGET_SECONDS — returns [] on timeout.
 
     Parameters
     ----------
     name          : Physician's full name as returned by NPPES
     taxonomy_desc : NUCC taxonomy description, e.g.
                    "Internal Medicine, Cardiovascular Disease"
-                   Pass None when unavailable — Tier 3 still fires
-                   without a specialty filter, guarded by US affiliation.
-
-    Tier waterfall
-    --------------
-    Tier 1  Full name + specialty, recent 15 years
-            "Amir Azadi"[Author] AND "Medical Oncology"[Title/Abstract]
-            Skipped when specialty is None.
-
-    Tier 2  Full name only, ALL years (no date filter)
-            "Gordon Grado"[Author]
-            Catches physicians whose papers predate the 15-year window.
-
-    Tier 3  Initial form + specialty + US affiliation, ALL years
-            "Grado G"[Author] AND "United States"[Affiliation]
-            Fires when full first name was never indexed by PubMed.
-            _verify_author runs in relaxed mode (strict=False) — initial
-            prefix match is sufficient since US affiliation already
-            filtered foreign collisions.
     """
     if not name or not name.strip():
         logger.warning("fetch_publications called with empty name")
         return []
 
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_fetch_publications_inner, name, taxonomy_desc)
+        try:
+            return future.result(timeout=_FETCH_BUDGET_SECONDS)
+        except concurrent.futures.TimeoutError:
+            logger.warning(
+                "PubMed fetch budget exceeded (%ss) | name=%r — returning []",
+                _FETCH_BUDGET_SECONDS, name,
+            )
+            return []
+        except Exception as exc:
+            logger.warning("PubMed fetch error | name=%r | error=%s", name, exc)
+            return []
+
+
+def _fetch_publications_inner(
+    name:          str,
+    taxonomy_desc: Optional[str] = None,
+) -> list[dict]:
+    """
+    Tier waterfall — runs inside the wall-clock budget wrapper.
+
+    Tier 1  Full name + specialty, recent 15 years
+    Tier 2  Full name only, ALL years
+    Tier 3  Initial form + specialty + US affiliation, ALL years
+            _verify_author strict=False (initial prefix sufficient)
+    """
     clean_name        = _clean_physician_name(name)
     specialty_keyword = _extract_specialty_keyword(taxonomy_desc)
 
@@ -443,7 +452,6 @@ def fetch_publications(
         )
         return []
 
-    # strict=False: initial prefix sufficient — US affiliation already filtered
     pubs = _verify_author(_efetch(pmids), clean_name, strict=False)
     logger.info(
         "PubMed Tier 3 success | name=%r → %d results",
