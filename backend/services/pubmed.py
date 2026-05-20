@@ -1,3 +1,36 @@
+"""
+services/pubmed.py
+
+Fetches a physician's publications from the NCBI PubMed E-utilities API.
+
+Strategy
+--------
+Tier 1 — Full name + specialty keyword (title/abstract):
+    "Firstname Lastname"[Author] AND "Specialty"[Title/Abstract]
+
+Tier 2 — Full name only (fires when Tier 1 returns 0):
+    "Firstname Lastname"[Author]
+
+Tier 3 — Initial form + specialty + US affiliation (fires when Tier 2 returns 0):
+    "LastName FI"[Author] AND "Specialty"[Title/Abstract]
+                           AND "United States"[Affiliation]
+
+    Required for physicians whose full first name was never indexed by PubMed
+    (common for authors with few publications regardless of paper age).
+    PubMed website proof: the author link for Mustafa Albakour resolves to
+    "Albakour M" — the full forename is absent from the index entirely.
+
+    False-positive guard at Tier 3:
+    _verify_author checks the XML <ForeName> field (full forename) when
+    available, falling back to the initial check. This distinguishes
+    "Chawla Shawn" from "Chawla Saurabh" even though both index as "Chawla S".
+
+NOTE: Specialty is used as a plain [Title/Abstract] keyword — no MeSH
+mapping table required. The most specific part of the NPPES taxonomy
+string is used directly (e.g. "Cardiovascular Disease" from
+"Internal Medicine, Cardiovascular Disease").
+"""
+
 from __future__ import annotations
 
 import logging
@@ -9,7 +42,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+# ── Constants ──────────────────────────────────────────────────────────────────
 
 _ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 _EFETCH_URL  = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
@@ -19,16 +52,15 @@ MAX_RESULTS = 10
 _YEARS_BACK = 15
 _TIMEOUT    = 12   # seconds per request
 
-# NCBI asks all callers to identify themselves via email
 _TOOL  = "ClintrialNavigator"
 _EMAIL = "admin@clintrialnavigator.com"
 
-# Optional API key — raises rate limit from 3 → 10 req/s
 _NCBI_API_KEY: str = os.environ.get("NCBI_API_KEY", "")
 
 
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
 def _base_params() -> dict[str, str]:
-    """Common parameters sent with every NCBI E-utilities request."""
     p = {
         "db":      "pubmed",
         "tool":    _TOOL,
@@ -42,36 +74,24 @@ def _base_params() -> dict[str, str]:
 
 def _clean_physician_name(name: str) -> str:
     """
-    Normalise a physician name for PubMed author search.
+    Normalise an NPPES physician name for PubMed author search.
 
-    NPPES names arrive in forms like:
-        "TIFFANY POWELL-WILEY, M.D., MPH"
-        "ROBERT GALLAGHER, M.D."
-        "Dr. Jane Smith"
-        "JOHN DOE MD"
-
-    Steps applied (in order):
-      1. Strip leading honorific prefixes  (Dr., Prof.)
-      2. Strip trailing credential suffixes separated by comma
-      3. Strip inline credential tokens at the end
-      4. Title-case
-      5. Collapse extra whitespace
+    Strips leading honorifics (Dr., Prof.), trailing credential suffixes
+    after the first comma (", M.D., MPH"), inline credential tokens at
+    the end ("JOHN DOE MD"), then title-cases and collapses whitespace.
     """
     import re
 
     clean = name.strip()
 
-    # Step 1 — leading honorifics
     for prefix in ("Dr. ", "Dr.", "Prof. ", "Prof."):
         if clean.startswith(prefix):
             clean = clean[len(prefix):].strip()
             break
 
-    # Step 2 — trailing credentials after first comma
     if "," in clean:
         clean = clean.split(",")[0].strip()
 
-    # Step 3 — inline credential tokens at end of name
     _CREDENTIAL_RE = re.compile(
         r"\s+\b(M\.?D\.?|D\.?O\.?|Ph\.?D\.?|MPH|MBA|MS|RN|NP|PA|"
         r"FACC|FACS|FAHA|FACG|FASN|FAAN|FACR|FACEP|Jr\.?|Sr\.?|II|III|IV)\b\.?$",
@@ -82,96 +102,115 @@ def _clean_physician_name(name: str) -> str:
         prev = clean
         clean = _CREDENTIAL_RE.sub("", clean).strip()
 
-    # Step 4 — title-case
     clean = clean.title()
-
-    # Step 5 — collapse extra whitespace
     clean = " ".join(clean.split())
-
     return clean
 
 
 def _extract_specialty_keyword(taxonomy_desc: Optional[str]) -> Optional[str]:
     """
-    Extract a plain-text specialty keyword from an NPPES taxonomy description.
+    Return the most specific part of an NPPES taxonomy description as a
+    plain keyword for [Title/Abstract] search. No MeSH mapping required.
 
-    NPPES taxonomy_desc arrives as a comma-separated compound string like:
-        "Internal Medicine, Cardiovascular Disease"
-        "Internal Medicine, Interventional Cardiology"
-
-    Returns the most specific part (rightmost token) as-is, since PubMed
-    [Title/Abstract] search treats it as a plain keyword — no mapping needed.
-
-    Examples:
-        "Internal Medicine, Cardiovascular Disease"  → "Cardiovascular Disease"
-        "Medical Oncology"                           → "Medical Oncology"
-        "Cardiology"                                 → "Cardiology"
-        None                                         → None
+    "Internal Medicine, Cardiovascular Disease"  → "Cardiovascular Disease"
+    "Medical Oncology"                           → "Medical Oncology"
+    None                                         → None
     """
     if not taxonomy_desc:
         return None
     parts = [p.strip() for p in taxonomy_desc.split(",") if p.strip()]
-    # Most specific part is the last (rightmost) token
     return parts[-1] if parts else None
 
 
 def _build_tier1_query(clean_name: str, specialty_keyword: str) -> str:
-    """
-    Tier 1: Full name + specialty keyword in title/abstract.
-
-    Uses [Title/Abstract] instead of [MeSH Terms] so no mapping table
-    is required — the specialty string from NPPES is used directly.
-
-    Example:
-        '"Shawn Chawla"[Author] AND "Cardiovascular Disease"[Title/Abstract]'
-    """
     return f'"{clean_name}"[Author] AND "{specialty_keyword}"[Title/Abstract]'
 
 
 def _build_tier2_query(clean_name: str) -> str:
-    """
-    Tier 2: Full name only (no specialty filter).
-
-    Catches papers where the specialty isn't mentioned in title/abstract,
-    or where the physician publishes outside their primary specialty.
-
-    Example:
-        '"Shawn Chawla"[Author]'
-    """
     return f'"{clean_name}"[Author]'
+
+
+def _build_tier3_query(clean_name: str, specialty_keyword: Optional[str]) -> str:
+    """
+    Initial form + specialty keyword + US affiliation.
+
+    Fires only when Tiers 1 and 2 return 0, meaning the full first name
+    was never indexed. US affiliation cuts foreign name collisions.
+    """
+    parts         = clean_name.strip().split()
+    last          = parts[-1]
+    first_initial = parts[0][0].upper()
+    pubmed_fmt    = f"{last} {first_initial}"
+
+    base = f'"{pubmed_fmt}"[Author]'
+    if specialty_keyword:
+        base += f' AND "{specialty_keyword}"[Title/Abstract]'
+    base += ' AND "United States"[Affiliation]'
+    return base
 
 
 def _verify_author(pubs: list[dict], clean_name: str) -> list[dict]:
     """
-    Post-fetch guard: drop papers where the physician's name doesn't
-    actually appear in the author list.
+    Drop papers where the physician's name does not appear in the author list.
 
-    PubMed's own disambiguation can occasionally return papers where the
-    physician is not listed. This filter eliminates those.
+    Three-layer check (most → least specific):
 
-    Matches on "LastName FI" prefix (case-insensitive), e.g. "chawla s"
-    will match "Chawla S" or "Chawla Shawn" but not "Chawla Saurabh" once
-    the full author name is indexed.
+    1. Full forename match  — "Chawla Shawn" or "Shawn Chawla" in author string
+       Uses the <ForeName> field stored as "LastName ForeName" by the parser.
+       Distinguishes Shawn Chawla from Saurabh Chawla even at Tier 3.
+
+    2. Initial prefix match — author startswith "chawla s"
+       Catches papers where only the initial was indexed (e.g. "Albakour M").
+       Only used when the full forename is NOT present in any author record,
+       i.e. when every author for this paper was stored as initial-only.
+
+    3. Pass-through         — if clean_name has only one token, can't verify.
     """
     parts = clean_name.strip().split()
     if len(parts) < 2:
-        return pubs  # can't verify a single-token name; pass through
+        return pubs
 
-    last          = parts[-1].lower()
-    first_initial = parts[0][0].lower()
-    expected      = f"{last} {first_initial}"
+    last           = parts[-1].lower()
+    first_name     = parts[0].lower()                    # "shawn"
+    first_initial  = first_name[0]                       # "s"
+    initial_prefix = f"{last} {first_initial}"           # "chawla s"
+    # PubMed XML stores authors as "LastName ForeName" when forename is present
+    full_lastfirst = f"{last} {first_name}"              # "chawla shawn"
+    full_firstlast = f"{first_name} {last}"              # "shawn chawla"
 
-    return [
-        p for p in pubs
-        if any(a.lower().startswith(expected) for a in p.get("authors", []))
-    ]
+    verified = []
+    for pub in pubs:
+        authors_lower = [a.lower() for a in pub.get("authors", [])]
+
+        # Layer 1 — full forename present anywhere in author list
+        # e.g. "Chawla Shawn" stored by parser when <ForeName> was indexed
+        has_full_forename_in_index = any(
+            # Does any author string contain a space after the last-name prefix,
+            # suggesting a forename (not just an initial) was indexed?
+            len(a.split()) >= 2 and a.split()[0] == last and len(a.split()[1]) > 1
+            for a in authors_lower
+        )
+
+        if has_full_forename_in_index:
+            # Full forename IS indexed for at least one author on this paper —
+            # apply strict check: physician's full name must match exactly.
+            matched = any(
+                full_lastfirst in a or full_firstlast in a
+                for a in authors_lower
+            )
+        else:
+            # Full forename NOT indexed (initial-only paper, e.g. "Albakour M")
+            # Fall back to initial prefix — less precise but correct for
+            # uncommon names that reached Tier 3.
+            matched = any(a.startswith(initial_prefix) for a in authors_lower)
+
+        if matched:
+            verified.append(pub)
+
+    return verified
 
 
 def _esearch(query: str) -> list[str]:
-    """
-    Run an esearch and return a list of PMIDs (up to MAX_RESULTS).
-    Returns an empty list on any error.
-    """
     params = {
         **_base_params(),
         "term":     query,
@@ -181,7 +220,6 @@ def _esearch(query: str) -> list[str]:
         "reldate":  str(_YEARS_BACK * 365),
         "retmode":  "json",
     }
-
     try:
         resp = requests.get(_ESEARCH_URL, params=params, timeout=_TIMEOUT)
         resp.raise_for_status()
@@ -193,20 +231,14 @@ def _esearch(query: str) -> list[str]:
 
 
 def _efetch(pmids: list[str]) -> list[dict]:
-    """
-    Fetch full records for a list of PMIDs via efetch (XML mode).
-    Returns a list of publication dicts.
-    """
     if not pmids:
         return []
-
     params = {
         **_base_params(),
         "id":      ",".join(pmids),
         "rettype": "abstract",
         "retmode": "xml",
     }
-
     try:
         resp = requests.get(_EFETCH_URL, params=params, timeout=_TIMEOUT)
         resp.raise_for_status()
@@ -218,8 +250,15 @@ def _efetch(pmids: list[str]) -> list[dict]:
 
 def _parse_pubmed_xml(xml_text: str) -> list[dict]:
     """
-    Parse PubMed XML (PubmedArticleSet) into a list of publication dicts.
-    Handles missing fields gracefully — every field has a safe default.
+    Parse PubMed XML into publication dicts.
+
+    Author format stored:
+      - "LastName ForeName"  when <ForeName> is present in XML  → "Chawla Shawn"
+      - "LastName Initials"  when only <Initials> present       → "Albakour M"
+      - "CollectiveName"     for group authors
+
+    Storing the full forename (when available) is critical for _verify_author
+    to distinguish physicians sharing the same last name and first initial.
     """
     results: list[dict] = []
 
@@ -267,10 +306,19 @@ def _parse_pubmed_xml(xml_text: str) -> list[dict]:
 
             authors: list[str] = []
             for author_node in article.findall(".//AuthorList/Author"):
-                last = author_node.findtext("LastName", default="").strip()
-                init = author_node.findtext("Initials", default="").strip()
+                last      = author_node.findtext("LastName",  default="").strip()
+                forename  = author_node.findtext("ForeName",  default="").strip()
+                initials  = author_node.findtext("Initials",  default="").strip()
+
                 if last:
-                    authors.append(f"{last} {init}".strip())
+                    if forename:
+                        # Prefer full forename: "Chawla Shawn"
+                        authors.append(f"{last} {forename}")
+                    elif initials:
+                        # Fall back to initials: "Albakour M"
+                        authors.append(f"{last} {initials}")
+                    else:
+                        authors.append(last)
                 else:
                     collective = author_node.findtext("CollectiveName", default="").strip()
                     if collective:
@@ -303,7 +351,7 @@ def _parse_pubmed_xml(xml_text: str) -> list[dict]:
     return results
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# ── Public API ─────────────────────────────────────────────────────────────────
 
 def fetch_publications(
     name:          str,
@@ -314,25 +362,28 @@ def fetch_publications(
 
     Parameters
     ----------
-    name          : Physician's full name (as returned by NPPES)
-    taxonomy_desc : NUCC taxonomy description (e.g. "Internal Medicine, Cardiovascular Disease")
-                   The most specific part is used as a plain keyword filter.
-
-    Returns
-    -------
-    List of publication dicts (may be empty if none found or on error).
+    name          : Physician's full name as returned by NPPES
+    taxonomy_desc : NUCC taxonomy description, e.g.
+                   "Internal Medicine, Cardiovascular Disease"
 
     Tier waterfall
     --------------
-    Tier 1  Full name + specialty keyword   "Shawn Chawla"[Author]
-                                             AND "Cardiovascular Disease"[Title/Abstract]
-    Tier 2  Full name only                  "Shawn Chawla"[Author]
+    Tier 1  Full name + specialty   "Mustafa Albakour"[Author]
+                                     AND "Internal Medicine"[Title/Abstract]
 
-    The initial-form query ("Chawla S") has been removed entirely — it is
-    the primary source of false positives (matches any S. Chawla worldwide).
+    Tier 2  Full name only          "Mustafa Albakour"[Author]
+            Catches cross-specialty papers or papers without specialty
+            keyword in title/abstract.
 
-    Every result set is passed through _verify_author(), which drops any
-    paper where the physician's name does not appear in the author list.
+    Tier 3  Initial + specialty     "Albakour M"[Author]
+             + US affiliation        AND "Internal Medicine"[Title/Abstract]
+                                     AND "United States"[Affiliation]
+            Last resort for physicians whose full first name was never
+            indexed by PubMed (proven by PubMed's own author link resolving
+            to "Albakour M" rather than "Mustafa Albakour").
+
+    All tiers pass through _verify_author(), which uses the XML <ForeName>
+    field to distinguish same-initial physicians (e.g. Shawn vs Saurabh Chawla).
     """
     if not name or not name.strip():
         logger.warning("fetch_publications called with empty name")
@@ -361,13 +412,30 @@ def fetch_publications(
     logger.info("PubMed Tier 2 (full name, no specialty) | query=%r", query_t2)
     pmids = _esearch(query_t2)
 
+    if pmids:
+        pubs = _verify_author(_efetch(pmids), clean_name)
+        if pubs:
+            logger.info(
+                "PubMed Tier 2 success | name=%r → %d results",
+                name, len(pubs),
+            )
+            return pubs
+
+    # ── Tier 3: Initial form + specialty + US affiliation ──────────────────
+    query_t3 = _build_tier3_query(clean_name, specialty_keyword)
+    logger.info("PubMed Tier 3 (initial form + US affiliation fallback) | query=%r", query_t3)
+    pmids = _esearch(query_t3)
+
     if not pmids:
-        logger.info("PubMed | no results across all tiers | name=%r specialty=%r", name, taxonomy_desc)
+        logger.info(
+            "PubMed | no results across all tiers | name=%r specialty=%r",
+            name, taxonomy_desc,
+        )
         return []
 
     pubs = _verify_author(_efetch(pmids), clean_name)
     logger.info(
-        "PubMed Tier 2 success | name=%r → %d results",
+        "PubMed Tier 3 success | name=%r → %d results",
         name, len(pubs),
     )
     return pubs
