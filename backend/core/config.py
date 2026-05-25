@@ -21,6 +21,7 @@ class Config:
         # ── API Keys ──────────────────────────────────────────────────────────
         self.MAPQUEST_API_KEY: str = os.environ.get("MAPQUEST_API_KEY", "")
         self.GEOAPIFY_API_KEY: str = os.environ.get("GEOAPIFY_API_KEY", "")
+        self.APOLLO_API_KEY:   str = os.environ.get("APOLLO_API_KEY", "")
 
         # ── Salesforce ────────────────────────────────────────────────────────
         self.SF_OID:         str = os.environ.get("SF_OID", "")
