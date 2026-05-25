@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { submitLead, fetchPhysicianPublications } from "@/lib/api";
+import { submitLead, fetchPhysicianPublications, fetchPhysicianEmail } from "@/lib/api";
 import type { Physician, SelectedSite, Publication } from "@/types/physician";
 
 interface Props {
@@ -48,15 +48,10 @@ function PublicationCard({ pub }: { pub: Publication }) {
 
   return (
     <div className="pub-card">
-      {/* Year badge + journal */}
       <div className="pub-card-meta-row">
         {pub.year && <span className="pub-year-badge">{pub.year}</span>}
-        {pub.journal && (
-          <span className="pub-journal">{pub.journal}</span>
-        )}
+        {pub.journal && <span className="pub-journal">{pub.journal}</span>}
       </div>
-
-      {/* Title — links to PubMed */}
       <a
         href={pub.url}
         target="_blank"
@@ -65,8 +60,6 @@ function PublicationCard({ pub }: { pub: Publication }) {
       >
         {pub.title}
       </a>
-
-      {/* Authors */}
       {pub.authors.length > 0 && (
         <div className="pub-authors">
           {pub.authors.slice(0, 4).join(", ")}
@@ -75,8 +68,6 @@ function PublicationCard({ pub }: { pub: Publication }) {
           )}
         </div>
       )}
-
-      {/* Abstract expand/collapse */}
       {pub.abstract && (
         <div className="pub-abstract-wrap">
           <p className={`pub-abstract-text ${expanded ? "pub-abstract-expanded" : ""}`}>
@@ -91,8 +82,6 @@ function PublicationCard({ pub }: { pub: Publication }) {
           </button>
         </div>
       )}
-
-      {/* PubMed link */}
       <a
         href={pub.url}
         target="_blank"
@@ -105,20 +94,163 @@ function PublicationCard({ pub }: { pub: Publication }) {
   );
 }
 
+// ── Fallback popup ────────────────────────────────────────────────────────────
+
+interface FallbackPopupProps {
+  physicianName: string;
+  reason:        "not_found" | "no_email";   // drives the message shown
+  onConfirm:     () => void;                 // add with default email
+  onCancel:      () => void;
+  isSubmitting:  boolean;
+}
+
+function FallbackPopup({ physicianName, reason, onConfirm, onCancel, isSubmitting }: FallbackPopupProps) {
+  return (
+    <>
+      <style>{`
+        .fb-overlay {
+          position: fixed; inset: 0; z-index: 1000;
+          background: rgba(0,0,0,0.38);
+          display: flex; align-items: center; justify-content: center;
+          padding: 20px;
+          animation: fadeIn 0.15s ease both;
+        }
+        .fb-card {
+          background: #fff; border-radius: 16px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+          width: 100%; max-width: 380px;
+          padding: 24px;
+          animation: slideUp 0.2s cubic-bezier(.22,1,.36,1) both;
+          font-family: var(--font-sans);
+        }
+        .fb-icon-wrap {
+          width: 44px; height: 44px; border-radius: 12px;
+          background: #fff7ed; border: 1px solid #fed7aa;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 22px; margin-bottom: 14px;
+        }
+        .fb-title {
+          font-size: 15px; font-weight: 700; color: var(--ink);
+          margin-bottom: 8px; line-height: 1.35;
+        }
+        .fb-body {
+          font-size: 13px; color: var(--ink-3); line-height: 1.6;
+          margin-bottom: 6px;
+        }
+        .fb-note {
+          font-size: 11px; color: var(--muted);
+          background: var(--surface); border: 1px solid var(--border);
+          border-radius: 8px; padding: 8px 10px;
+          margin-bottom: 18px; line-height: 1.5;
+        }
+        .fb-note strong { color: var(--ink-2); }
+        .fb-actions {
+          display: flex; gap: 10px;
+        }
+        .fb-btn {
+          flex: 1; height: 38px; border-radius: 10px;
+          font-size: 13px; font-weight: 700; cursor: pointer;
+          font-family: var(--font-sans); border: none;
+          transition: all 0.15s; display: flex;
+          align-items: center; justify-content: center; gap: 6px;
+        }
+        .fb-btn-cancel {
+          background: var(--surface); border: 1px solid var(--border);
+          color: var(--ink-3);
+        }
+        .fb-btn-cancel:hover { background: var(--surface-2); }
+        .fb-btn-confirm {
+          background: var(--green-600); color: #fff;
+        }
+        .fb-btn-confirm:hover:not(:disabled) { filter: brightness(1.08); }
+        .fb-btn-confirm:disabled { opacity: 0.65; cursor: not-allowed; }
+        @keyframes slideUp {
+          from { transform: translateY(16px); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+      `}</style>
+
+      <div className="fb-overlay" onClick={onCancel}>
+        <div className="fb-card" onClick={(e) => e.stopPropagation()}>
+          <div className="fb-icon-wrap">⚠️</div>
+
+          <div className="fb-title">
+            {reason === "no_email"
+              ? "Email not available"
+              : "Physician not found on Apollo"}
+          </div>
+
+          <div className="fb-body">
+            {reason === "no_email" ? (
+              <>
+                <strong>{physicianName}</strong> was found on Apollo but no
+                verified email address is available in their database.
+              </>
+            ) : (
+              <>
+                No exact match for <strong>{physicianName}</strong> was found
+                on Apollo.
+              </>
+            )}
+          </div>
+
+          <div className="fb-note">
+            Do you still want to add this lead to Salesforce with a{" "}
+            <strong>placeholder email</strong>? You can update it manually later.
+          </div>
+
+          <div className="fb-actions">
+            <button className="fb-btn fb-btn-cancel" onClick={onCancel} type="button">
+              Cancel
+            </button>
+            <button
+              className="fb-btn fb-btn-confirm"
+              onClick={onConfirm}
+              disabled={isSubmitting}
+              type="button"
+            >
+              {isSubmitting
+                ? <><div className="pdp-btn-spinner" /> Adding…</>
+                : "Add with placeholder"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
+// Lead flow states:
+//   idle          → button shows "Add as Lead"
+//   fetching      → button shows "Looking up email…" (Apollo search in progress)
+//   confirm       → fallback popup is open (person not found / no email)
+//   submitting    → popup confirm button spinner
+//   done          → success banner
+//   error         → brief error state, resets to idle
+
+type LeadFlow =
+  | "idle"
+  | "fetching"
+  | "confirm"
+  | "submitting"
+  | "done"
+  | "error";
+
 export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsLead }: Props) {
-  const [leadState, setLeadState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [leadFlow,    setLeadFlow]    = useState<LeadFlow>("idle");
+  const [popupReason, setPopupReason] = useState<"not_found" | "no_email">("not_found");
 
   // Publications state
-  const [pubState, setPubState]     = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [publications, setPublications] = useState<Publication[]>([]);
-  const pubFetchedRef = useRef<string>(""); // tracks which NPI we last fetched for
+  const [pubState,      setPubState]     = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [publications,  setPublications] = useState<Publication[]>([]);
+  const pubFetchedRef = useRef<string>("");
 
   // Fetch publications when panel mounts or physician changes
   useEffect(() => {
     const key = physician.npi;
-    if (pubFetchedRef.current === key) return; // already fetched for this physician
+    if (pubFetchedRef.current === key) return;
     pubFetchedRef.current = key;
 
     const controller = new AbortController();
@@ -144,41 +276,82 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
     return () => controller.abort();
   }, [physician.npi, physician.name, physician.taxonomy_desc]);
 
-  const handleAddAsLead = useCallback(async () => {
-    if (leadState !== "idle") return;
-    setLeadState("loading");
+  // ── Submit lead with a given email ─────────────────────────────────────────
+  const submitWithEmail = useCallback(async (email: string) => {
     try {
       await submitLead({
         name:           physician.name,
-        email:          "Default@gmail.com",
+        email,
         company:        "Individual Physicians",
         lead_source:    "Clinical Trial",
         npi:            physician.npi,
         nct_id:         site.nct_id,
-        ...(site.facility           ? { site:       site.facility           } : {}),
-        ...(physician.taxonomy_desc ? { title:      physician.taxonomy_desc } : {}),
-        ...(physician.phone         ? { phone:      physician.phone         } : {}),
+        ...(site.facility           ? { site:  site.facility           } : {}),
+        ...(physician.taxonomy_desc ? { title: physician.taxonomy_desc } : {}),
+        ...(physician.phone         ? { phone: physician.phone         } : {}),
         physician_name: physician.name,
         auto:           true,
       });
-      setLeadState("done");
+      setLeadFlow("done");
       onAddAsLead(physician);
     } catch {
-      setLeadState("error");
-      setTimeout(() => setLeadState("idle"), 3000);
+      setLeadFlow("error");
+      setTimeout(() => setLeadFlow("idle"), 3000);
     }
-  }, [leadState, physician, site, onAddAsLead]);
+  }, [physician, site, onAddAsLead]);
 
+  // ── Main button click ───────────────────────────────────────────────────────
+  const handleAddAsLead = useCallback(async () => {
+    if (leadFlow !== "idle") return;
+
+    // Step 1 — Apollo email lookup
+    setLeadFlow("fetching");
+
+    const result = await fetchPhysicianEmail({
+      name:         physician.name,
+      address:      physician.address ?? "",
+      organization: site.facility     ?? "",
+    });
+
+    // Step 2a — got a real email → submit immediately, no popup
+    if (result.found && result.email) {
+      await submitWithEmail(result.email);
+      return;
+    }
+
+    // Step 2b — found person but no email, or no match at all → popup
+    setPopupReason(result.found ? "no_email" : "not_found");
+    setLeadFlow("confirm");
+  }, [leadFlow, physician, site, submitWithEmail]);
+
+  // ── Popup confirm (add with placeholder) ───────────────────────────────────
+  const handleFallbackConfirm = useCallback(async () => {
+    setLeadFlow("submitting");
+    await submitWithEmail("placeholder@aquarient.com");
+  }, [submitWithEmail]);
+
+  // ── Popup cancel ────────────────────────────────────────────────────────────
+  const handleFallbackCancel = useCallback(() => {
+    setLeadFlow("idle");
+  }, []);
+
+  // ── Button label / colour ───────────────────────────────────────────────────
   const btnLabel =
-    leadState === "loading" ? "Adding…"      :
-    leadState === "done"    ? "✓ Lead Added" :
-    leadState === "error"   ? "⚠ Retry"      :
+    leadFlow === "fetching"   ? "Looking up email…" :
+    leadFlow === "done"       ? "✓ Lead Added"       :
+    leadFlow === "error"      ? "⚠ Retry"            :
     "Add as Lead";
 
   const btnBg =
-    leadState === "done"  ? "var(--green-600)" :
-    leadState === "error" ? "var(--coral-600)" :
+    leadFlow === "done"  ? "var(--green-600)" :
+    leadFlow === "error" ? "var(--coral-600)" :
     "var(--green-600)";
+
+  const btnDisabled =
+    leadFlow === "fetching"  ||
+    leadFlow === "confirm"   ||
+    leadFlow === "submitting"||
+    leadFlow === "done";
 
   return (
     <>
@@ -217,7 +390,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           border-radius: var(--radius-md); font-size: 12px; font-weight: 700;
           cursor: pointer; font-family: var(--font-sans); letter-spacing: 0.2px;
           transition: all 0.16s; display: flex; align-items: center; gap: 7px;
-          white-space: nowrap; min-width: 130px; justify-content: center;
+          white-space: nowrap; min-width: 150px; justify-content: center;
         }
         .pdp-lead-btn:not(:disabled):hover {
           filter: brightness(1.08);
@@ -335,9 +508,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           border-radius: 20px; padding: 2px 8px;
           font-family: var(--font-mono);
         }
-        .pdp-pub-list {
-          display: flex; flex-direction: column;
-        }
+        .pdp-pub-list { display: flex; flex-direction: column; }
 
         /* ── Individual publication card ────────────────────────────────── */
         .pub-card {
@@ -364,27 +535,19 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         }
         .pub-title-link {
           font-size: 12px; font-weight: 600; color: var(--ink);
-          line-height: 1.45; text-decoration: none;
-          display: block;
+          line-height: 1.45; text-decoration: none; display: block;
           transition: color 0.12s;
         }
         .pub-title-link:hover { color: var(--blue-600); text-decoration: underline; }
-        .pub-authors {
-          font-size: 11px; color: var(--muted); line-height: 1.4;
-        }
-        .pub-authors-more {
-          color: var(--blue-500); font-weight: 600;
-        }
+        .pub-authors { font-size: 11px; color: var(--muted); line-height: 1.4; }
+        .pub-authors-more { color: var(--blue-500); font-weight: 600; }
         .pub-abstract-wrap { margin-top: 2px; }
         .pub-abstract-text {
           font-size: 11px; color: var(--ink-3); line-height: 1.6;
           display: -webkit-box; -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical; overflow: hidden;
-          margin: 0;
+          -webkit-box-orient: vertical; overflow: hidden; margin: 0;
         }
-        .pub-abstract-expanded {
-          display: block; -webkit-line-clamp: unset;
-        }
+        .pub-abstract-expanded { display: block; -webkit-line-clamp: unset; }
         .pub-abstract-toggle {
           font-size: 10px; font-weight: 700; color: var(--blue-600);
           background: none; border: none; cursor: pointer; padding: 4px 0 0;
@@ -399,12 +562,9 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         .pub-pmid-link:hover { color: var(--blue-600); }
 
         /* ── Skeleton ───────────────────────────────────────────────────── */
-        .pub-skeleton-wrap {
-          padding: 4px 0;
-        }
+        .pub-skeleton-wrap { padding: 4px 0; }
         .pub-skeleton-card {
-          padding: 14px 18px;
-          border-bottom: 1px solid var(--border);
+          padding: 14px 18px; border-bottom: 1px solid var(--border);
           display: flex; flex-direction: column; gap: 8px;
         }
         .pub-skeleton-card:last-child { border-bottom: none; }
@@ -424,8 +584,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
 
         /* ── Empty / error states ───────────────────────────────────────── */
         .pub-empty {
-          padding: 24px 18px;
-          text-align: center;
+          padding: 24px 18px; text-align: center;
           color: var(--muted); font-size: 12px; line-height: 1.6;
         }
         .pub-empty-icon { font-size: 28px; margin-bottom: 8px; display: block; }
@@ -440,6 +599,17 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         }
       `}</style>
 
+      {/* Fallback popup — rendered outside the panel flow so it overlays everything */}
+      {(leadFlow === "confirm" || leadFlow === "submitting") && (
+        <FallbackPopup
+          physicianName={physician.name}
+          reason={popupReason}
+          onConfirm={handleFallbackConfirm}
+          onCancel={handleFallbackCancel}
+          isSubmitting={leadFlow === "submitting"}
+        />
+      )}
+
       <div className="pdp-shell">
         {/* Header */}
         <div className="pdp-header">
@@ -451,16 +621,16 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           <button
             className="pdp-lead-btn"
             onClick={handleAddAsLead}
-            disabled={leadState === "loading" || leadState === "done"}
+            disabled={btnDisabled}
             style={{ background: btnBg }}
           >
-            {leadState === "loading"
-              ? <><div className="pdp-btn-spinner" /> Adding…</>
+            {leadFlow === "fetching" || leadFlow === "submitting"
+              ? <><div className="pdp-btn-spinner" /> {btnLabel}</>
               : btnLabel}
           </button>
         </div>
 
-        {leadState === "done" && (
+        {leadFlow === "done" && (
           <div className="pdp-success-banner">
             <div className="pdp-success-dot" />
             Lead captured for {physician.name} in Salesforce.
@@ -535,7 +705,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
             )}
           </div>
 
-          {/* ── Publications ─────────────────────────────────────────────── */}
+          {/* Publications */}
           <div className="pdp-pub-card">
             <div className="pdp-pub-header">
               <div className="pdp-pub-header-left">
@@ -552,12 +722,8 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
               )}
             </div>
 
-            {/* Loading skeleton */}
-            {pubState === "loading" && (
-              <PublicationSkeleton />
-            )}
+            {pubState === "loading" && <PublicationSkeleton />}
 
-            {/* Publications list */}
             {pubState === "done" && publications.length > 0 && (
               <div className="pdp-pub-list">
                 {publications.map((pub) => (
@@ -566,7 +732,6 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
               </div>
             )}
 
-            {/* Empty state */}
             {pubState === "done" && publications.length === 0 && (
               <div className="pub-empty">
                 <span className="pub-empty-icon">🔍</span>
@@ -578,7 +743,6 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
               </div>
             )}
 
-            {/* Error state */}
             {pubState === "error" && (
               <div className="pub-empty">
                 <span className="pub-empty-icon">⚠️</span>

@@ -1,12 +1,11 @@
 // lib/api.ts
 //
-// v10 changes:
-//  - Added fetchPhysicianPublications() — calls
-//    GET /api/physicians/{npi}/publications?name=...&specialty=...
-//    Returns up to 10 recent PubMed publications for a physician.
-//    Errors are swallowed and returned as an empty publications array
-//    so the UI degrades gracefully without throwing.
-//  - All other helpers unchanged from v9.
+// v11 changes:
+//  - Added EmailLookupResult interface
+//  - Added fetchPhysicianEmail() — calls POST /api/apollo/find-email
+//    Runs the Apollo search → enrich pipeline to retrieve a physician's
+//    work email. Never throws; degrades gracefully on any failure.
+//  - All other helpers unchanged from v10.
 
 import type { TrialFetchParams, TrialFetchResponse, SiteData, Trial } from "@/types/trial";
 import type {
@@ -21,6 +20,17 @@ import type {
 } from "@/types/physician";
 
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/+$/, "");
+
+// ── Apollo email lookup type ──────────────────────────────────────────────────
+
+export interface EmailLookupResult {
+  found:       boolean;
+  email:       string | null;
+  apollo_name: string | null;
+  error:       string | null;
+}
+
+// ── Core fetch helper ─────────────────────────────────────────────────────────
 
 async function apiFetch<T>(
   path:     string,
@@ -289,4 +299,56 @@ export async function submitAutoLead(
     method: "POST",
     body:   JSON.stringify(payload),
   });
+}
+
+// ── Apollo email lookup ───────────────────────────────────────────────────────
+
+/**
+ * Look up a physician's email via the Apollo search → enrich pipeline.
+ *
+ * Always resolves (never throws) — on network failure it returns
+ * { found: false, email: null, error: "..." } so the caller can degrade
+ * gracefully without a try/catch at the call site.
+ *
+ * Response semantics:
+ *   found=true,  email=string  → email retrieved, proceed with lead
+ *   found=true,  email=null    → person found but no email available → show fallback popup
+ *   found=false, email=null    → no Apollo match → show fallback popup
+ *   error=string               → hard failure (API key missing, network down)
+ */
+export async function fetchPhysicianEmail(params: {
+  name:          string;
+  address?:      string;
+  organization?: string;
+}): Promise<EmailLookupResult> {
+  const fallback: EmailLookupResult = {
+    found: false, email: null, apollo_name: null, error: null,
+  };
+
+  if (!params.name?.trim()) return fallback;
+
+  try {
+    const payload: Record<string, string> = {
+      name: params.name.trim(),
+    };
+    if (params.address?.trim())      payload.address      = params.address.trim();
+    if (params.organization?.trim()) payload.organization = params.organization.trim();
+
+    const res = await fetch(`${BASE_URL}/api/apollo/find-email`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => res.statusText);
+      console.warn(`[fetchPhysicianEmail] HTTP ${res.status}: ${detail}`);
+      return { ...fallback, error: `HTTP ${res.status}` };
+    }
+
+    return (await res.json()) as EmailLookupResult;
+  } catch (err) {
+    console.warn("[fetchPhysicianEmail] Network error:", err);
+    return { ...fallback, error: "Network error" };
+  }
 }
