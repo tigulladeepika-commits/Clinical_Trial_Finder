@@ -312,13 +312,18 @@ async def find_physician_email(
         if not people:
             people = await _search_people(client, clean, city, state, organization="")
 
+
+
+        
         # Step 3: try name variants if still no results
         # Handles "SREECHARAN REDDY MAVURAM" → "SREECHARAN MAVURAM"
+        search_name = clean  # track which name actually got results
         if not people:
             for variant in _name_variants(clean):
                 logger.info("Apollo: trying name variant '%s'", variant)
                 people = await _search_people(client, variant, city, state, organization="")
                 if people:
+                    search_name = variant
                     logger.info("Apollo: got results with variant '%s'", variant)
                     break
 
@@ -327,7 +332,7 @@ async def find_physician_email(
             return _EMPTY
 
         # Step 4: pick best match
-        person = _pick_best(people, name, city, state)
+        person = _pick_best(people, search_name, city, state)
         if person is None:
             logger.info("Apollo: no confident match for '%s'", name)
             return _EMPTY
