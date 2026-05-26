@@ -14,10 +14,15 @@ Name handling
 -------------
 - Credentials stripped before search: "BETTY TONG, M.D." → "BETTY TONG"
 - Middle name variants tried when search returns no results:
-    "SREECHARAN REDDY MAVURAM" → tries "SREECHARAN MAVURAM" as fallback
-- Location used to prefer candidates whose Apollo city/state matches NPPES.
+    "SREECHARAN REDDY MAVURAM" → tries "SREECHARAN MAVURAM"
+- Location progressively relaxed during variant search:
+    1st try: state only (drops unusual city names like "JBSA FT SAM HOUSTON")
+    2nd try: no location at all
+  This ensures military base cities / non-standard addresses don't block matches.
 - Healthcare scoring boosts physicians, nurses, professors, hospital staff.
 - Similarity threshold 0.4 guards against wrong-person matches.
+- search_name tracks which name variant got results so similarity is scored
+  against the variant (not the original credential-heavy name).
 """
 
 import logging
@@ -49,7 +54,8 @@ _HEALTHCARE_TITLE_KEYWORDS = {
     "assistant professor", "fellow", "resident", "attending",
     "nurse", "np", "pa", "pharmacist", "therapist", "clinician",
     "medical", "clinical", "health", "hospital", "cancer", "surgery",
-    "medicine", "care", "treatment", "department of",
+    "medicine", "care", "treatment", "department of", "hematology",
+    "oncology", "cardiology", "radiology", "pathology", "neurology",
 }
 
 _HEALTHCARE_ORG_KEYWORDS = {
@@ -59,7 +65,8 @@ _HEALTHCARE_ORG_KEYWORDS = {
     "therapeutics", "oncology", "cardiology", "radiology", "pathology",
     "mayo", "johns hopkins", "cleveland", "kaiser", "va ", "veterans",
     "memorial", "presbyterian", "baptist", "methodist", "general",
-    "children", "pediatric", "womens", "women's",
+    "children", "pediatric", "womens", "women's", "army", "naval",
+    "military", "brooke", "walter reed", "tripler",
 }
 
 
@@ -93,15 +100,15 @@ def _clean_name(name: str) -> str:
 def _name_variants(name: str) -> list[str]:
     """
     Generate alternative search names for cases where Apollo stores a
-    simplified version dropping middle names or caste/family name particles.
+    simplified version dropping middle names or name particles.
 
     Examples:
       "SREECHARAN REDDY MAVURAM" → ["SREECHARAN MAVURAM"]
+      "WILFRED DELA CRUZ"        → ["WILFRED CRUZ"]
       "MARY ANNE JOHNSON"        → ["MARY JOHNSON"]
       "JOSE LUIS GARCIA LOPEZ"   → ["JOSE GARCIA LOPEZ", "JOSE GARCIA"]
 
-    Only generates variants for 3+ token names — 2-token names have
-    nothing meaningful to drop.
+    Only generates variants for 3+ token names.
     """
     tokens = name.strip().split()
     if len(tokens) < 3:
@@ -112,9 +119,12 @@ def _name_variants(name: str) -> list[str]:
     last  = tokens[-1]
 
     # Primary variant: first + last only (drops all middle tokens)
+    # Handles: "SREECHARAN REDDY MAVURAM" → "SREECHARAN MAVURAM"
+    # Also handles: "WILFRED DELA CRUZ" → "WILFRED CRUZ"
     variants.append(f"{first} {last}")
 
     # For 4-token names also try dropping one middle token at a time
+    # Handles: "JOSE LUIS GARCIA LOPEZ" → "JOSE GARCIA LOPEZ" or "JOSE LUIS LOPEZ"
     if len(tokens) == 4:
         variants.append(f"{tokens[0]} {tokens[2]} {tokens[3]}")  # drop token[1]
         variants.append(f"{tokens[0]} {tokens[1]} {tokens[3]}")  # drop token[2]
@@ -133,7 +143,10 @@ def _backfill_name(person: dict) -> dict:
         if first or last:
             person = dict(person)  # don't mutate the original
             person["name"] = f"{first} {last}".strip()
-            logger.info("Apollo: backfilled name '%s' from first/last fields", person["name"])
+            logger.info(
+                "Apollo: backfilled name '%s' from first/last fields",
+                person["name"],
+            )
     return person
 
 
@@ -167,13 +180,13 @@ def _parse_city_state(address: str) -> tuple[str, str]:
 def _location_matches(person: dict, city: str, state: str) -> bool:
     """
     Return True if the person's Apollo location contains the city or state.
-    Checks city field and person_location string.
+    Checks city, state, and person_location fields.
     """
     if not city and not state:
         return False
     loc = (
-        (person.get("city") or "") + " " +
-        (person.get("state") or "") + " " +
+        (person.get("city")            or "") + " " +
+        (person.get("state")           or "") + " " +
         (person.get("person_location") or "")
     ).lower()
     if state and state.lower() in loc:
@@ -209,7 +222,10 @@ def _extract_people(data: dict) -> list:
     logger.info("Apollo raw response keys: %s", list(data.keys()))
     for key in ("people", "contacts", "results", "persons", "data"):
         if key in data and isinstance(data[key], list):
-            logger.info("Apollo: found %d results under key '%s'", len(data[key]), key)
+            logger.info(
+                "Apollo: found %d results under key '%s'",
+                len(data[key]), key,
+            )
             return data[key]
     logger.warning("Apollo: no people list found. Sample: %s", str(data)[:400])
     return []
@@ -218,26 +234,28 @@ def _extract_people(data: dict) -> list:
 # ── Best-match selection ──────────────────────────────────────────────────────
 
 def _pick_best(
-    people: list,
-    name:   str,
-    city:   str,
-    state:  str,
+    people:      list,
+    search_name: str,   # the name actually used in the search (may be a variant)
+    city:        str,
+    state:       str,
 ) -> Optional[dict]:
     """
     From a list of Apollo people, pick the best match for this physician.
 
-    Priority order:
-      1. Name similarity >= 0.4  (hard filter — wrong person is worse than no person)
-      2. Location match (city or state)  +  healthcare score
-      3. Healthcare score alone
-      4. First result with name similarity >= 0.4
+    search_name is the cleaned/variant name used in the Apollo query —
+    similarity is scored against this, not the original credential-heavy name,
+    so "Sreecharan" vs "SREECHARAN MAVURAM" scores correctly.
 
-    Logs every candidate's scores for easy diagnosis.
+    Priority order:
+      1. Name similarity >= 0.4  (hard filter)
+      2. Location match + healthcare score
+      3. Healthcare score alone
+      4. First result with similarity >= 0.4
     """
     scored = []
     for raw in people:
         p    = _backfill_name(raw)
-        sim  = _name_similarity(name, p.get("name", ""))
+        sim  = _name_similarity(search_name, p.get("name", ""))
         loc  = _location_matches(p, city, state)
         hc   = _healthcare_score(p)
         logger.info(
@@ -245,7 +263,8 @@ def _pick_best(
             "location='%s' | sim=%.2f | loc_match=%s | hc_score=%d",
             p.get("name", ""),
             p.get("title", ""),
-            (p.get("organization") or {}).get("name", "") if isinstance(p.get("organization"), dict) else "",
+            (p.get("organization") or {}).get("name", "")
+                if isinstance(p.get("organization"), dict) else "",
             p.get("city") or p.get("person_location", ""),
             sim, loc, hc,
         )
@@ -277,13 +296,15 @@ async def find_physician_email(
     state:        str = "",
 ) -> ApolloResult:
     """
-    Main entry point. Steps:
-      1. Clean name (strip credentials/honorifics).
-      2. Search Apollo with cleaned name + location + org.
-      3. If no results with org, retry without org.
-      4. If still no results, try name variants (drop middle names).
-      5. Pick best match using location + healthcare scoring.
-      6. Enrich matched person for email.
+    Main entry point. Search strategy:
+
+      1. Search full cleaned name + city + state + org
+      2. Retry without org (org name may not match Apollo)
+      3. Try name variants (drop middle names / particles):
+           a. State only — drops unusual city names (military bases, etc.)
+           b. No location — last resort
+      4. Pick best match using location + healthcare scoring
+      5. Enrich matched person for email
     """
     if not cfg.APOLLO_API_KEY:
         logger.warning("APOLLO_API_KEY not set — skipping email lookup")
@@ -303,35 +324,49 @@ async def find_physician_email(
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
 
-        # Step 1: search with org filter
+        # ── Step 1: full name + city + state + org ────────────────────────────
         people = []
         if organization:
             people = await _search_people(client, clean, city, state, organization)
 
-        # Step 2: retry without org if no results
+        # ── Step 2: full name + city + state, no org ──────────────────────────
         if not people:
             people = await _search_people(client, clean, city, state, organization="")
 
-
-
-        
-        # Step 3: try name variants if still no results
-        # Handles "SREECHARAN REDDY MAVURAM" → "SREECHARAN MAVURAM"
-        search_name = clean  # track which name actually got results
+        # ── Step 3: name variants with progressive location relaxation ─────────
+        # Handles:
+        #   - "SREECHARAN REDDY MAVURAM" → "SREECHARAN MAVURAM"
+        #   - "WILFRED DELA CRUZ" → "WILFRED CRUZ"
+        #   - Military/unusual city names that Apollo doesn't recognise
+        search_name = clean  # tracks which name actually got results
         if not people:
             for variant in _name_variants(clean):
-                logger.info("Apollo: trying name variant '%s'", variant)
-                people = await _search_people(client, variant, city, state, organization="")
+                # 3a: state only (drop city — military bases / unusual addresses)
+                logger.info(
+                    "Apollo: trying variant '%s' with state-only location", variant,
+                )
+                people = await _search_people(client, variant, "", state, organization="")
+
+                # 3b: no location at all
+                if not people:
+                    logger.info(
+                        "Apollo: trying variant '%s' with no location", variant,
+                    )
+                    people = await _search_people(client, variant, "", "", organization="")
+
                 if people:
                     search_name = variant
-                    logger.info("Apollo: got results with variant '%s'", variant)
+                    logger.info(
+                        "Apollo: got %d results with variant '%s'",
+                        len(people), variant,
+                    )
                     break
 
         if not people:
             logger.info("Apollo: no results for '%s'", name)
             return _EMPTY
 
-        # Step 4: pick best match
+        # ── Step 4: pick best match ────────────────────────────────────────────
         person = _pick_best(people, search_name, city, state)
         if person is None:
             logger.info("Apollo: no confident match for '%s'", name)
@@ -340,7 +375,7 @@ async def find_physician_email(
         person_id   = person.get("id")
         apollo_name = person.get("name", "")
 
-        # Step 5: enrich for email
+        # ── Step 5: enrich for email ───────────────────────────────────────────
         email = await _enrich_person(client, person_id, apollo_name, organization)
 
     logger.info(
