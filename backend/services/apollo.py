@@ -251,8 +251,21 @@ async def _search_person(
         if not people:
             return None
 
-        # Return first result — Apollo ranks by relevance
+        # Apollo api_search sometimes returns empty "name" — backfill from
+        # first_name + last_name so similarity check doesn't fail.
+        for person in people:
+            if not person.get("name", "").strip():
+                first = person.get("first_name", "").strip()
+                last  = person.get("last_name",  "").strip()
+                if first or last:
+                    person["name"] = f"{first} {last}".strip()
+                    logger.info(
+                        "Apollo: backfilled name '%s' from first/last fields",
+                        person["name"],
+                    )
+
         return people[0]
+        
 
     except httpx.HTTPStatusError as exc:
         logger.warning("Apollo search HTTP %d: %s", exc.response.status_code, exc.response.text[:300])
