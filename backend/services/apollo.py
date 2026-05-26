@@ -66,7 +66,10 @@ _TITLE_RE = re.compile(r"^(Dr\.?|MD\.?|DO\.?|Prof\.?)\s*", re.IGNORECASE)
 
 
 def _clean_name(name: str) -> str:
-    """Strip honorifics so Apollo name-matching works better."""
+    """Strip honorifics and credential suffixes so Apollo name-matching works better."""
+    # Remove suffix credentials after a comma: ", M.D." / ", AGACNP" / ", PhD" etc.
+    name = re.sub(r",\s*.+$", "", name).strip()
+    # Remove leading honorifics: Dr. / MD. / DO. etc.
     return _TITLE_RE.sub("", name).strip()
 
 
