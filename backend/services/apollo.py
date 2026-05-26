@@ -113,6 +113,26 @@ def _name_similarity(a: str, b: str) -> float:
     return len(ta & tb) / max(len(ta), len(tb))
 
 
+def _extract_people(data: dict) -> list:
+    """
+    Extract the people list from Apollo api_search response.
+    Apollo's api_search endpoint may return results under different keys
+    depending on API version — check all known keys in priority order.
+    """
+    # Log all top-level keys for debugging
+    logger.info("Apollo raw response keys: %s", list(data.keys()))
+
+    # Try known keys in order of likelihood
+    for key in ("people", "contacts", "results", "persons", "data"):
+        if key in data and isinstance(data[key], list):
+            logger.info("Apollo: found %d results under key '%s'", len(data[key]), key)
+            return data[key]
+
+    # Nothing found — log a sample of the response for diagnosis
+    logger.warning("Apollo: no people list found in response. Sample: %s", str(data)[:400])
+    return []
+
+
 # ── Core pipeline ─────────────────────────────────────────────────────────────
 
 async def find_physician_email(
@@ -143,6 +163,7 @@ async def find_physician_email(
         city, state = _parse_city_state(address)
 
     clean = _clean_name(name)
+    logger.info("Apollo: searching for '%s' (cleaned from '%s')", clean, name)
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         # ── Step 1a: search with org (if available) ───────────────────────────
@@ -162,10 +183,11 @@ async def find_physician_email(
         apollo_name = person.get("name", "")
 
         # Sanity-check: the returned name should overlap meaningfully
-        if _name_similarity(name, apollo_name) < 0.5:
+        similarity = _name_similarity(name, apollo_name)
+        if similarity < 0.4:
             logger.info(
                 "Apollo: low name similarity (%.2f) — '%s' vs '%s'; skipping",
-                _name_similarity(name, apollo_name), name, apollo_name,
+                similarity, name, apollo_name,
             )
             return _EMPTY
 
@@ -195,16 +217,13 @@ async def _search_person(
     organization: str,
 ) -> Optional[dict]:
     """
-    POST to Apollo people search.
+    POST to Apollo people api_search.
     Returns the first high-confidence person dict, or None.
-
-    Apollo search API ref:
-    https://apolloio.github.io/apollo-api-docs/?shell#people-search
     """
     payload: dict = {
         "q_keywords":    name,
         "page":          1,
-        "per_page":      5,      # fetch a small batch; we pick the best match
+        "per_page":      5,
     }
 
     if city:
@@ -226,14 +245,13 @@ async def _search_person(
             },
         )
         resp.raise_for_status()
-        data    = resp.json()
-        people  = data.get("people", [])
+        data   = resp.json()
+        people = _extract_people(data)
 
         if not people:
             return None
 
-        # Return first result — Apollo ranks by relevance; with name + location
-        # the first hit is almost always the right person.
+        # Return first result — Apollo ranks by relevance
         return people[0]
 
     except httpx.HTTPStatusError as exc:
@@ -252,9 +270,7 @@ async def _enrich_person(
 ) -> Optional[str]:
     """
     POST to Apollo people/match (enrich) to retrieve email.
-    Only called after we've found a specific person_id, so we're enriching
-    exactly one record — not bulk-enriching noisy search results.
-
+    Only called after we've found a specific person_id.
     Returns the email string, or None if not available.
     """
     payload: dict = {"reveal_personal_emails": False}
@@ -262,7 +278,6 @@ async def _enrich_person(
     if person_id:
         payload["id"] = person_id
     else:
-        # Fallback: enrich by name + org (less precise)
         payload["name"] = name
         if organization:
             payload["organization_name"] = organization
@@ -285,7 +300,10 @@ async def _enrich_person(
 
         # Apollo sometimes returns "email_status": "unavailable" with a null email
         if email and person.get("email_status") in ("invalid", "unverified_catchall"):
-            logger.info("Apollo enriched email status is '%s' — treating as unavailable", person["email_status"])
+            logger.info(
+                "Apollo enriched email status is '%s' — treating as unavailable",
+                person["email_status"],
+            )
             email = None
 
         return email
