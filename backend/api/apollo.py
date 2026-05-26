@@ -43,7 +43,7 @@ class EmailLookupResponse(BaseModel):
 
 # ── Route ─────────────────────────────────────────────────────────────────────
 
-@router.post("", response_model=EmailLookupResponse)
+@router.post("/find-email", response_model=EmailLookupResponse)
 async def lookup_physician_email(body: EmailLookupRequest):
     """
     Run the Apollo search → enrich pipeline for a single physician.
