@@ -39,7 +39,7 @@ from core.config import cfg
 
 logger = logging.getLogger(__name__)
 
-APOLLO_SEARCH_URL  = "https://api.apollo.io/api/v1/mixed_people/search"
+APOLLO_SEARCH_URL  = "https://api.apollo.io/api/v1/mixed_people/api_search"
 APOLLO_ENRICH_URL  = "https://api.apollo.io/api/v1/people/match"
 
 # Apollo free-tier / standard rate: 50 req/min; we stay conservative.
