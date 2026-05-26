@@ -10,15 +10,14 @@ Two-step pipeline:
        d. Fall back to first result if no filters narrow it down
   3. Enrich  — fetch email only for the matched person_id
 
-Strategy
---------
-- Credentials stripped from name before search: "BETTY TONG, M.D." → "BETTY TONG"
-- Location used to narrow multi-result sets (not as a hard API filter to avoid
-  missing people whose Apollo location differs slightly from NPPES address).
+Name handling
+-------------
+- Credentials stripped before search: "BETTY TONG, M.D." → "BETTY TONG"
+- Middle name variants tried when search returns no results:
+    "SREECHARAN REDDY MAVURAM" → tries "SREECHARAN MAVURAM" as fallback
+- Location used to prefer candidates whose Apollo city/state matches NPPES.
 - Healthcare scoring boosts physicians, nurses, professors, hospital staff.
-- Similarity check (0.4 threshold) guards against wrong-person matches.
-- If enriched record has no email → ApolloResult(found=True, email=None)
-  so the caller shows the fallback popup.
+- Similarity threshold 0.4 guards against wrong-person matches.
 """
 
 import logging
@@ -36,6 +35,7 @@ APOLLO_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/api_search"
 APOLLO_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
 
 _TIMEOUT = 15  # seconds per request
+
 
 # ── Healthcare keyword sets ───────────────────────────────────────────────────
 
@@ -90,10 +90,42 @@ def _clean_name(name: str) -> str:
     return _TITLE_RE.sub("", name).strip()
 
 
+def _name_variants(name: str) -> list[str]:
+    """
+    Generate alternative search names for cases where Apollo stores a
+    simplified version dropping middle names or caste/family name particles.
+
+    Examples:
+      "SREECHARAN REDDY MAVURAM" → ["SREECHARAN MAVURAM"]
+      "MARY ANNE JOHNSON"        → ["MARY JOHNSON"]
+      "JOSE LUIS GARCIA LOPEZ"   → ["JOSE GARCIA LOPEZ", "JOSE GARCIA"]
+
+    Only generates variants for 3+ token names — 2-token names have
+    nothing meaningful to drop.
+    """
+    tokens = name.strip().split()
+    if len(tokens) < 3:
+        return []
+
+    variants = []
+    first = tokens[0]
+    last  = tokens[-1]
+
+    # Primary variant: first + last only (drops all middle tokens)
+    variants.append(f"{first} {last}")
+
+    # For 4-token names also try dropping one middle token at a time
+    if len(tokens) == 4:
+        variants.append(f"{tokens[0]} {tokens[2]} {tokens[3]}")  # drop token[1]
+        variants.append(f"{tokens[0]} {tokens[1]} {tokens[3]}")  # drop token[2]
+
+    return variants
+
+
 def _backfill_name(person: dict) -> dict:
     """
     Apollo api_search sometimes returns name='' even when first_name/last_name
-    are populated. Build the name from parts if the name field is empty.
+    are populated. Build the name from parts when the name field is empty.
     """
     if not person.get("name", "").strip():
         first = person.get("first_name", "").strip()
@@ -135,11 +167,15 @@ def _parse_city_state(address: str) -> tuple[str, str]:
 def _location_matches(person: dict, city: str, state: str) -> bool:
     """
     Return True if the person's Apollo location contains the city or state.
-    Checks person_location (string like "Phoenix, Arizona, United States").
+    Checks city field and person_location string.
     """
     if not city and not state:
         return False
-    loc = (person.get("city") or person.get("person_location") or "").lower()
+    loc = (
+        (person.get("city") or "") + " " +
+        (person.get("state") or "") + " " +
+        (person.get("person_location") or "")
+    ).lower()
     if state and state.lower() in loc:
         return True
     if city and city.lower() in loc:
@@ -156,11 +192,11 @@ def _healthcare_score(person: dict) -> int:
       1 = one signal
       0 = no signal
     """
-    title = (person.get("title") or "").lower()
-    org   = (person.get("organization", {}) or {})
+    title    = (person.get("title") or "").lower()
+    org      = person.get("organization") or {}
     org_name = (org.get("name") or "").lower() if isinstance(org, dict) else ""
 
-    title_hit = any(kw in title for kw in _HEALTHCARE_TITLE_KEYWORDS)
+    title_hit = any(kw in title    for kw in _HEALTHCARE_TITLE_KEYWORDS)
     org_hit   = any(kw in org_name for kw in _HEALTHCARE_ORG_KEYWORDS)
 
     return int(title_hit) + int(org_hit)
@@ -182,23 +218,22 @@ def _extract_people(data: dict) -> list:
 # ── Best-match selection ──────────────────────────────────────────────────────
 
 def _pick_best(
-    people:  list,
-    name:    str,
-    city:    str,
-    state:   str,
+    people: list,
+    name:   str,
+    city:   str,
+    state:  str,
 ) -> Optional[dict]:
     """
     From a list of Apollo people, pick the best match for this physician.
 
-    Priority:
-      1. Name similarity ≥ 0.4  (hard filter — wrong person is worse than no person)
+    Priority order:
+      1. Name similarity >= 0.4  (hard filter — wrong person is worse than no person)
       2. Location match (city or state)  +  healthcare score
       3. Healthcare score alone
-      4. First result with name similarity ≥ 0.4
+      4. First result with name similarity >= 0.4
 
-    Logs the scoring for every candidate so diagnosis is easy.
+    Logs every candidate's scores for easy diagnosis.
     """
-    # Backfill empty names and attach scores
     scored = []
     for raw in people:
         p    = _backfill_name(raw)
@@ -208,7 +243,8 @@ def _pick_best(
         logger.info(
             "Apollo candidate | name='%s' | title='%s' | org='%s' | "
             "location='%s' | sim=%.2f | loc_match=%s | hc_score=%d",
-            p.get("name", ""), p.get("title", ""),
+            p.get("name", ""),
+            p.get("title", ""),
             (p.get("organization") or {}).get("name", "") if isinstance(p.get("organization"), dict) else "",
             p.get("city") or p.get("person_location", ""),
             sim, loc, hc,
@@ -243,10 +279,11 @@ async def find_physician_email(
     """
     Main entry point. Steps:
       1. Clean name (strip credentials/honorifics).
-      2. Search Apollo with name + location.
-      3. If org provided and no hit, retry without org.
-      4. Pick best match from results using location + healthcare scoring.
-      5. Enrich matched person for email.
+      2. Search Apollo with cleaned name + location + org.
+      3. If no results with org, retry without org.
+      4. If still no results, try name variants (drop middle names).
+      5. Pick best match using location + healthcare scoring.
+      6. Enrich matched person for email.
     """
     if not cfg.APOLLO_API_KEY:
         logger.warning("APOLLO_API_KEY not set — skipping email lookup")
@@ -259,10 +296,13 @@ async def find_physician_email(
         city, state = _parse_city_state(address)
 
     clean = _clean_name(name)
-    logger.info("Apollo: searching for '%s' (cleaned from '%s') | city=%s state=%s",
-                clean, name, city or "-", state or "-")
+    logger.info(
+        "Apollo: searching for '%s' (cleaned from '%s') | city=%s state=%s",
+        clean, name, city or "-", state or "-",
+    )
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+
         # Step 1: search with org filter
         people = []
         if organization:
@@ -272,11 +312,21 @@ async def find_physician_email(
         if not people:
             people = await _search_people(client, clean, city, state, organization="")
 
+        # Step 3: try name variants if still no results
+        # Handles "SREECHARAN REDDY MAVURAM" → "SREECHARAN MAVURAM"
+        if not people:
+            for variant in _name_variants(clean):
+                logger.info("Apollo: trying name variant '%s'", variant)
+                people = await _search_people(client, variant, city, state, organization="")
+                if people:
+                    logger.info("Apollo: got results with variant '%s'", variant)
+                    break
+
         if not people:
             logger.info("Apollo: no results for '%s'", name)
             return _EMPTY
 
-        # Step 3: pick best match
+        # Step 4: pick best match
         person = _pick_best(people, name, city, state)
         if person is None:
             logger.info("Apollo: no confident match for '%s'", name)
@@ -285,10 +335,13 @@ async def find_physician_email(
         person_id   = person.get("id")
         apollo_name = person.get("name", "")
 
-        # Step 4: enrich for email
+        # Step 5: enrich for email
         email = await _enrich_person(client, person_id, apollo_name, organization)
 
-    logger.info("Apollo result | name='%s' | found=True | has_email=%s", name, bool(email))
+    logger.info(
+        "Apollo result | name='%s' | found=True | has_email=%s",
+        name, bool(email),
+    )
     return ApolloResult(
         found=True,
         email=email,
@@ -339,8 +392,10 @@ async def _search_people(
         return _extract_people(resp.json())
 
     except httpx.HTTPStatusError as exc:
-        logger.warning("Apollo search HTTP %d: %s",
-                       exc.response.status_code, exc.response.text[:300])
+        logger.warning(
+            "Apollo search HTTP %d: %s",
+            exc.response.status_code, exc.response.text[:300],
+        )
         return []
     except Exception as exc:
         logger.error("Apollo search error: %s", exc)
@@ -353,7 +408,7 @@ async def _enrich_person(
     name:         str,
     organization: str,
 ) -> Optional[str]:
-    """Enrich a specific person_id to retrieve their email."""
+    """Enrich a specific person_id to retrieve their work email."""
     payload: dict = {"reveal_personal_emails": False}
 
     if person_id:
@@ -379,15 +434,19 @@ async def _enrich_person(
         email  = person.get("email") or None
 
         if email and person.get("email_status") in ("invalid", "unverified_catchall"):
-            logger.info("Apollo: email status '%s' — treating as unavailable",
-                        person["email_status"])
+            logger.info(
+                "Apollo: email status '%s' — treating as unavailable",
+                person["email_status"],
+            )
             email = None
 
         return email
 
     except httpx.HTTPStatusError as exc:
-        logger.warning("Apollo enrich HTTP %d: %s",
-                       exc.response.status_code, exc.response.text[:300])
+        logger.warning(
+            "Apollo enrich HTTP %d: %s",
+            exc.response.status_code, exc.response.text[:300],
+        )
         return None
     except Exception as exc:
         logger.error("Apollo enrich error: %s", exc)
