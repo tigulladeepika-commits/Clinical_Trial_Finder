@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { submitLead } from "@/lib/api";
+import { useState, useCallback } from "react";
+import { submitLead, fetchPhysicianEmail } from "@/lib/api";
 import type { Physician } from "@/types/physician";
 
 interface Props {
@@ -9,6 +9,68 @@ interface Props {
   nctId:     string;
   siteName?: string | null;
   onClick:   (physician: Physician) => void;
+}
+
+type LeadFlow =
+  | "idle"
+  | "fetching"
+  | "confirm"
+  | "submitting"
+  | "done"
+  | "error";
+
+type PopupReason = "not_found" | "no_email";
+
+interface FallbackPopupProps {
+  physicianName: string;
+  reason:        PopupReason;
+  onConfirm:     () => void;
+  onCancel:      () => void;
+  isSubmitting:  boolean;
+}
+
+function FallbackPopup({ physicianName, reason, onConfirm, onCancel, isSubmitting }: FallbackPopupProps) {
+  return (
+    <div className="popup-overlay" onClick={onCancel}>
+      <div className="popup-card" onClick={(e) => e.stopPropagation()}>
+        <div className="popup-icon">⚠️</div>
+        <div className="popup-title">
+          {reason === "no_email"
+            ? "Email not available"
+            : "Physician not found on Apollo"}
+        </div>
+        <div className="popup-body">
+          {reason === "no_email" ? (
+            <>
+              <strong>{physicianName}</strong> was found on Apollo but no
+              verified email address is available.
+            </>
+          ) : (
+            <>
+              No exact match for <strong>{physicianName}</strong> was found
+              on Apollo.
+            </>
+          )}
+        </div>
+        <div className="popup-note">
+          Add this lead to Salesforce with a <strong>placeholder email</strong>?
+        </div>
+        <div className="popup-actions">
+          <button className="popup-btn popup-btn-cancel" onClick={onCancel} type="button">
+            Cancel
+          </button>
+          <button
+            className="popup-btn popup-btn-confirm"
+            onClick={onConfirm}
+            disabled={isSubmitting}
+            type="button"
+          >
+            {isSubmitting ? "Adding…" : "Add with placeholder"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function initials(name: string): string {
@@ -50,24 +112,23 @@ function maskPhone(phone: string): string {
 }
 
 export default function PhysicianCard({ physician, nctId, siteName, onClick }: Props) {
-  const [leadState, setLeadState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [leadState, setLeadState] = useState<LeadFlow>("idle");
+  const [popupReason, setPopupReason] = useState<PopupReason>("not_found");
   const av = avatarColor(physician.name);
 
-  const handleAddLead = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (leadState !== "idle") return;
-    setLeadState("loading");
+  const submitWithEmail = useCallback(async (email: string) => {
     try {
       await submitLead({
         name:           physician.name,
-        email:          "Default@gmail.com",
+        email,
+        company:        "Individual Physicians",
+        lead_source:    "Clinical Trial",
         npi:            physician.npi,
         nct_id:         nctId,
         ...(siteName                ? { site:           siteName                } : {}),
         ...(physician.taxonomy_desc ? { title:          physician.taxonomy_desc } : {}),
+        ...(physician.phone         ? { phone:          physician.phone         } : {}),
         physician_name: physician.name,
-        company:        "Individual Physicians",
-        lead_source:    "Clinical Trial",
         auto:           true,
       });
       setLeadState("done");
@@ -75,18 +136,55 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
       setLeadState("error");
       setTimeout(() => setLeadState("idle"), 3000);
     }
-  };
+  }, [physician, nctId, siteName]);
+
+  const handleAddLead = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (leadState !== "idle") return;
+
+    setLeadState("fetching");
+
+    const result = await fetchPhysicianEmail({
+      name:         physician.name,
+      address:      physician.address ?? "",
+      organization: siteName ?? "",
+    });
+
+    if (result.found && result.email) {
+      await submitWithEmail(result.email);
+      return;
+    }
+
+    setPopupReason(result.found ? "no_email" : "not_found");
+    setLeadState("confirm");
+  }, [leadState, physician, siteName, submitWithEmail]);
+
+  const handleFallbackConfirm = useCallback(async () => {
+    setLeadState("submitting");
+    await submitWithEmail("placeholder@aquarient.com");
+  }, [submitWithEmail]);
+
+  const handleFallbackCancel = useCallback(() => {
+    setLeadState("idle");
+  }, []);
 
   const btnLabel =
-    leadState === "loading" ? "Adding…"      :
-    leadState === "done"    ? "✓ Lead Added" :
-    leadState === "error"   ? "⚠ Retry"      :
+    leadState === "fetching"   ? "Looking up email…" :
+    leadState === "submitting" ? "Adding…"         :
+    leadState === "done"      ? "✓ Lead Added"     :
+    leadState === "error"     ? "⚠ Retry"          :
     "Add as Lead";
 
   const btnBg =
     leadState === "done"  ? "var(--green-600)" :
     leadState === "error" ? "var(--coral-600)" :
     "var(--blue-600)";
+
+  const btnDisabled =
+    leadState === "fetching"  ||
+    leadState === "confirm"   ||
+    leadState === "submitting"||
+    leadState === "done";
 
   return (
     <>
@@ -170,6 +268,56 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
           box-shadow: 0 3px 10px rgba(0,0,0,0.2);
         }
         .phys-lead-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+
+        .popup-overlay {
+          position: fixed; inset: 0; z-index: 1000;
+          background: rgba(0,0,0,0.38);
+          display: flex; align-items: center; justify-content: center;
+          padding: 16px;
+        }
+        .popup-card {
+          width: min(100%, 360px);
+          background: #fff; border-radius: 16px;
+          border: 1px solid var(--border);
+          box-shadow: 0 22px 60px rgba(0,0,0,0.18);
+          padding: 22px;
+          font-family: var(--font-sans);
+        }
+        .popup-icon {
+          width: 46px; height: 46px; border-radius: 14px;
+          background: #fef3c7; border: 1px solid #fde68a;
+          display: flex; align-items: center; justify-content: center;
+          margin-bottom: 14px; font-size: 22px;
+        }
+        .popup-title {
+          font-size: 14px; font-weight: 700; color: var(--ink);
+          margin-bottom: 10px;
+        }
+        .popup-body {
+          font-size: 12px; color: var(--ink-3); line-height: 1.6;
+          margin-bottom: 10px;
+        }
+        .popup-note {
+          font-size: 11px; color: var(--muted);
+          background: var(--surface); border: 1px solid var(--border);
+          border-radius: 12px; padding: 10px 12px; margin-bottom: 16px;
+        }
+        .popup-actions {
+          display: flex; gap: 10px;
+        }
+        .popup-btn {
+          flex: 1; height: 38px; border-radius: 10px; border: none;
+          font-size: 12px; font-weight: 700; cursor: pointer;
+          font-family: var(--font-sans); transition: all 0.15s;
+        }
+        .popup-btn-cancel {
+          background: var(--surface); border: 1px solid var(--border);
+          color: var(--ink-3);
+        }
+        .popup-btn-confirm {
+          background: var(--green-600); color: #fff;
+        }
+        .popup-btn-confirm:disabled { opacity: 0.65; cursor: not-allowed; }
       `}</style>
 
       <div
@@ -216,10 +364,10 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
             type="button"
             className="phys-lead-btn"
             onClick={handleAddLead}
-            disabled={leadState === "loading" || leadState === "done"}
+            disabled={btnDisabled}
             style={{ background: btnBg }}
           >
-            {leadState === "loading" && (
+            {(leadState === "fetching" || leadState === "submitting") && (
               <span style={{
                 width: 10, height: 10,
                 border: "1.5px solid rgba(255,255,255,0.4)",
@@ -236,6 +384,16 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
           </div>
         )}
       </div>
+
+      {(leadState === "confirm" || leadState === "submitting") && (
+        <FallbackPopup
+          physicianName={physician.name}
+          reason={popupReason}
+          onConfirm={handleFallbackConfirm}
+          onCancel={handleFallbackCancel}
+          isSubmitting={leadState === "submitting"}
+        />
+      )}
     </>
   );
 }
