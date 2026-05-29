@@ -260,7 +260,8 @@ export default function TrialSiteMap({
           keepInView: true,
           interactive: true,
         });
-        marker.on("mouseover", () => marker.openPopup());
+        // Close any open popup before opening this one so hover switches cleanly
+        marker.on("mouseover", () => { map.closePopup(); marker.openPopup(); });
         marker.on("click",     () => marker.openPopup());
       });
 
