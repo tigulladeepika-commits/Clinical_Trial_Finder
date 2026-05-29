@@ -98,8 +98,8 @@ function PublicationCard({ pub }: { pub: Publication }) {
 
 interface FallbackPopupProps {
   physicianName: string;
-  reason:        "not_found" | "no_email";   // drives the message shown
-  onConfirm:     () => void;                 // add with default email
+  reason:        "not_found" | "no_email";
+  onConfirm:     () => void;
   onCancel:      () => void;
   isSubmitting:  boolean;
 }
@@ -222,14 +222,6 @@ function FallbackPopup({ physicianName, reason, onConfirm, onCancel, isSubmittin
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-// Lead flow states:
-//   idle          → button shows "Add as Lead"
-//   fetching      → button shows "Looking up email…" (Apollo search in progress)
-//   confirm       → fallback popup is open (person not found / no email)
-//   submitting    → popup confirm button spinner
-//   done          → success banner
-//   error         → brief error state, resets to idle
-
 type LeadFlow =
   | "idle"
   | "fetching"
@@ -304,7 +296,6 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
   const handleAddAsLead = useCallback(async () => {
     if (leadFlow !== "idle") return;
 
-    // Step 1 — Apollo email lookup
     setLeadFlow("fetching");
 
     const result = await fetchPhysicianEmail({
@@ -313,13 +304,11 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
       organization: site.facility     ?? "",
     });
 
-    // Step 2a — got a real email → submit immediately, no popup
     if (result.found && result.email) {
       await submitWithEmail(result.email);
       return;
     }
 
-    // Step 2b — found person but no email, or no match at all → popup
     setPopupReason(result.found ? "no_email" : "not_found");
     setLeadFlow("confirm");
   }, [leadFlow, physician, site, submitWithEmail]);
@@ -449,10 +438,6 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           border-radius: 999px; padding: 6px 10px;
           display: inline-flex; align-items: center; gap: 6px;
         }
-        .pdp-taxonomy-chip-code {
-          font-family: var(--font-mono); color: var(--muted);
-        }
-        .pdp-npi { font-size: 10px; color: var(--muted); font-family: var(--font-mono); margin-top: 4px; }
         .pdp-section { padding: 14px 18px; }
         .pdp-section + .pdp-section { border-top: 1px solid var(--border); }
         .pdp-section-label {
@@ -611,7 +596,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         }
       `}</style>
 
-      {/* Fallback popup — rendered outside the panel flow so it overlays everything */}
+      {/* Fallback popup */}
       {(leadFlow === "confirm" || leadFlow === "submitting") && (
         <FallbackPopup
           physicianName={physician.name}
@@ -654,8 +639,24 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           <div className="pdp-profile-card">
             <div className="pdp-profile-header">
               <div className="pdp-avatar">{initials(physician.name)}</div>
-              <div>
-                <div className="pdp-name">{physician.name}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div className="pdp-name">{physician.name}</div>
+                  <div style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#1e40af",
+                    fontFamily: "var(--font-mono)",
+                    background: "#dbeafe",
+                    border: "1px solid #93c5fd",
+                    borderRadius: 6,
+                    padding: "3px 8px",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}>
+                    NPI {physician.npi}
+                  </div>
+                </div>
                 {physician.taxonomy_desc && (
                   <div className="pdp-specialty">{physician.taxonomy_desc}</div>
                 )}
@@ -665,18 +666,16 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
                       if (!tax || typeof tax !== 'object') return null;
                       const code = String(tax.code || '');
                       const desc = String(tax.desc || '');
+                      const label = [desc || code || 'Unknown', site.state].filter(Boolean).join(' - ');
                       return (
                         <div key={`${code || index}`} className="pdp-taxonomy-chip">
-                          <span>{desc || code || 'Unknown'}</span>
-                          {code && (
-                            <span className="pdp-taxonomy-chip-code">{code}</span>
-                          )}
+                          <span>{label}</span>
                         </div>
                       );
                     })}
                   </div>
                 )}
-                <div className="pdp-npi">NPI: {physician.npi}</div>
+                {/* NPI moved to header row above */}
               </div>
             </div>
 
