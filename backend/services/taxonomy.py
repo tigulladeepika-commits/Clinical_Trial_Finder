@@ -169,6 +169,9 @@ CONDITION_MAP: Dict[str, List[str]] = {
     # ── Endocrine / Metabolic ─────────────────────────────────────────────────
     "diabetes":               ["Endocrinology, Diabetes & Metabolism"],
     "diabetic":               ["Endocrinology, Diabetes & Metabolism"],
+    "sugar disease":          ["Endocrinology, Diabetes & Metabolism"],
+    "blood sugar":            ["Endocrinology, Diabetes & Metabolism"],
+    "sugar":                  ["Endocrinology, Diabetes & Metabolism"],
     "diabetic retinopathy":   ["Ophthalmology", "Endocrinology, Diabetes & Metabolism"],
     "thyroid":                ["Endocrinology, Diabetes & Metabolism"],
     "hypothyroid":            ["Endocrinology, Diabetes & Metabolism"],
@@ -188,6 +191,21 @@ CONDITION_MAP: Dict[str, List[str]] = {
     "insulin":                ["Endocrinology, Diabetes & Metabolism"],
     "pancreas":               ["Gastroenterology", "Endocrinology, Diabetes & Metabolism"],
     "osteoporosis":           ["Rheumatology", "Endocrinology, Diabetes & Metabolism", "Geriatric Medicine"],
+ # ── Metabolic / Storage Diseases ─────────────────────────────────────────
+    "glycogen storage disease":      ["Endocrinology, Diabetes & Metabolism", "Pediatrics"],
+    "glycogen storage":              ["Endocrinology, Diabetes & Metabolism", "Pediatrics"],
+    "gsd":                           ["Endocrinology, Diabetes & Metabolism", "Pediatrics"],
+    "pompe disease":                 ["Endocrinology, Diabetes & Metabolism", "Neurology"],
+    "gaucher disease":               ["Hematology & Oncology", "Endocrinology, Diabetes & Metabolism"],
+    "gaucher":                       ["Hematology & Oncology", "Endocrinology, Diabetes & Metabolism"],
+    "fabry disease":                 ["Nephrology", "Endocrinology, Diabetes & Metabolism"],
+    "niemann pick":                  ["Endocrinology, Diabetes & Metabolism", "Pediatrics"],
+    "mucopolysaccharidosis":         ["Endocrinology, Diabetes & Metabolism", "Pediatrics"],
+    "mps":                           ["Endocrinology, Diabetes & Metabolism", "Pediatrics"],
+    "lysosomal storage":             ["Endocrinology, Diabetes & Metabolism", "Pediatrics"],
+    "metabolic disorder":            ["Endocrinology, Diabetes & Metabolism"],
+    "inborn error":                  ["Endocrinology, Diabetes & Metabolism", "Pediatrics"],
+    
 
     # ── Gastroenterology / GI ────────────────────────────────────────────────
     "gastro":                 ["Gastroenterology"],
