@@ -234,7 +234,6 @@ export default function PhysicianMap({
       weight: 1.6,
       dashArray: "6 5",
     }).addTo(map);
-    radiusCircle.setZIndexOffset(500);
     siteMarker.bindTooltip(
       `<div style="font-weight:700;color:#dc2626;">🏥 Trial Site</div>
        ${selectedSite.facility ? `<div style="font-size:11px;color:#64748b;">${selectedSite.facility}</div>` : ""}`,
