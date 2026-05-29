@@ -659,16 +659,21 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
                 {physician.taxonomy_desc && (
                   <div className="pdp-specialty">{physician.taxonomy_desc}</div>
                 )}
-                {physician.all_taxonomies && physician.all_taxonomies.length > 0 && (
+                {Array.isArray(physician.all_taxonomies) && physician.all_taxonomies.length > 0 && (
                   <div className="pdp-taxonomy-list">
-                    {physician.all_taxonomies.map((tax, index) => (
-                      <div key={`${tax.code}-${index}`} className="pdp-taxonomy-chip">
-                        <span>{tax.desc || tax.code}</span>
-                        {tax.code && (
-                          <span className="pdp-taxonomy-chip-code">{tax.code}</span>
-                        )}
-                      </div>
-                    ))}
+                    {physician.all_taxonomies.map((tax, index) => {
+                      if (!tax || typeof tax !== 'object') return null;
+                      const code = String(tax.code || '');
+                      const desc = String(tax.desc || '');
+                      return (
+                        <div key={`${code || index}`} className="pdp-taxonomy-chip">
+                          <span>{desc || code || 'Unknown'}</span>
+                          {code && (
+                            <span className="pdp-taxonomy-chip-code">{code}</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 <div className="pdp-npi">NPI: {physician.npi}</div>
