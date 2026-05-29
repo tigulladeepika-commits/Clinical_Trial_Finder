@@ -665,7 +665,7 @@ export default function TrialSiteMap({
                             lat: site.lat as number, lng: site.lon as number,
                             facility: site.facility, city: site.city,
                             state: site.state, nct_id: nctId, condition: condition ?? null,
-                          });
+                          }, 25);
                         }}
                       >
                         🩺 Find physicians nearby
