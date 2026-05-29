@@ -10,11 +10,10 @@ import type { SelectedSite } from "@/types/physician";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type MapType = "map" | "hybrid" | "satellite" | "light" | "dark";
+type MapType = "map" | "satellite" | "light" | "dark";
 
 const MAP_TYPES: { id: MapType; label: string; icon: string }[] = [
   { id: "map",       label: "Standard",  icon: "🗺" },
-  { id: "hybrid",    label: "Hybrid",    icon: "🛰" },
   { id: "satellite", label: "Satellite", icon: "🌍" },
   { id: "light",     label: "Light",     icon: "☀️" },
   { id: "dark",      label: "Dark",      icon: "🌙" },
@@ -128,6 +127,8 @@ export default function TrialSiteMap({
   useEffect(() => {
     if (!mapKey || mappableSites.length === 0) return;
 
+    let handleMapClick: ((event: MouseEvent) => void) | null = null;
+
     const initMap = () => {
       if (!mapDivRef.current || mapInstanceRef.current) return;
       const L = window.L;
@@ -183,7 +184,7 @@ export default function TrialSiteMap({
       tileLayerRef.current = initialLayer;
 
       const map = L.mapquest.map(mapDivRef.current, {
-        center:      [(Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2],
+        center:      [(Math.min(...lats) + Math.max(...lons)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2],
         layers:      initialLayer,
         zoom:        3,
         minZoom:     MIN_ZOOM,
@@ -194,7 +195,32 @@ export default function TrialSiteMap({
 
       map.on("zoomend", () => setCurrentZoom(map.getZoom()));
 
-      mappableSites.forEach((site) => {
+      handleMapClick = (event: MouseEvent) => {
+        const target = event.target as HTMLElement | null;
+        const button = target?.closest?.(".find-phys-btn") as HTMLButtonElement | null;
+        if (!button) return;
+        event.preventDefault();
+        const indexValue = button.dataset.siteIndex;
+        if (indexValue == null) return;
+        const siteIndex = Number(indexValue);
+        const clickedSite = mappableSites[siteIndex];
+        if (!clickedSite) return;
+        onFindPhysicians({
+          lat: clickedSite.lat as number,
+          lng: clickedSite.lon as number,
+          facility: clickedSite.facility,
+          city: clickedSite.city,
+          state: clickedSite.state,
+          nct_id: nctId,
+          condition: condition ?? null,
+        });
+      };
+
+      if (mapDivRef.current) {
+        mapDivRef.current.addEventListener("click", handleMapClick);
+      }
+
+      mappableSites.forEach((site, index) => {
         const color  = statusColor(site.status);
         const icon   = L.divIcon({
           html: hospitalMarkerHtml(color, 28),
@@ -218,32 +244,24 @@ export default function TrialSiteMap({
                   <span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;"></span>
                   ${statusLabel(site.status)}
                 </div>` : ""}
-              <button class="find-phys-btn" id="fp-btn-${site.lat}-${site.lon}">
+              <button class="find-phys-btn" data-site-index="${index}" type="button">
                 🩺 Find physicians nearby
               </button>
             </div>
           </div>`;
 
         marker.bindPopup(popupContent, {
-          className: "trial-popup", offset: [0, -10], maxWidth: 310, closeButton: true,
+          className: "trial-popup",
+          offset: [0, -10],
+          maxWidth: 310,
+          closeButton: true,
+          autoClose: false,
+          closeOnClick: false,
+          keepInView: true,
+          interactive: true,
         });
         marker.on("mouseover", () => marker.openPopup());
         marker.on("click",     () => marker.openPopup());
-        marker.on("popupopen", () => {
-          setTimeout(() => {
-            const btn = document.getElementById(`fp-btn-${site.lat}-${site.lon}`);
-            if (btn) {
-              btn.addEventListener("click", () => {
-                marker.openPopup();
-                onFindPhysicians({
-                  lat: site.lat as number, lng: site.lon as number,
-                  facility: site.facility, city: site.city,
-                  state: site.state, nct_id: nctId, condition: condition ?? null,
-                });
-              });
-            }
-          }, 50);
-        });
       });
 
       if (mappableSites.length > 1) {
@@ -276,6 +294,9 @@ export default function TrialSiteMap({
     }
 
     return () => {
+      if (handleMapClick && mapDivRef.current) {
+        mapDivRef.current.removeEventListener("click", handleMapClick);
+      }
       if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; }
       tileLayerRef.current = null;
     };

@@ -165,7 +165,7 @@ function HomeInner() {
     if (trialCondition) {
       try {
         const list = await getConditionSpecialties(trialCondition);
-        trialSpecialty = list.length > 0 ? list.join(", ") : trialCondition;
+        trialSpecialty = list.length > 0 ? list[0] : trialCondition;
       } catch {
         trialSpecialty = trialCondition;
       }
@@ -175,7 +175,7 @@ function HomeInner() {
     if (userSearchCondition && userSearchCondition.toLowerCase() !== trialCondition.toLowerCase()) {
       try {
         const list = await getConditionSpecialties(userSearchCondition);
-        userSpecialty = list.length > 0 ? list.join(", ") : userSearchCondition;
+        userSpecialty = list.length > 0 ? list[0] : userSearchCondition;
       } catch {
         userSpecialty = userSearchCondition;
       }

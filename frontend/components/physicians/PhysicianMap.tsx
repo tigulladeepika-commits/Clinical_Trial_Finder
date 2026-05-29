@@ -9,11 +9,10 @@ import type { SelectedSite } from "@/types/physician";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type MapType = "map" | "hybrid" | "satellite" | "light" | "dark";
+type MapType = "map" | "satellite" | "light" | "dark";
 
 const MAP_TYPES: { id: MapType; label: string; icon: string }[] = [
   { id: "map",       label: "Standard",  icon: "🗺" },
-  { id: "hybrid",    label: "Hybrid",    icon: "🛰" },
   { id: "satellite", label: "Satellite", icon: "🌍" },
   { id: "light",     label: "Light",     icon: "☀️" },
   { id: "dark",      label: "Dark",      icon: "🌙" },
@@ -224,10 +223,11 @@ export default function PhysicianMap({
       className: "", iconSize: [30, 30], iconAnchor: [15, 15],
     });
     const siteMarker = L.marker([selectedSite.lat, selectedSite.lng], { icon: siteIcon }).addTo(map);
+    siteMarker.setZIndexOffset(1000);
     siteMarker.bindTooltip(
       `<div style="font-weight:700;color:#dc2626;">🏥 Trial Site</div>
        ${selectedSite.facility ? `<div style="font-size:11px;color:#64748b;">${selectedSite.facility}</div>` : ""}`,
-      { permanent: false, direction: "top", offset: [0, -18], className: "site-tooltip" }
+      { permanent: true, direction: "top", offset: [0, -20], className: "site-tooltip" }
     );
 
     // ── Shared popup builder ──────────────────────────────────────────────
@@ -355,6 +355,26 @@ export default function PhysicianMap({
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
+      <div style={{
+        position: "absolute",
+        top: 12,
+        left: 12,
+        zIndex: 999,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 10px",
+        borderRadius: 14,
+        background: "rgba(255,255,255,0.92)",
+        border: "1px solid rgba(148,163,184,0.22)",
+        boxShadow: "0 10px 30px rgba(15,23,42,0.08)",
+        fontSize: 12,
+        fontWeight: 600,
+        color: "#0f172a",
+      }}>
+        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "#ef4444", color: "#fff" }}>🏥</span>
+        Trial site location
+      </div>
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
 
       {/* ── Map type switcher — bottom-right ─────────────────────────────── */}
