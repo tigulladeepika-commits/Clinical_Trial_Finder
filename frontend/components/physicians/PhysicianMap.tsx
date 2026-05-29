@@ -25,6 +25,7 @@ type Props = {
   physicians:           Physician[];
   suggestedPhysicians?: Physician[];
   selectedSite:         SelectedSite;
+  radius:              number;
   selectedNpi:          string | null;
   onSelect:             (p: Physician) => void;
 };
@@ -82,6 +83,7 @@ export default function PhysicianMap({
   physicians,
   suggestedPhysicians = [],
   selectedSite,
+  radius,
   selectedNpi,
   onSelect,
 }: Props) {
@@ -224,6 +226,15 @@ export default function PhysicianMap({
     });
     const siteMarker = L.marker([selectedSite.lat, selectedSite.lng], { icon: siteIcon }).addTo(map);
     siteMarker.setZIndexOffset(1000);
+    const radiusCircle = L.circle([selectedSite.lat, selectedSite.lng], {
+      radius: radius * 1609.34,
+      color: "#ef4444",
+      fillColor: "#ef4444",
+      fillOpacity: 0.08,
+      weight: 1.6,
+      dashArray: "6 5",
+    }).addTo(map);
+    radiusCircle.setZIndexOffset(500);
     siteMarker.bindTooltip(
       `<div style="font-weight:700;color:#dc2626;">🏥 Trial Site</div>
        ${selectedSite.facility ? `<div style="font-size:11px;color:#64748b;">${selectedSite.facility}</div>` : ""}`,
@@ -373,7 +384,10 @@ export default function PhysicianMap({
         color: "#0f172a",
       }}>
         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "#ef4444", color: "#fff" }}>🏥</span>
-        Trial site location
+        <span>Trial site location</span>
+        <span style={{ padding: "3px 8px", borderRadius: 999, background: "rgba(239,68,68,0.12)", color: "#b91c1c", fontSize: 11, fontWeight: 700 }}>
+          {radius} mi radius
+        </span>
       </div>
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
 

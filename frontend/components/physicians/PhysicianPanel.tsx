@@ -13,6 +13,7 @@ import type { Physician, SelectedSite } from "@/types/physician";
 
 interface Props {
   site:              SelectedSite;
+  initialRadius?:    number;
   kpiBar?:           React.ReactNode;
   physicians:        Physician[];
   total:             number;
@@ -130,10 +131,10 @@ const TAXONOMY_OPTIONS: TaxonomyOption[] = [
 const GROUPS = ["Doctors", "HCPs", "HCOs"] as const;
 
 export default function PhysicianPanel({
-  site, physicians, total, loading, error, searched, hasMore,
+  site, initialRadius, physicians, total, loading, error, searched, hasMore,
   searchSpecialties, kpiBar, onSearch, onLoadMore, onBack,
 }: Props) {
-  const [radius,            setRadius]            = useState<number>(25);
+  const [radius,            setRadius]            = useState<number>(initialRadius ?? 25);
   const [selectedCodes,     setSelectedCodes]     = useState<string[]>([]);
   const [dropdownOpen,      setDropdownOpen]       = useState(false);
   const [dropdownSearch,    setDropdownSearch]     = useState("");
@@ -175,6 +176,10 @@ export default function PhysicianPanel({
       })
       .finally(() => setResolving(false));
   }, [site.condition]);
+
+  useEffect(() => {
+    setRadius(initialRadius ?? 25);
+  }, [site.nct_id, initialRadius]);
 
   // ── Close dropdown on outside click ─────────────────────────────────────
   useEffect(() => {
@@ -619,6 +624,7 @@ export default function PhysicianPanel({
               physicians={physicians}
               suggestedPhysicians={suggested.physicians}
               selectedSite={site}
+              radius={radius}
               selectedNpi={selectedNpi}
               onSelect={(p) => setSelectedNpi(p.npi)}
             />

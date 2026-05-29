@@ -440,6 +440,18 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         }
         .pdp-name { font-size: 17px; font-weight: 700; color: var(--ink); line-height: 1.3; }
         .pdp-specialty { font-size: 12px; color: var(--blue-600); font-weight: 600; margin-top: 3px; }
+        .pdp-taxonomy-list {
+          display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+        }
+        .pdp-taxonomy-chip {
+          font-size: 10px; font-weight: 700; color: var(--ink-2);
+          background: var(--surface); border: 1px solid var(--border);
+          border-radius: 999px; padding: 6px 10px;
+          display: inline-flex; align-items: center; gap: 6px;
+        }
+        .pdp-taxonomy-chip-code {
+          font-family: var(--font-mono); color: var(--muted);
+        }
         .pdp-npi { font-size: 10px; color: var(--muted); font-family: var(--font-mono); margin-top: 4px; }
         .pdp-section { padding: 14px 18px; }
         .pdp-section + .pdp-section { border-top: 1px solid var(--border); }
@@ -646,6 +658,18 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
                 <div className="pdp-name">{physician.name}</div>
                 {physician.taxonomy_desc && (
                   <div className="pdp-specialty">{physician.taxonomy_desc}</div>
+                )}
+                {physician.all_taxonomies && physician.all_taxonomies.length > 0 && (
+                  <div className="pdp-taxonomy-list">
+                    {physician.all_taxonomies.map((tax, index) => (
+                      <div key={`${tax.code}-${index}`} className="pdp-taxonomy-chip">
+                        <span>{tax.desc || tax.code}</span>
+                        {tax.code && (
+                          <span className="pdp-taxonomy-chip-code">{tax.code}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
                 <div className="pdp-npi">NPI: {physician.npi}</div>
               </div>

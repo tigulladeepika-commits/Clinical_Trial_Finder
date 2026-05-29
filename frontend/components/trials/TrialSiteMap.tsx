@@ -11,6 +11,7 @@ import type { SelectedSite } from "@/types/physician";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MapType = "map" | "satellite" | "light" | "dark";
+const RADIUS_OPTIONS = [5, 10, 25, 50, 100] as const;
 
 const MAP_TYPES: { id: MapType; label: string; icon: string }[] = [
   { id: "map",       label: "Standard",  icon: "🗺" },
@@ -30,7 +31,7 @@ interface Props {
   condition:          string | null;
   inclusionCriteria?: string | null;
   exclusionCriteria?: string | null;
-  onFindPhysicians:   (site: SelectedSite) => void;
+  onFindPhysicians:   (site: SelectedSite, radius: number) => void;
 }
 
 declare global { interface Window { L: any; } }
@@ -173,6 +174,26 @@ export default function TrialSiteMap({
             font-family: 'Sora', sans-serif;
           }
           .find-phys-btn:hover { background: #065f46; }
+          .trial-radius-field {
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 11px;
+            color: #475569;
+          }
+          .trial-radius-field label {
+            font-weight: 700;
+          }
+          .trial-radius-select {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            background: #fff;
+            color: #0f172a;
+            padding: 8px 10px;
+            font-size: 12px;
+          }
         `;
         document.head.appendChild(style);
       }
@@ -205,6 +226,9 @@ export default function TrialSiteMap({
         const siteIndex = Number(indexValue);
         const clickedSite = mappableSites[siteIndex];
         if (!clickedSite) return;
+        const popup = button.closest(".leaflet-popup-content");
+        const select = popup?.querySelector<HTMLSelectElement>(".trial-radius-select");
+        const radius = select ? Number(select.value) : 25;
         onFindPhysicians({
           lat: clickedSite.lat as number,
           lng: clickedSite.lon as number,
@@ -213,7 +237,7 @@ export default function TrialSiteMap({
           state: clickedSite.state,
           nct_id: nctId,
           condition: condition ?? null,
-        });
+        }, radius);
       };
 
       if (mapDivRef.current) {
@@ -229,6 +253,7 @@ export default function TrialSiteMap({
         const marker = L.marker([site.lat, site.lon], { icon }).addTo(map);
         const loc    = [site.city, site.state, site.country].filter(Boolean).join(", ");
 
+        const radiusOptionsHtml = RADIUS_OPTIONS.map((r) => `<option value="${r}"${r === 25 ? " selected" : ""}>${r} mi</option>`).join("");
         const popupContent = `
           <div>
             <div style="background:${color}10;border-bottom:1px solid ${color}25;padding:14px 16px 12px;">
@@ -244,6 +269,12 @@ export default function TrialSiteMap({
                   <span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;"></span>
                   ${statusLabel(site.status)}
                 </div>` : ""}
+              <div class="trial-radius-field">
+                <label for="radius-${index}">Radius</label>
+                <select id="radius-${index}" class="trial-radius-select" data-site-index="${index}">
+                  ${radiusOptionsHtml}
+                </select>
+              </div>
               <button class="find-phys-btn" data-site-index="${index}" type="button">
                 🩺 Find physicians nearby
               </button>

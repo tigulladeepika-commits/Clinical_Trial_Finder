@@ -42,6 +42,7 @@ function HomeInner() {
   const [sitesLoading,  setSitesLoading]  = useState(false);
   const [sitesError,    setSitesError]    = useState<string | null>(null);
   const [selectedSite,  setSelectedSite]  = useState<SelectedSite | null>(null);
+  const [selectedRadius, setSelectedRadius] = useState<number>(25);
 
   const pinnedTrialSpecialtyRef = useRef<string | undefined>(undefined);
   const pinnedUserSpecialtyRef  = useRef<string | undefined>(undefined);
@@ -112,6 +113,7 @@ function HomeInner() {
     setSiteData(null);
     setSitesError(null);
     setSelectedSite(null);
+    setSelectedRadius(25);
     resetPhysicians();
     pinnedTrialSpecialtyRef.current = undefined;
     pinnedUserSpecialtyRef.current  = undefined;
@@ -122,6 +124,7 @@ function HomeInner() {
       setSelectedTrial(null);
       setSiteData(null);
       setSelectedSite(null);
+      setSelectedRadius(25);
       resetPhysicians();
       pinnedTrialSpecialtyRef.current = undefined;
       pinnedUserSpecialtyRef.current  = undefined;
@@ -152,8 +155,9 @@ function HomeInner() {
     }
   }, [resetPhysicians, selectedTrial]);
 
-  const handleFindPhysicians = useCallback(async (site: SelectedSite) => {
+  const handleFindPhysicians = useCallback(async (site: SelectedSite, radius = 25) => {
     setSelectedSite(site);
+    setSelectedRadius(radius);
     resetPhysicians();
     pinnedTrialSpecialtyRef.current = undefined;
     pinnedUserSpecialtyRef.current  = undefined;
@@ -186,12 +190,13 @@ function HomeInner() {
 
     const initialSpecialty = userSpecialty ?? trialSpecialty;
 
-    searchPhysicians(site, 25, trialSpecialty, userSpecialty, initialSpecialty);
+    searchPhysicians(site, radius, trialSpecialty, userSpecialty, initialSpecialty);
   }, [resetPhysicians, searchPhysicians, filtersFromUrl.condition]);
 
   const handlePhysicianSearch = useCallback(
     (radius: number, _specialty: string, panelUserSpecialty: string, _initialSpecialty: string) => {
       if (!selectedSite) return;
+      setSelectedRadius(radius);
       const trialSpecialty   = pinnedTrialSpecialtyRef.current;
       const userBarSpecialty = pinnedUserSpecialtyRef.current;
       const panelInput = panelUserSpecialty.trim() || undefined;
@@ -565,6 +570,7 @@ function HomeInner() {
                     {siteData && !sitesLoading && selectedSite && (
                       <PhysicianPanel
                         site={selectedSite}
+                        initialRadius={selectedRadius}
                         physicians={nearbyPhysicians}
                         total={physicianTotal}
                         loading={physiciansLoading}
