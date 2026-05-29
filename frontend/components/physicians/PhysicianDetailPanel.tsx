@@ -666,16 +666,15 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
                       if (!tax || typeof tax !== 'object') return null;
                       const code = String(tax.code || '');
                       const desc = String(tax.desc || '');
-                      const label = [desc || code || 'Unknown', site.state].filter(Boolean).join(' - ');
+                      const label = desc || code || 'Unknown';
                       return (
-                        <div key={`${code || index}`} className="pdp-taxonomy-chip">
+                        <div key={`${code || 'tax'}-${index}`} className="pdp-taxonomy-chip">
                           <span>{label}</span>
                         </div>
                       );
                     })}
                   </div>
                 )}
-                {/* NPI moved to header row above */}
               </div>
             </div>
 

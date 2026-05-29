@@ -1,13 +1,10 @@
 // components/physicians/PhysicianMap.tsx
-// v5 fix: removed layer.bringToBack() — not available on MapQuest tile layers
 
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import type { Physician }    from "@/types/physician";
 import type { SelectedSite } from "@/types/physician";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 type MapType = "map" | "satellite" | "light" | "dark";
 
@@ -25,14 +22,12 @@ type Props = {
   physicians:           Physician[];
   suggestedPhysicians?: Physician[];
   selectedSite:         SelectedSite;
-  radius:              number;
+  radius:               number;
   selectedNpi:          string | null;
   onSelect:             (p: Physician) => void;
 };
 
 declare global { interface Window { L: any; } }
-
-// ── SVG icon generators ───────────────────────────────────────────────────────
 
 function hospitalMarkerHtml(color = "#ef4444", size = 30): string {
   return `
@@ -77,8 +72,6 @@ function suggestedMarkerHtml(color: string, size: number, selected: boolean): st
     </div>`.trim();
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
-
 export default function PhysicianMap({
   physicians,
   suggestedPhysicians = [],
@@ -87,11 +80,13 @@ export default function PhysicianMap({
   selectedNpi,
   onSelect,
 }: Props) {
-  const mapKey       = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
-  const mapDivRef    = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<any>(null);
-  const markersRef   = useRef<any[]>([]);
-  const tileLayerRef = useRef<any>(null);
+  const mapKey          = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
+  const mapDivRef       = useRef<HTMLDivElement>(null);
+  const mapRef          = useRef<any>(null);
+  const markersRef      = useRef<any[]>([]);
+  const tileLayerRef    = useRef<any>(null);
+  // FIX 2: ref to the radius circle so we can update it reactively
+  const radiusCircleRef = useRef<any>(null);
 
   const [mapType,      setMapType]      = useState<MapType>("map");
   const [currentZoom,  setCurrentZoom]  = useState(10);
@@ -100,20 +95,17 @@ export default function PhysicianMap({
   const mappable          = physicians.filter((p) => p.lat != null && p.lng != null);
   const mappableSuggested = suggestedPhysicians.filter((p) => p.lat != null && p.lng != null);
 
-  // ── Switch tile layer without destroying the map ──────────────────────────
   const switchMapType = (type: MapType) => {
     if (!mapRef.current || !window.L?.mapquest) return;
     const L = window.L;
     if (tileLayerRef.current) mapRef.current.removeLayer(tileLayerRef.current);
     const layer = L.mapquest.tileLayer(type);
     layer.addTo(mapRef.current);
-    // NOTE: layer.bringToBack() removed — not available on MapQuest tile layers
     tileLayerRef.current = layer;
     setMapType(type);
     setShowTypeMenu(false);
   };
 
-  // ── Zoom helpers (clamped 0–20) ───────────────────────────────────────────
   const zoomIn = () => {
     if (!mapRef.current) return;
     const z = mapRef.current.getZoom();
@@ -134,7 +126,6 @@ export default function PhysicianMap({
     mapRef.current.fitBounds(window.L.latLngBounds(pts), { padding: [40, 40] });
   };
 
-  // ── Map init ──────────────────────────────────────────────────────────────
   const initMap = () => {
     if (!mapDivRef.current || mapRef.current) return;
     const L = window.L;
@@ -226,21 +217,24 @@ export default function PhysicianMap({
     });
     const siteMarker = L.marker([selectedSite.lat, selectedSite.lng], { icon: siteIcon }).addTo(map);
     siteMarker.setZIndexOffset(1000);
+
+    // FIX 2 + FIX 3: green circle, saved to ref
     const radiusCircle = L.circle([selectedSite.lat, selectedSite.lng], {
-      radius: radius * 1609.34,
-      color: "#ef4444",
-      fillColor: "#ef4444",
+      radius:      radius * 1609.34,
+      color:       "#16a34a",
+      fillColor:   "#22c55e",
       fillOpacity: 0.08,
-      weight: 1.6,
-      dashArray: "6 5",
+      weight:      1.6,
+      dashArray:   "6 5",
     }).addTo(map);
+    radiusCircleRef.current = radiusCircle;
+
     siteMarker.bindTooltip(
       `<div style="font-weight:700;color:#dc2626;">🏥 Trial Site</div>
        ${selectedSite.facility ? `<div style="font-size:11px;color:#64748b;">${selectedSite.facility}</div>` : ""}`,
       { permanent: true, direction: "top", offset: [0, -20], className: "site-tooltip" }
     );
 
-    // ── Shared popup builder ──────────────────────────────────────────────
     const buildPopupHtml = (
       p: Physician,
       accentColor: string,
@@ -259,7 +253,6 @@ export default function PhysicianMap({
         </div>
       </div>`;
 
-    // ── Main physician markers (blue) ─────────────────────────────────────
     const mainMarkers = mappable.map((p) => {
       const isSelected = p.npi === selectedNpi;
       const color      = isSelected ? "#1d4ed8" : "#2563eb";
@@ -282,7 +275,6 @@ export default function PhysicianMap({
       return marker;
     });
 
-    // ── Suggested physician markers (teal) ────────────────────────────────
     const suggestedMarkers = mappableSuggested.map((p) => {
       const isSelected = p.npi === selectedNpi;
       const color      = isSelected ? "#0f766e" : "#14b8a6";
@@ -317,6 +309,7 @@ export default function PhysicianMap({
     }
   };
 
+  // Map init effect
   useEffect(() => {
     if (!mapKey) return;
     const loadAndInit = () => {
@@ -340,11 +333,18 @@ export default function PhysicianMap({
     }
     return () => {
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
-      markersRef.current   = [];
-      tileLayerRef.current = null;
+      markersRef.current    = [];
+      tileLayerRef.current  = null;
+      radiusCircleRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapKey, physicians, suggestedPhysicians, selectedSite]);
+
+  // FIX 2: reactively update the circle radius whenever the prop changes
+  useEffect(() => {
+    if (!radiusCircleRef.current) return;
+    radiusCircleRef.current.setRadius(radius * 1609.34);
+  }, [radius]);
 
   if (!mapKey) {
     return (
@@ -365,30 +365,71 @@ export default function PhysicianMap({
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
-      <div style={{
-        position: "absolute",
-        top: 12,
-        left: 12,
-        zIndex: 999,
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "8px 10px",
-        borderRadius: 14,
-        background: "rgba(255,255,255,0.92)",
-        border: "1px solid rgba(148,163,184,0.22)",
-        boxShadow: "0 10px 30px rgba(15,23,42,0.08)",
-        fontSize: 12,
-        fontWeight: 600,
-        color: "#0f172a",
-      }}>
-        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 999, background: "#ef4444", color: "#fff" }}>🏥</span>
-        <span>Trial site location</span>
-        <span style={{ padding: "3px 8px", borderRadius: 999, background: "rgba(239,68,68,0.12)", color: "#b91c1c", fontSize: 11, fontWeight: 700 }}>
-          {radius} mi radius
-        </span>
-      </div>
+
+      {/* ── Map canvas ───────────────────────────────────────────────────── */}
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
+
+      {/* ── Legend — top-left (FIX 1: no more floating banner, radius row added here) ── */}
+      <div style={{
+        position: "absolute", top: 10, left: 10, zIndex: 1000,
+        background: "rgba(255,255,255,0.95)",
+        border: "1px solid #e2e8f0", borderRadius: 10,
+        padding: "9px 13px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        display: "flex", flexDirection: "column", gap: 7,
+      }}>
+        {[
+          { fill: "#ef4444", label: "Trial Site", shape: "hospital"  },
+          { fill: "#2563eb", label: "Physician",  shape: "doctor"    },
+          { fill: "#14b8a6", label: "Suggested",  shape: "suggested" },
+        ].map(({ fill, label, shape }) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 30 30">
+              <circle cx="15" cy="15" r="14" fill={fill}/>
+              {shape === "hospital" && <>
+                <rect x="12" y="7" width="6" height="16" rx="1.5" fill="white"/>
+                <rect x="7" y="12" width="16" height="6" rx="1.5" fill="white"/>
+              </>}
+              {(shape === "doctor" || shape === "suggested") && <>
+                <circle cx="15" cy="11" r="4" fill="white"/>
+                <path d="M8 25c0-4.4 3.1-7 7-7s7 2.6 7 7" fill="white"/>
+              </>}
+              {shape === "suggested" &&
+                <polygon
+                  points="24,5 25,8 28,8 25.5,10 26.5,13 24,11.5 21.5,13 22.5,10 20,8 23,8"
+                  fill="#fbbf24" stroke="white" strokeWidth="0.5"
+                />
+              }
+            </svg>
+            <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>{label}</span>
+          </div>
+        ))}
+
+        {/* FIX 1 + FIX 3: radius row inside the legend, green pill, reflects current prop */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          borderTop: "1px solid #e2e8f0", paddingTop: 7, marginTop: 1,
+        }}>
+          <svg width="14" height="14" viewBox="0 0 30 30">
+            <circle
+              cx="15" cy="15" r="12"
+              fill="none"
+              stroke="#16a34a"
+              strokeWidth="3.5"
+              strokeDasharray="5 4"
+            />
+          </svg>
+          <span style={{
+            fontSize: 11, fontWeight: 700,
+            color: "#15803d",
+            background: "#dcfce7",
+            border: "1px solid #86efac",
+            borderRadius: 20,
+            padding: "1px 8px",
+          }}>
+            {radius} mi radius
+          </span>
+        </div>
+      </div>
 
       {/* ── Map type switcher — bottom-right ─────────────────────────────── */}
       <div style={{ position: "absolute", bottom: 14, right: 10, zIndex: 1000 }}>
@@ -473,40 +514,6 @@ export default function PhysicianMap({
           >
             {b.icon}
           </button>
-        ))}
-      </div>
-
-      {/* ── Legend — top-left ─────────────────────────────────────────────── */}
-      <div style={{
-        position: "absolute", top: 10, left: 10, zIndex: 1000,
-        background: "rgba(255,255,255,0.95)",
-        border: "1px solid #e2e8f0", borderRadius: 10,
-        padding: "9px 13px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-        display: "flex", flexDirection: "column", gap: 7,
-      }}>
-        {[
-          { fill: "#ef4444", label: "Trial Site", shape: "hospital" },
-          { fill: "#2563eb", label: "Physician",  shape: "doctor"   },
-          { fill: "#14b8a6", label: "Suggested",  shape: "suggested" },
-        ].map(({ fill, label, shape }) => (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <svg width="14" height="14" viewBox="0 0 30 30">
-              <circle cx="15" cy="15" r="14" fill={fill}/>
-              {shape === "hospital" && <>
-                <rect x="12" y="7" width="6" height="16" rx="1.5" fill="white"/>
-                <rect x="7" y="12" width="16" height="6" rx="1.5" fill="white"/>
-              </>}
-              {(shape === "doctor" || shape === "suggested") && <>
-                <circle cx="15" cy="11" r="4" fill="white"/>
-                <path d="M8 25c0-4.4 3.1-7 7-7s7 2.6 7 7" fill="white"/>
-              </>}
-              {shape === "suggested" &&
-                <polygon points="24,5 25,8 28,8 25.5,10 26.5,13 24,11.5 21.5,13 22.5,10 20,8 23,8"
-                  fill="#fbbf24" stroke="white" strokeWidth="0.5"/>
-              }
-            </svg>
-            <span style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>{label}</span>
-          </div>
         ))}
       </div>
     </div>
