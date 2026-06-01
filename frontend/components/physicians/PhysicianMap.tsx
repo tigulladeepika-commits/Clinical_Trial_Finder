@@ -229,9 +229,13 @@ export default function PhysicianMap({
     }).addTo(map);
     radiusCircleRef.current = radiusCircle;
 
+    const siteLocationLabel = [selectedSite.city, selectedSite.state].filter(Boolean).join(", ");
+    const siteNameLabel = selectedSite.facility || "Clinical trial site";
+
     siteMarker.bindTooltip(
-      `<div style="font-weight:700;color:#dc2626;">🏥 Trial Site</div>
-       ${selectedSite.facility ? `<div style="font-size:11px;color:#64748b;">${selectedSite.facility}</div>` : ""}`,
+      `<div style="font-weight:700;color:#dc2626;">🏥 Clinical trial site</div>
+       <div style="font-size:11px;color:#0f172a;font-weight:600;">${siteNameLabel}</div>
+       ${siteLocationLabel ? `<div style="font-size:11px;color:#64748b;">${siteLocationLabel}</div>` : ""}`,
       { permanent: true, direction: "top", offset: [0, -20], className: "site-tooltip" }
     );
 
@@ -378,9 +382,9 @@ export default function PhysicianMap({
         display: "flex", flexDirection: "column", gap: 7,
       }}>
         {[
-          { fill: "#ef4444", label: "Trial Site", shape: "hospital"  },
-          { fill: "#2563eb", label: "Physician",  shape: "doctor"    },
-          { fill: "#14b8a6", label: "Suggested",  shape: "suggested" },
+          { fill: "#ef4444", label: "Clinical trial site", shape: "hospital"  },
+          { fill: "#2563eb", label: "Nearby doctor",       shape: "doctor"    },
+          { fill: "#14b8a6", label: "Suggested doctor",    shape: "suggested" },
         ].map(({ fill, label, shape }) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <svg width="14" height="14" viewBox="0 0 30 30">

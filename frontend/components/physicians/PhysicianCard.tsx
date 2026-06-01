@@ -173,7 +173,7 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
     leadState === "submitting" ? "Adding…"         :
     leadState === "done"      ? "✓ Lead Added"     :
     leadState === "error"     ? "⚠ Retry"          :
-    "Add as Lead";
+    "Add as lead to Salesforce";
 
   const btnBg =
     leadState === "done"  ? "var(--green-600)" :

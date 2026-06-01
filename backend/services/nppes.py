@@ -109,10 +109,15 @@ def parse_physician(result: Dict) -> Optional[Dict]:
         taxonomies[0] if taxonomies else {},
     )
 
-    first = str(basic.get("first_name") or "")
-    last = str(basic.get("last_name") or "")
-    cred = str(basic.get("credential") or "")
-    name = f"{first} {last}".strip() or "Unknown Provider"
+    prefix = str(basic.get("name_prefix") or "").strip()
+    first = str(basic.get("first_name") or "").strip()
+    middle = str(basic.get("middle_name") or "").strip()
+    last = str(basic.get("last_name") or "").strip()
+    suffix = str(basic.get("name_suffix") or "").strip()
+    cred = str(basic.get("credential") or "").strip()
+
+    name_parts = [prefix, first, middle, last, suffix]
+    name = " ".join([p for p in name_parts if p]).strip() or "Unknown Provider"
     if cred:
         name += f", {cred}"
 

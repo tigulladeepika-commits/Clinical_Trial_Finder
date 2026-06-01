@@ -658,7 +658,7 @@ function HomeInner() {
           marginTop: "auto",
         }}>
           <div style={{ marginBottom: "8px" }}>
-            <strong>Contact:</strong> leads@aquarient.com
+            <strong>Contact:</strong> contact@aquarient.com
           </div>
           <div>
             Powered by Aquarient Technologies

@@ -329,7 +329,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
     leadFlow === "fetching"   ? "Looking up email…" :
     leadFlow === "done"       ? "✓ Lead Added"       :
     leadFlow === "error"      ? "⚠ Retry"            :
-    "Add as Lead";
+    "Add as lead to Salesforce";
 
   const btnBg =
     leadFlow === "done"  ? "var(--green-600)" :
@@ -359,11 +359,11 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           flex-shrink: 0;
         }
         .pdp-back {
-          display: flex; align-items: center; gap: 6px;
-          height: 32px; padding: 0 12px;
+          display: flex; align-items: center; gap: 8px;
+          height: 36px; padding: 0 14px;
           background: var(--surface); border: 1px solid var(--border);
           border-radius: var(--radius-md); cursor: pointer;
-          font-size: 12px; font-weight: 600; color: var(--ink-3);
+          font-size: 14px; font-weight: 700; color: var(--ink-3);
           flex-shrink: 0;
           transition: all 0.15s; font-family: var(--font-sans);
           white-space: nowrap;
@@ -372,7 +372,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
           background: var(--surface-2); border-color: var(--border-mid);
           color: var(--blue-600);
         }
-        .pdp-back-icon { font-size: 14px; }
+        .pdp-back-icon { font-size: 18px; line-height: 1; }
         .pdp-header-title { font-size: 13px; font-weight: 600; color: var(--ink); flex: 1; }
         .pdp-lead-btn {
           padding: 8px 16px; color: #fff; border: none;
@@ -610,9 +610,9 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
       <div className="pdp-shell">
         {/* Header */}
         <div className="pdp-header">
-          <button className="pdp-back" onClick={onBack} title="Back to Find Physicians">
-            <span className="pdp-back-icon">←</span>
-            Find Physicians
+          <button className="pdp-back" onClick={onBack} title="Back to Find Physicians" aria-label="Back to Find Physicians">
+            <span className="pdp-back-icon" aria-hidden="true">⬅️</span>
+            Back
           </button>
           <div className="pdp-header-title">Physician Details</div>
           <button
