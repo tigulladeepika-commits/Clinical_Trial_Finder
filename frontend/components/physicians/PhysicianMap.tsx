@@ -382,9 +382,9 @@ export default function PhysicianMap({
         display: "flex", flexDirection: "column", gap: 7,
       }}>
         {[
-          { fill: "#ef4444", label: "trial site", shape: "hospital"  },
+          { fill: "#ef4444", label: "Trial site", shape: "hospital"  },
           { fill: "#2563eb", label: "Physicians",       shape: "doctor"    },
-          { fill: "#14b8a6", label: "Recommended Physicians",    shape: "suggested" },
+          { fill: "#14b8a6", label: "Recommended HCPs",    shape: "suggested" },
         ].map(({ fill, label, shape }) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <svg width="14" height="14" viewBox="0 0 30 30">
