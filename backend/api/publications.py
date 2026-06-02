@@ -49,9 +49,11 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+import httpx
+
 from fastapi import APIRouter, Query, Response
 
-from services.pubmed import fetch_publications
+from services import pubmed_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -94,10 +96,14 @@ async def get_physician_publications(
     )
 
     try:
-        pubs = fetch_publications(
-            name=name_clean,
-            taxonomy_desc=specialty_clean,
-        )
+        async with httpx.AsyncClient(timeout=pubmed_service.HTTP_TIMEOUT) as client:
+            pubmed_result = await pubmed_service.pubmed_lookup(
+                name=name_clean,
+                specialty=specialty_clean or "",
+                client=client,
+                disease="",
+            )
+        pubs = pubmed_result.get("publications", []) if pubmed_result else []
     except Exception as exc:
         # Never surface upstream errors to the client — degrade gracefully
         logger.exception(
