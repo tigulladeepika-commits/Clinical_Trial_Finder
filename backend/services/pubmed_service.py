@@ -16,30 +16,45 @@ MIN_RESULTS  = 5
 MAX_RETRIES  = 2
 RETRY_DELAY  = 1.5
 
+# NCBI E-utilities are publicly accessible without an API key.
+# Free tier allows 3 requests/second — semaphore is set accordingly.
+PUBMED_CONCURRENCY = 3
+
 CURRENT_YEAR = datetime.now().year
 
+# Global semaphore — created lazily so it lives in the right event loop.
+_pubmed_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _pubmed_semaphore
+    if _pubmed_semaphore is None:
+        _pubmed_semaphore = asyncio.Semaphore(PUBMED_CONCURRENCY)
+    return _pubmed_semaphore
+
+
 SPECIALTY_MESH = {
-    "cardiovascular":          "Cardiovascular Diseases",
-    "cardiology":              "Cardiology",
-    "interventional":          "Cardiology",
-    "electrophysiology":       "Cardiac Electrophysiology",
+    "cardiovascular":            "Cardiovascular Diseases",
+    "cardiology":                "Cardiology",
+    "interventional":            "Cardiology",
+    "electrophysiology":         "Cardiac Electrophysiology",
     "cardiac electrophysiology": "Cardiac Electrophysiology",
-    "oncology":                "Neoplasms",
-    "hematology":              "Hematologic Diseases",
-    "neurology":               "Nervous System Diseases",
-    "nephrology":              "Kidney Diseases",
-    "pulmonary":               "Lung Diseases",
-    "gastroenterology":        "Gastrointestinal Diseases",
-    "endocrinology":           "Endocrine System Diseases",
-    "rheumatology":            "Rheumatic Diseases",
-    "dermatology":             "Skin Diseases",
-    "psychiatry":              "Mental Disorders",
-    "orthopedic":              "Musculoskeletal Diseases",
-    "urology":                 "Urologic Diseases",
-    "surgery":                 "Surgical Procedures, Operative",
-    "internal medicine":       "Internal Medicine",
-    "infectious":              "Communicable Diseases",
-    "immunology":              "Immune System Diseases",
+    "oncology":                  "Neoplasms",
+    "hematology":                "Hematologic Diseases",
+    "neurology":                 "Nervous System Diseases",
+    "nephrology":                "Kidney Diseases",
+    "pulmonary":                 "Lung Diseases",
+    "gastroenterology":          "Gastrointestinal Diseases",
+    "endocrinology":             "Endocrine System Diseases",
+    "rheumatology":              "Rheumatic Diseases",
+    "dermatology":               "Skin Diseases",
+    "psychiatry":                "Mental Disorders",
+    "orthopedic":                "Musculoskeletal Diseases",
+    "urology":                   "Urologic Diseases",
+    "surgery":                   "Surgical Procedures, Operative",
+    "internal medicine":         "Internal Medicine",
+    "infectious":                "Communicable Diseases",
+    "immunology":                "Immune System Diseases",
 }
 
 COMMON_LAST_NAMES = {
@@ -52,11 +67,26 @@ COMMON_LAST_NAMES = {
     "drury",
 }
 
+VERY_COMMON_LAST_NAMES = {
+    "chen", "wang", "liu", "zhang", "li", "kim", "lee",
+    "nguyen", "garcia", "rodriguez", "martinez",
+}
+
+SPECIFIC_TOPIC_TERMS = {
+    "tavr", "transcatheter aortic valve", "myocardial bridging",
+    "drug-eluting stent", "plga nanoparticles cardiomyocytes",
+    "mammosite", "brachytherapy breast",
+    "ablation atrial fibrillation", "ventricular tachycardia ablation",
+    "sentinel lymph node biopsy",
+    "deep brain stimulation",
+}
+
+
+# ── Name helpers ──────────────────────────────────────────────────────────────
 
 def clean_name(raw_name: str) -> str:
     name = raw_name
 
-    # Strip credentials
     for cred in [
         ", M.D.", ",M.D.", " M.D.", ", MD", ",MD", " MD",
         ", D.O.", ",D.O.", " D.O.", ", DO", ",DO", " DO",
@@ -67,17 +97,10 @@ def clean_name(raw_name: str) -> str:
     ]:
         name = name.replace(cred, "")
 
-    # Remove honorific prefixes (Dr., Prof., etc.)
     name = re.sub(r'\b(Dr\.?|Prof\.?|Drs\.?)\b', '', name, flags=re.IGNORECASE)
-
-    # Remove stray dashes/double-dashes (e.g. "MOHADJER --")
     name = re.sub(r'\s*--+\s*', ' ', name)
-    name = re.sub(r'(?<!\w)-(?!\w)', ' ', name)  # lone dashes, not hyphenated names
-
-    # Remove leftover commas
+    name = re.sub(r'(?<!\w)-(?!\w)', ' ', name)
     name = name.replace(",", "").strip()
-
-    # Capitalize and collapse whitespace
     return " ".join(w.capitalize() for w in name.split() if w)
 
 
@@ -97,6 +120,12 @@ def _is_common_name(clean_name_str: str) -> bool:
     return last in COMMON_LAST_NAMES
 
 
+# ── Query builder ─────────────────────────────────────────────────────────────
+#
+# Returns a list of (query_string, confidence_bonus) pairs, deduplicated.
+# Ordering matters: higher-confidence queries come first so Tier 0 is populated
+# as early as possible.
+
 def _build_queries(
     clean: str,
     specialty: str,
@@ -106,102 +135,86 @@ def _build_queries(
     if len(parts) < 2:
         return [(f'"{clean}"[Author]', 10)]
 
-    first  = parts[0]
-    last   = parts[-1]
+    first        = parts[0]
+    last         = parts[-1]
     middle_parts = parts[1:-1]
-    middle_name    = middle_parts[0] if middle_parts else ""
-    middle_initial = middle_name[0].upper() if middle_name else ""
+    middle_name  = middle_parts[0] if middle_parts else ""
+    middle_init  = middle_name[0].upper() if middle_name else ""
 
-    mesh  = _get_mesh_term(specialty)
+    mesh          = _get_mesh_term(specialty)
     disease_clean = disease.strip() if disease else ""
-    spec_lower = specialty.lower() if specialty else ""
+    spec_lower    = specialty.lower() if specialty else ""
 
+    # Handle hyphenated first names (e.g. "Jean-Pierre" → "JP")
     if "-" in first:
         initials = "".join(p[0].upper() for p in first.split("-"))
     else:
         initials = first[0].upper()
 
-    full_initials = initials + middle_initial if middle_initial else initials
+    full_initials = initials + middle_init if middle_init else initials
 
-    queries = []
+    # Build ordered list, then deduplicate while preserving order + max bonus.
+    raw: list[tuple[str, int]] = []
 
-    if middle_name:
-        queries.append((
-            f'"{last} {first} {middle_name}"[Author]',
-            80
-        ))
-        if disease_clean:
-            queries.append((
-                f'"{last} {first} {middle_name}"[Author] AND "{disease_clean}"[Title/Abstract]',
-                85
-            ))
-        queries.append((
-            f'"{last} {full_initials}"[Author] AND "{disease_clean}"[Title/Abstract]',
-            72
-        ) if disease_clean else (
-            f'"{last} {full_initials}"[Author]',
-            65
-        ))
+    # ── Tier 0 (conf_bonus >= 65): specific-topic + high-precision author forms ──
 
     specific_topics = _get_specific_topics(spec_lower, disease_clean)
     for topic in specific_topics:
-        queries.append((
-            f'"{last} {initials}"[Author] AND "{topic}"[Title/Abstract]',
-            75
-        ))
+        raw.append((f'"{last} {initials}"[Author] AND "{topic}"[Title/Abstract]', 75))
         if full_initials != initials:
-            queries.append((
-                f'"{last} {full_initials}"[Author] AND "{topic}"[Title/Abstract]',
-                75
-            ))
+            raw.append((f'"{last} {full_initials}"[Author] AND "{topic}"[Title/Abstract]', 75))
+
+    if middle_name:
+        raw.append((f'"{last} {first} {middle_name}"[Author]', 80))
+        if disease_clean:
+            raw.append((f'"{last} {first} {middle_name}"[Author] AND "{disease_clean}"[Title/Abstract]', 85))
+        if disease_clean:
+            raw.append((f'"{last} {full_initials}"[Author] AND "{disease_clean}"[Title/Abstract]', 72))
+        else:
+            raw.append((f'"{last} {full_initials}"[Author]', 65))
+
+    # ── Tier 1 (35–64): disease/mesh broadening ───────────────────────────────
 
     if disease_clean:
-        queries.append((
-            f'"{last} {first}"[Author] AND "{disease_clean}"[Title/Abstract]',
-            60
-        ))
-        queries.append((
-            f'"{last} {first}"[Author] AND "{disease_clean}"[MeSH Terms]',
-            55
-        ))
+        raw.append((f'"{last} {first}"[Author] AND "{disease_clean}"[Title/Abstract]', 60))
+        raw.append((f'"{last} {first}"[Author] AND "{disease_clean}"[MeSH Terms]', 55))
 
     if mesh:
-        queries.append((
-            f'"{last} {first}"[Author] AND "{mesh}"[MeSH Terms]',
-            50
-        ))
-        queries.append((
-            f'"{last} {first}"[Author] AND "{mesh}"[Title/Abstract]',
-            45
-        ))
+        raw.append((f'"{last} {first}"[Author] AND "{mesh}"[MeSH Terms]', 50))
+        raw.append((f'"{last} {first}"[Author] AND "{mesh}"[Title/Abstract]', 45))
 
-    queries.append((
-        f'"{last} {first}"[Author]',
-        35
-    ))
+    raw.append((f'"{last} {first}"[Author]', 35))
 
     if disease_clean:
-        queries.append((
-            f'"{last} {full_initials}"[Author] AND "{disease_clean}"[Title/Abstract]',
-            30
-        ))
+        raw.append((f'"{last} {full_initials}"[Author] AND "{disease_clean}"[Title/Abstract]', 30))
 
     if mesh:
-        queries.append((
-            f'"{last} {full_initials}"[Author] AND "{mesh}"[MeSH Terms]',
-            20
-        ))
+        raw.append((f'"{last} {full_initials}"[Author] AND "{mesh}"[MeSH Terms]', 20))
 
-    queries.append((
-        f'"{last} {full_initials}"[Author]',
-        5
-    ))
+    # ── Tier 2 (< 35): last-resort broadest form ──────────────────────────────
 
-    return queries
+    raw.append((f'"{last} {full_initials}"[Author]', 5))
+
+    # Deduplicate: keep first occurrence of each query string, but if the same
+    # query appears again with a higher bonus, upgrade the stored bonus.
+    seen: dict[str, int] = {}
+    for q, bonus in raw:
+        if q not in seen or bonus > seen[q]:
+            seen[q] = bonus
+
+    # Restore original order (first occurrence wins for ordering).
+    ordered_queries: list[tuple[str, int]] = []
+    added: set[str] = set()
+    for q, _ in raw:
+        if q not in added:
+            ordered_queries.append((q, seen[q]))
+            added.add(q)
+
+    return ordered_queries
 
 
 def _get_specific_topics(spec_lower: str, disease: str) -> list[str]:
-    topics = []
+    topics: list[str] = []
     disease_lower = disease.lower()
 
     if "interventional" in spec_lower or "cardiology" in spec_lower or "cardiovascular" in spec_lower:
@@ -224,28 +237,40 @@ def _get_specific_topics(spec_lower: str, disease: str) -> list[str]:
     return topics[:3]
 
 
+# ── HTTP helper ───────────────────────────────────────────────────────────────
+
 async def _fetch_with_retry(
     client: httpx.AsyncClient,
     url: str,
     params: dict,
 ) -> Optional[dict]:
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            resp = await client.get(url, params=params, timeout=HTTP_TIMEOUT)
-            if resp.status_code == 429:
-                if attempt < MAX_RETRIES:
-                    await asyncio.sleep(RETRY_DELAY * (attempt + 1))
-                    continue
+    sem = _get_semaphore()
+
+    async with sem:
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                resp = await client.get(url, params=params, timeout=HTTP_TIMEOUT)
+                if resp.status_code == 429:
+                    wait = RETRY_DELAY * (attempt + 1)
+                    logger.warning(
+                        "PubMed 429 on attempt %d — backing off %.1fs", attempt + 1, wait
+                    )
+                    if attempt < MAX_RETRIES:
+                        await asyncio.sleep(wait)
+                        continue
+                    return None
+                if resp.status_code == 200:
+                    return resp.json()
+                logger.warning("PubMed unexpected status %d", resp.status_code)
                 return None
-            if resp.status_code == 200:
-                return resp.json()
-            return None
-        except Exception as exc:
-            logger.warning("PubMed request error attempt %d: %s", attempt + 1, exc)
-            if attempt < MAX_RETRIES:
-                await asyncio.sleep(RETRY_DELAY)
+            except Exception as exc:
+                logger.warning("PubMed request error attempt %d: %s", attempt + 1, exc)
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(RETRY_DELAY)
     return None
 
+
+# ── Main lookup ───────────────────────────────────────────────────────────────
 
 async def pubmed_lookup(
     name: str,
@@ -253,7 +278,7 @@ async def pubmed_lookup(
     client: httpx.AsyncClient,
     disease: str = "",
 ) -> dict:
-    clean = clean_name(name)
+    clean     = clean_name(name)
     is_common = _is_common_name(clean)
 
     logger.info(
@@ -263,12 +288,13 @@ async def pubmed_lookup(
 
     queries = _build_queries(clean, specialty, disease)
 
-    best_pmids      = []
-    best_query      = ""
-    best_count      = 0
-    best_conf_bonus = 0
-    all_tier0_pmids = []
-    found_tier0     = False
+    best_pmids      : list[str] = []
+    best_query      : str       = ""
+    best_count      : int       = 0
+    best_conf_bonus : int       = 0
+    all_tier0_pmids : list[str] = []
+    tier0_max_bonus : int       = 0
+    found_tier0     : bool      = False
 
     for query, conf_bonus in queries:
         data = await _fetch_with_retry(client, PUBMED_SEARCH_URL, {
@@ -290,37 +316,36 @@ async def pubmed_lookup(
         if count > 0:
             if conf_bonus >= 65:
                 all_tier0_pmids.extend(pmids)
+                tier0_max_bonus = max(tier0_max_bonus, conf_bonus)
                 if not best_query:
+                    best_query = query
+                found_tier0 = True
+                logger.info("PubMed TIER 0: query=%r count=%d → collecting", query, count)
+
+            elif not found_tier0:
+                if not best_pmids or conf_bonus > best_conf_bonus:
+                    best_count      = count
+                    best_pmids      = pmids
                     best_query      = query
                     best_conf_bonus = conf_bonus
-                found_tier0 = True
-                logger.info(
-                    "PubMed TIER 0: query=%r count=%d → collecting",
-                    query, count,
-                )
-            elif not found_tier0 and (not best_pmids or conf_bonus > best_conf_bonus):
-                best_count      = count
-                best_pmids      = pmids
-                best_query      = query
-                best_conf_bonus = conf_bonus
-                logger.info(
-                    "PubMed: best match so far | query=%r count=%d conf_bonus=%d",
-                    query, count, conf_bonus,
-                )
+                    logger.info(
+                        "PubMed: best match so far | query=%r count=%d conf_bonus=%d",
+                        query, count, conf_bonus,
+                    )
 
     if all_tier0_pmids:
-        seen = set()
-        deduped = []
+        seen: set[str] = set()
+        deduped: list[str] = []
         for pmid in all_tier0_pmids:
             if pmid not in seen:
                 seen.add(pmid)
                 deduped.append(pmid)
         best_pmids      = deduped[:MAX_RESULTS]
         best_count      = len(best_pmids)
-        best_conf_bonus = 70
+        best_conf_bonus = tier0_max_bonus
         logger.info(
-            "PubMed TIER 0 merged: %d unique PMIDs from all specific-topic queries",
-            len(best_pmids),
+            "PubMed TIER 0 merged: %d unique PMIDs | max_conf_bonus=%d",
+            len(best_pmids), best_conf_bonus,
         )
 
     if not best_pmids:
@@ -358,7 +383,7 @@ async def pubmed_lookup(
                 break
 
         pubmed_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"
-        doi_url = ""
+        doi_url    = ""
         for aid in paper.get("articleids", []):
             if aid.get("idtype") == "doi":
                 doi_val = aid.get("value", "")
@@ -366,7 +391,7 @@ async def pubmed_lookup(
                     doi_url = f"https://doi.org/{doi_val}"
                     break
 
-        raw_authors = paper.get("authors", [])
+        raw_authors  = paper.get("authors", [])
         author_names = [
             a.get("name", "") for a in raw_authors
             if a.get("authtype", "") == "Author"
@@ -403,20 +428,7 @@ async def pubmed_lookup(
     }
 
 
-VERY_COMMON_LAST_NAMES = {
-    "chen", "wang", "liu", "zhang", "li", "kim", "lee",
-    "nguyen", "garcia", "rodriguez", "martinez",
-}
-
-SPECIFIC_TOPIC_TERMS = {
-    "tavr", "transcatheter aortic valve", "myocardial bridging",
-    "drug-eluting stent", "plga nanoparticles cardiomyocytes",
-    "mammosite", "brachytherapy breast",
-    "ablation atrial fibrillation", "ventricular tachycardia ablation",
-    "sentinel lymph node biopsy", "mammosite",
-    "deep brain stimulation",
-}
-
+# ── Confidence scoring ────────────────────────────────────────────────────────
 
 def _score_confidence(conf_bonus: int, pub_count: int, clean_name_str: str) -> int:
     score = conf_bonus
@@ -434,15 +446,9 @@ def _score_confidence(conf_bonus: int, pub_count: int, clean_name_str: str) -> i
     last  = parts[-1] if parts else ""
 
     if last in VERY_COMMON_LAST_NAMES:
-        if conf_bonus >= 70:
-            score -= 10
-        else:
-            score -= 50
+        score -= 10 if conf_bonus >= 70 else 50
     elif last in COMMON_LAST_NAMES:
-        if conf_bonus >= 45:
-            score -= 10
-        else:
-            score -= 40
+        score -= 10 if conf_bonus >= 45 else 40
 
     return max(0, min(100, score))
 

@@ -205,7 +205,7 @@ export default function TrialSiteMap({
       tileLayerRef.current = initialLayer;
 
       const map = L.mapquest.map(mapDivRef.current, {
-        center:      [(Math.min(...lats) + Math.max(...lons)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2],
+        center: [(Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2],
         layers:      initialLayer,
         zoom:        3,
         minZoom:     MIN_ZOOM,
@@ -340,7 +340,7 @@ export default function TrialSiteMap({
   return (
     <>
       <style>{`
-        .tsm-map-wrap { position: relative; flex-shrink: 0; }
+        .tsm-map-wrap { position: relative; flex-shrink: 0; width: 100%; min-height: 420px; }
         .tsm-map-controls {
           position: absolute; top: 12px; right: 12px; z-index: 1000;
           display: flex; flex-direction: column; gap: 4px; align-items: center;
@@ -523,7 +523,7 @@ export default function TrialSiteMap({
           </div>
         ) : (
           <>
-            <div ref={mapDivRef} style={{ height: 420, width: "100%", background: "#e8edf2" }} />
+            <div ref={mapDivRef} style={{ height: "420px", width: "100%", background: "#e8edf2" }} />
 
             {/* Zoom controls + badge — top-right */}
             <div className="tsm-map-controls">

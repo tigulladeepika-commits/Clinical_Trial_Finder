@@ -342,7 +342,14 @@ export default function PhysicianMap({
       radiusCircleRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapKey, physicians, suggestedPhysicians, selectedSite]);
+  }, [
+  mapKey,
+  selectedSite.lat,
+  selectedSite.lng,
+  selectedSite.facility,
+  physicians.map(p => p.npi).join(","),
+  suggestedPhysicians.map(p => p.npi).join(","),
+  ]);
 
   // FIX 2: reactively update the circle radius whenever the prop changes
   useEffect(() => {
