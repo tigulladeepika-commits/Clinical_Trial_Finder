@@ -1,4 +1,4 @@
-"""
+﻿"""
 api/trials.py
 REST endpoints for clinical-trial search and detail.
 
@@ -22,11 +22,15 @@ Changes:
     service's full 4-pass _condition_map_lookup() instead of a single
     dict-key lookup, so multi-word or mixed-case conditions from
     ClinicalTrials.gov are resolved correctly.
+  - Phase 1 AI Search: condition query is corrected by ai_search_service
+    before reaching ClinicalTrials.gov. Corrected query + original query
+    returned in response so frontend can show "Showing results for X" banner.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Response
@@ -42,6 +46,10 @@ from services.clinicaltrials_api import (
 )
 from services import taxonomy as tax_service
 
+# ── Phase 1: AI Search Intelligence ──────────────────────────────────────────
+from services.ai_search_service import correct_query
+# ─────────────────────────────────────────────────────────────────────────────
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -49,10 +57,14 @@ router = APIRouter()
 # ── Request / response models ─────────────────────────────────────────────────
 
 class TrialSearchResponse(BaseModel):
-    trials:    list[dict[str, Any]]
-    total:     int
-    page:      int
-    page_size: int
+    trials:           list[dict[str, Any]]
+    total:            int
+    page:             int
+    page_size:        int
+    # Phase 1 additions — frontend uses these for "Showing results for X" banner
+    original_query:   str | None = None
+    corrected_query:  str | None = None
+    was_corrected:    bool       = False
 
 
 class SiteLocation(BaseModel):
@@ -97,8 +109,19 @@ async def search_trials(
     if not state_ok:
         raise HTTPException(status_code=422, detail=f"Invalid state filter — {state_reason}")
 
+    # ── Phase 1: AI Query Correction ──────────────────────────────────────────
+    query_result      = await correct_query(condition)
+    search_condition  = query_result.corrected_query
+    # ─────────────────────────────────────────────────────────────────────────
+
+    logger.info(
+        "Trial search | original=%r → search_condition=%r | corrected=%s layer=%s",
+        condition, search_condition,
+        query_result.was_corrected, query_result.correction_layer,
+    )
+
     filters: dict[str, Any] = {
-        "condition": condition,
+        "condition": search_condition,
         "status":    status,
         "phase":     phase,
         "city":      city,
@@ -126,6 +149,9 @@ async def search_trials(
         total=total,
         page=page,
         page_size=page_size,
+        original_query=query_result.original_query,
+        corrected_query=query_result.corrected_query,
+        was_corrected=query_result.was_corrected,
     )
 
 
@@ -178,7 +204,6 @@ async def get_condition_specialties(
 
     # Split on common delimiters: commas, " and ", " & "
     # This handles cases like "Neurology, Interventional Cardiology, Cardiovascular Disease"
-    import re
     parts = re.split(r',\s*|\s+and\s+|\s+&\s+', clean, flags=re.IGNORECASE)
 
     all_specialties: list[str] = []
@@ -201,6 +226,7 @@ async def get_condition_specialties(
                     all_specialties.append(specialty)
 
     specialties = all_specialties
+
 
     logger.info(
         "Condition specialties | condition=%r → specialties=%s",

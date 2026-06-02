@@ -8,12 +8,14 @@
 //  - All other helpers unchanged from v10.
 
 import type { TrialFetchParams, TrialFetchResponse, SiteData, Trial } from "@/types/trial";
+import type { AIInsightsData } from "@/types/physician";
 import type {
   PhysicianSearchParams,
   SuggestedPhysicianParams,
   PhysicianFetchResponse,
   SuggestedPhysicianFetchResponse,
   PublicationFetchResponse,
+  PhysicianInsight,
   LeadPayload,
   Physician,
   SelectedSite,
@@ -351,4 +353,34 @@ export async function fetchPhysicianEmail(params: {
     console.warn("[fetchPhysicianEmail] Network error:", err);
     return { ...fallback, error: "Network error" };
   }
+}
+
+interface FetchAIInsightsParams {
+  npi:      string;
+  name:     string;
+  specialty: string;
+  disease:  string;
+}
+
+export async function fetchAIInsights({
+  npi,
+  name,
+  specialty,
+  disease,
+}: FetchAIInsightsParams): Promise<AIInsightsData> {
+  const params = new URLSearchParams({
+    name,
+    specialty,
+    disease,
+  });
+
+  const res = await fetch(
+    `${BASE_URL}/api/physicians/${encodeURIComponent(npi)}/insights?${params.toString()}`
+  );
+
+  if (!res.ok) {
+    throw new Error(`AI Insights request failed: ${res.status}`);
+  }
+
+  return res.json();
 }

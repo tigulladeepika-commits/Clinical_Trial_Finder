@@ -51,10 +51,14 @@ export interface TrialFetchParams {
 }
 
 export interface TrialFetchResponse {
-  trials:    Trial[];
-  total:     number;
-  page:      number;
-  page_size: number;
+  trials:          Trial[];
+  total:           number;
+  page:            number;
+  page_size:       number;
+  // Phase 1 AI Search — corrected query fields
+  original_query:  string | null;
+  corrected_query: string | null;
+  was_corrected:   boolean;
 }
 
 export interface SiteData {

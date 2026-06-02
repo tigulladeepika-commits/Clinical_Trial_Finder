@@ -76,7 +76,7 @@ const LEGEND = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TrialSiteMap({
-  sites, nctId, description, condition,
+  sites, trialTitle, nctId, description, condition,
   inclusionCriteria, exclusionCriteria, onFindPhysicians,
 }: Props) {
   const mapKey         = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
@@ -387,6 +387,22 @@ export default function TrialSiteMap({
           border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.12);
           overflow: hidden; min-width: 140px;
         }
+        .tsm-map-header {
+          position: absolute; top: 16px; left: 16px; right: 16px;
+          z-index: 1000; background: rgba(255,255,255,0.96);
+          border: 1px solid rgba(148,163,184,0.18);
+          border-radius: 16px; padding: 12px 14px;
+          box-shadow: 0 12px 28px rgba(15,23,42,0.08);
+          backdrop-filter: blur(8px);
+        }
+        .tsm-map-heading-title {
+          font-size: 13px; font-weight: 700; color: var(--ink);
+          line-height: 1.3;
+        }
+        .tsm-map-heading-subtitle {
+          margin-top: 4px; font-size: 11px;
+          color: var(--muted); line-height: 1.4;
+        }
         .tsm-type-item {
           display: flex; align-items: center; gap: 8px;
           width: 100%; padding: 8px 14px;
@@ -483,6 +499,13 @@ export default function TrialSiteMap({
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
       <div className="tsm-map-wrap">
+        {trialTitle && (
+          <div className="tsm-map-header">
+            <div className="tsm-map-heading-title">{trialTitle}</div>
+            {condition && <div className="tsm-map-heading-subtitle">{condition}</div>}
+          </div>
+        )}
+
         {!mapKey || mappableSites.length === 0 ? (
           <div className="tsm-empty-map" style={{ height: 420 }}>
             <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.35 }}>

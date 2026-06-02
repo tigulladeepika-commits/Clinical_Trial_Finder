@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import httpx
 import logging
 import math
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, Response
 from core.config import cfg
 from core.validation import validate_lat_lng, validate_radius
 from core.helpers import sanitise
 from services import nppes, zip_database, taxonomy as tax_service
+from services import ai_cache_service as cache
+from services import openalex_service
+from services.physician_insights_service import enrich_physician
+from services.background_enrichment import enrich_batch
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -344,6 +349,7 @@ async def _search_with_auto_relax(
 @router.get("/search")
 async def search_physicians(
     request:           Request,
+    background_tasks:  BackgroundTasks,
     lat:               float                  = Query(...,  description="Latitude of trial site"),
     lng:               float                  = Query(...,  description="Longitude of trial site"),
     radius:            float                  = Query(25.0, description="Search radius in miles (1–100)"),
@@ -351,6 +357,7 @@ async def search_physicians(
     initial_specialty: Optional[List[str]]    = Query(None, description="Specialty from user's first search — multiple allowed"),
     user_specialty:    Optional[List[str]]    = Query(None, description="Extra specialty entered by user — multiple allowed"),
     trial_status:      Optional[str]          = Query(None, description="Trial enrollment status e.g. Recruiting, Completed"),
+    condition:         Optional[str]          = Query(None, description="Trial condition — passed for background AI enrichment"),
     response:          Response               = None,
 ):
     if response:
@@ -424,6 +431,20 @@ async def search_physicians(
     # Attach trial status to every response so the frontend can show the banner
     result["trial_status"]   = trial_status or "unknown"
     result["filter_relaxed"] = result.get("filter_relaxed")  # None if no relaxation needed
+
+    disease_ctx = (
+        (condition or "").strip()
+        or (specialty[0] if specialty else "")
+        or (initial_specialty[0] if initial_specialty else "")
+        or "clinical_trial"
+    )
+    if result.get("physicians"):
+        background_tasks.add_task(
+            enrich_batch,
+            result["physicians"],
+            disease_ctx,
+            getattr(cfg, "GROQ_API_KEY", ""),
+        )
 
     return result
 
@@ -510,4 +531,77 @@ async def suggested_physicians(
         "zips_searched":      result["zips_searched"],
         "search_specialties": result["search_specialties"],
         "filter_relaxed":     "condition_fallback" if used_fallback else None,
+    }
+
+
+@router.get("/{npi}/insights")
+async def get_physician_insights(
+    npi:         str,
+    name:        str                  = Query(..., description="Physician full name"),
+    specialty:   Optional[str]        = Query(None, description="Physician specialty"),
+    disease:     Optional[str]        = Query(None, description="Trial condition or disease context"),
+    npi_state:   Optional[str]        = Query(None, description="State code for the physician NPI"),
+    response:    Response            = None,
+) -> dict:
+    if response:
+        response.headers["Cache-Control"] = "private, max-age=3600"
+
+    clean_name = (name or "").strip()
+    clean_specialty = (specialty or "").strip()
+    clean_disease = (disease or "clinical_trial").strip() or "clinical_trial"
+    state_code = (npi_state or "").strip()
+
+    if not npi or not clean_name:
+        raise HTTPException(status_code=422, detail="npi and name are required")
+
+    cache_key = clean_disease
+    if cache.exists(npi, cache_key):
+        insights = cache.get(npi, cache_key) or {}
+        logger.debug("AI insights cache hit | npi=%s disease=%r", npi, cache_key)
+    else:
+        insights = await enrich_physician(
+            npi=npi,
+            name=clean_name,
+            specialty=clean_specialty,
+            disease=clean_disease,
+            groq_api_key=getattr(cfg, "GROQ_API_KEY", ""),
+            npi_state=state_code,
+        )
+        cache.set(npi, cache_key, insights)
+
+    async with httpx.AsyncClient(timeout=openalex_service.HTTP_TIMEOUT) as client:
+        metrics = await openalex_service.openalex_lookup(clean_name, client)
+
+    publications = [
+        {
+            "title": str(pub.get("title") or "").strip(),
+            "year": str(pub.get("year") or "").strip(),
+            "source": str(pub.get("journal") or pub.get("source") or "").strip(),
+            "best_url": pub.get("best_url") or pub.get("url") or pub.get("pubmed_url") or pub.get("semantic_scholar_url"),
+            "semantic_scholar_url": pub.get("semantic_scholar_url"),
+            "doi_url": pub.get("doi_url"),
+            "pubmed_url": pub.get("pubmed_url"),
+            "url": pub.get("url"),
+            "verified_author_match": bool(pub.get("verified_author_match")),
+        }
+        for pub in (insights.get("publications") or [])
+    ]
+
+    return {
+        "npi":                 npi,
+        "name":                clean_name,
+        "specialty":           clean_specialty,
+        "disease":             clean_disease,
+        "status":              insights.get("status", "ready"),
+        "error":               insights.get("error"),
+        "publication_count":   len(publications),
+        "publications":        publications,
+        "top_topics":          metrics.get("research_areas", [])[:5],
+        "total_citations":     metrics.get("total_citations", 0),
+        "h_index":             metrics.get("h_index", 0),
+        "i10_index":           metrics.get("i10_index", 0),
+        "citations_last_5_years": metrics.get("citations_last_5_years", 0),
+        "research_areas":      metrics.get("research_areas", []),
+        "awards":              [],
+        "ai_summary":          insights.get("summary", "") or "",
     }

@@ -37,6 +37,10 @@ export function useTrials(
   const [error,      setError]      = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [hasMore,    setHasMore]    = useState(false);
+  // Phase 1 AI Search — store corrected query so page.tsx can use it
+  // for specialty lookup instead of the raw misspelled user query
+  const [correctedQuery, setCorrectedQuery] = useState<string | null>(null);
+  const [wasCorrected, setWasCorrected] = useState(false);
 
   const LIMIT = 10;
   const offsetRef     = useRef(0);
@@ -85,6 +89,14 @@ export function useTrials(
         );
         setTotalCount(data.total);
         setHasMore(loadedCount < data.total);
+
+        // Phase 1 — store corrected query from backend response
+        // On first load (reset=true), capture whatever the backend corrected to.
+        // On loadMore (reset=false), keep the existing corrected query.
+        if (reset) {
+          setCorrectedQuery(data.corrected_query ?? null);
+          setWasCorrected(data.was_corrected ?? false);
+        }
       } catch (err: unknown) {
         if ((err as Error).name === "AbortError") return;
         if (requestKeyRef.current !== key) return;
@@ -107,6 +119,8 @@ export function useTrials(
     setError(null);
     setTotalCount(0);
     setHasMore(false);
+    setCorrectedQuery(null);
+    setWasCorrected(false);
 
     if (!condition) {
       abortRef.current?.abort();
@@ -130,7 +144,18 @@ export function useTrials(
     void load(false, requestKeyRef.current);
   }, [condition, hasMore, load, loading]);
 
-  return { trials, loading, error, totalCount, hasMore, refetch, loadMore };
+  return {
+    trials,
+    loading,
+    error,
+    totalCount,
+    hasMore,
+    refetch,
+    loadMore,
+    // Phase 1 additions
+    correctedQuery,
+    wasCorrected,
+  };
 }
 
 export { fetchTrialSites };

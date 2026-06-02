@@ -55,16 +55,34 @@ export type SuggestedPhysicianFetchResponse = PhysicianFetchResponse;
 // ── PubMed Publications ───────────────────────────────────────────────────────
 
 export interface Publication {
-  pmid:     string;
-  title:    string;
-  journal:  string;
-  year:     string;
+  pmid:                 string;
+  title:                string;
+  journal:              string;
+  year:                 string;
+  source?:              string;
+  best_url?:            string;
+  semantic_scholar_url?: string;
+  doi_url?:             string;
+  pubmed_url?:          string;
+  /** Legacy fallback URL; may be the same as best_url or pubmed_url */
+  url:                  string;
   /** Up to 6 authors in "LastName Initials" format */
-  authors:  string[];
-  /** Direct link to the PubMed record */
-  url:      string;
+  authors:              string[];
   /** First 600 chars of abstract — empty string when unavailable */
-  abstract: string;
+  abstract:             string;
+  verified_author_match?: boolean;
+}
+
+export interface PublicationItem {
+  title:                 string;
+  year?:                 number | null;
+  source:                string;
+  best_url?:             string;
+  semantic_scholar_url?: string;
+  doi_url?:              string;
+  pubmed_url?:           string;
+  url?:                  string;
+  verified_author_match?: boolean;
 }
 
 export interface PublicationFetchResponse {
@@ -72,6 +90,38 @@ export interface PublicationFetchResponse {
   name:         string;
   count:        number;
   publications: Publication[];
+}
+
+export interface PhysicianInsight {
+  npi:          string;
+  name:         string;
+  status:       string;
+  summary:      string;
+  publications: Publication[];
+  error?:       string | null;
+}
+
+export interface AIInsightsData {
+  npi:       string;
+  name:      string;
+  specialty: string;
+  disease:   string;
+  status:    "ready" | "loading" | "error";
+  error?:    string;
+
+  publication_count: number;
+  publications:      PublicationItem[];
+  top_topics:        string[];
+
+  total_citations:        number;
+  h_index:                number;
+  i10_index:              number;
+  citations_last_5_years: number;
+
+  research_areas: string[];
+  awards:         string[];
+
+  ai_summary: string;
 }
 
 // ── Leads ─────────────────────────────────────────────────────────────────────

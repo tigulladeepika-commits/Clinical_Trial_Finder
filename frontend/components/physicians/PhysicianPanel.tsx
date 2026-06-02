@@ -5,6 +5,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import PhysicianCard              from "@/components/physicians/PhysicianCard";
 import PhysicianDetailPanel       from "@/components/physicians/PhysicianDetailPanel";
+import AIInsightsView             from "@/components/physicians/AIInsightsView";
 import PhysicianMap               from "@/components/physicians/PhysicianMap";
 import LeadCaptureModal           from "@/components/shared/LeadCaptureModal";
 import { useSuggestedPhysicians } from "@/hooks/usePhysicians";
@@ -143,6 +144,7 @@ export default function PhysicianPanel({
   const [detailPhys,        setDetailPhys]        = useState<Physician | null>(null);
   const [showMainModal,     setShowMainModal]     = useState(false);
   const [showSuggestModal,  setShowSuggestModal]  = useState(false);
+  const [showAIInsights,    setShowAIInsights]    = useState(false);
 
   const [resolvedSpecialty, setResolvedSpecialty] = useState<string>("");
   const [resolving,         setResolving]         = useState(false);
@@ -290,12 +292,30 @@ export default function PhysicianPanel({
     return (
       <div>
         {kpiBar}
-        <PhysicianDetailPanel
-          physician={detailPhys}
-          site={site}
-          onBack={() => setDetailPhys(null)}
-          onAddAsLead={() => {}}
-        />
+        <div style={{ padding: 10, display: "flex", justifyContent: "flex-end", gap: 8, background: "#fff", borderBottom: "1px solid var(--border)" }}>
+          <button
+            className="pp-search-btn"
+            onClick={() => setShowAIInsights((s) => !s)}
+            style={{ height: 36, padding: "6px 12px" }}
+          >
+            {showAIInsights ? "Back to Details" : "View AI Insights"}
+          </button>
+        </div>
+
+        {!showAIInsights ? (
+          <PhysicianDetailPanel
+            physician={detailPhys}
+            site={site}
+            onBack={() => setDetailPhys(null)}
+            onAddAsLead={() => {}}
+          />
+        ) : (
+          <AIInsightsView
+            physician={detailPhys}
+            site={site}
+            onBack={() => setShowAIInsights(false)}
+          />
+        )}
       </div>
     );
   }
