@@ -18,10 +18,22 @@ const frameAncestors = rawFrameAncestors
   .filter(Boolean)
   .join(" ");
 
+const cspDirectives = [
+  "default-src 'self'",
+  apiUrl ? `connect-src 'self' ${apiUrl}` : "connect-src 'self'",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' data: blob: https:",
+  `frame-src 'self' ${frameAncestors}`,
+  `frame-ancestors ${frameAncestors}`,
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+];
+
 const securityHeaders = [
   {
     key: "Content-Security-Policy",
-    value: `frame-ancestors ${frameAncestors};`,
+    value: cspDirectives.filter(Boolean).join('; '),
   },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
