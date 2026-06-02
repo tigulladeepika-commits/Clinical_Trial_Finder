@@ -300,17 +300,18 @@ async def pubmed_lookup(
                     query, count,
                 )
             elif not found_tier0 and (not best_pmids or conf_bonus > best_conf_bonus):
+                # FIX 2: Removed early break (conf_bonus >= 50 and count >= 1).
+                # The tier 0 collection above handles deduplication and merging —
+                # the early break was preventing lower-tier queries from running
+                # and contributing PMIDs to the merged set.
                 best_count      = count
                 best_pmids      = pmids
                 best_query      = query
                 best_conf_bonus = conf_bonus
-
-                if conf_bonus >= 50 and count >= 1:
-                    logger.info(
-                        "PubMed: high-confidence match | query=%r count=%d conf_bonus=%d",
-                        query, count, conf_bonus,
-                    )
-                    break
+                logger.info(
+                    "PubMed: best match so far | query=%r count=%d conf_bonus=%d",
+                    query, count, conf_bonus,
+                )
 
     if all_tier0_pmids:
         seen = set()

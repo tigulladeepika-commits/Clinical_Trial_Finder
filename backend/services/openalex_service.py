@@ -106,7 +106,7 @@ async def openalex_lookup(name: str, client: httpx.AsyncClient) -> dict:
             OPENALEX_URL,
             params={
                 "search":   clean,
-                "per-page": 1,
+                "per-page": 5,  # FIX 4: fetch more results so we can disambiguate
                 "select":   "id,display_name,cited_by_count,summary_stats,x_concepts,topics",
                 "mailto":   "contact@aquarient.com",
             },
@@ -122,8 +122,19 @@ async def openalex_lookup(name: str, client: httpx.AsyncClient) -> dict:
             logger.info("OpenAlex: no results for %r", clean)
             return _empty()
 
-        author = items[0]
-        stats  = author.get("summary_stats", {})
+        # FIX 4: Prefer exact name match before falling back to first result.
+        # Without this, a common name like "James Lee" returns a random author
+        # who happens to rank first in OpenAlex's relevance sort.
+        clean_lower = clean.lower()
+        author = next(
+            (i for i in items if i.get("display_name", "").lower() == clean_lower),
+            items[0] if items else None,
+        )
+        if not author:
+            logger.info("OpenAlex: no usable result for %r", clean)
+            return _empty()
+
+        stats = author.get("summary_stats", {})
 
         logger.info(
             "OpenAlex: found %r | citations=%d | h_index=%d",

@@ -18,7 +18,8 @@ GROQ_MODEL   = "llama-3.3-70b-versatile"
 HTTP_TIMEOUT = 15.0
 
 
-def verify_publications(
+# FIX 1: Changed from sync to async, replaced asyncio.run() with await
+async def verify_publications(
     publications: list[dict],
     specialty: str,
     npi_state: str,
@@ -43,7 +44,8 @@ def verify_publications(
             len(papers_to_verify), physician_name,
         )
 
-    verified = asyncio.run(_groq_title_verify(papers_to_verify, specialty, client))
+    # FIX 1: was asyncio.run(...) which raises RuntimeError inside FastAPI's event loop
+    verified = await _groq_title_verify(papers_to_verify, specialty, client)
     logger.info(
         "Groq title verify: %d → %d papers (specialty=%r)",
         len(papers_to_verify), len(verified), specialty,
@@ -52,14 +54,15 @@ def verify_publications(
     return verified
 
 
+# FIX 3: Looser author name filter — handles hyphens, middle names, multiple initials
 def _author_name_filter(publications: list[dict], physician_name: str) -> list[dict]:
     parts = physician_name.strip().split()
     if len(parts) < 2:
         return publications
 
-    last_name    = parts[-1].lower()
-    first_initial = parts[0][0].lower()
-    full_initials = "".join(p[0].lower() for p in parts[:-1])
+    last_name = parts[-1].lower()
+    # Accept any initial from ANY part of the name except last (handles middle names, hyphens)
+    first_initials = set(p[0].lower() for p in parts[:-1])
 
     kept = []
     for pub in publications:
@@ -68,17 +71,11 @@ def _author_name_filter(publications: list[dict], physician_name: str) -> list[d
             kept.append(pub)
             continue
 
-        matched = False
-        for author in authors:
-            a_lower = author.lower()
-            if last_name in a_lower:
-                author_parts = a_lower.replace(",", "").split()
-                for ap in author_parts:
-                    if ap.startswith(first_initial) and ap != last_name:
-                        matched = True
-                        break
-                if matched:
-                    break
+        matched = any(
+            last_name in a.lower() and
+            any(i in a.lower() for i in first_initials)
+            for a in authors
+        )
 
         if matched:
             kept.append(pub)
