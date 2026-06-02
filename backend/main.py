@@ -177,7 +177,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 try:
     from api.trials import router as trials_router
 except ImportError:
-    from trials import router as trials_router  # type: ignore[no-redef]
+    # When importing `api.trials` fails, raise the original ImportError so
+    # the real cause (missing dependency or syntax error) is visible in logs.
+    logger.exception("Failed to import api.trials — re-raising original ImportError")
+    raise
 
 app.include_router(trials_router,                         prefix="/api/trials",      tags=["trials"])
 app.include_router(physicians_router_module.router,        prefix="/api/physicians",  tags=["physicians"])

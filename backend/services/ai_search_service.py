@@ -10,7 +10,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 import httpx
-from rapidfuzz import fuzz, process
+import difflib
 
 from services.query_cache import get_cached_query, set_cached_query
 
@@ -161,29 +161,27 @@ def _fuzzy_correct(query: str) -> Optional[str]:
             word_count, FUZZY_MAX_WORDS, query,
         )
         return None
+    # Fallback pure-Python fuzzy matching using difflib.SequenceMatcher.
+    # Compute similarity ratio against each MEDICAL_TERMS entry and
+    # accept the best candidate above the threshold.
+    q = query.lower().strip()
+    best: tuple[str, float] | None = None
+    for t in MEDICAL_TERMS:
+        score = difflib.SequenceMatcher(None, q, t.lower()).ratio() * 100
+        if score >= FUZZY_SCORE_THRESHOLD:
+            if best is None or score > best[1]:
+                best = (t, score)
 
-    result = process.extractOne(
-        query.lower(),
-        [t.lower() for t in MEDICAL_TERMS],
-        scorer=fuzz.WRatio,
-        score_cutoff=FUZZY_SCORE_THRESHOLD,
-    )
-
-    if result is None:
+    if not best:
         return None
 
-    matched_lower = result[0]
-    corrected = next(
-        (t for t in MEDICAL_TERMS if t.lower() == matched_lower),
-        matched_lower,
-    )
-
-    if corrected.lower().strip() == query.lower().strip():
+    corrected, score = best
+    if corrected.lower().strip() == q:
         return None
 
     logger.info(
-        "RapidFuzz correction | original=%r → corrected=%r score=%d",
-        query, corrected, result[1],
+        "Fuzzy correction | original=%r → corrected=%r score=%.1f",
+        query, corrected, score,
     )
     return corrected
 
