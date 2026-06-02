@@ -289,8 +289,8 @@ export default function TrialSiteMap({
           autoClose: false,
           closeOnClick: false,
           keepInView: true,
-          interactive: true,
-        });
+          autoPan: true,  // ✅ valid option, ensures popup stays visible
+      });
         // Close any open popup before opening this one so hover switches cleanly
         marker.on("mouseover", () => { map.closePopup(); marker.openPopup(); });
         marker.on("click",     () => marker.openPopup());

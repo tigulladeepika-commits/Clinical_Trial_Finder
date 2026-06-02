@@ -10,19 +10,29 @@ const apiUrl = rawApiUrl ? rawApiUrl.replace(/\/+$/, "") : "";
 const cspDirectives = [
   "default-src 'self'",
   apiUrl
-    ? `connect-src 'self' ${apiUrl} wss: ws:`
-    : "connect-src 'self' wss: ws:",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data: blob: https:",
+    ? `connect-src 'self' ${apiUrl} https://api.mqcdn.com https://www.mapquestapi.com wss: ws:`
+    : "connect-src 'self' https://api.mqcdn.com https://www.mapquestapi.com wss: ws:",
+
+  // ✅ MapQuest JS added
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://api.mqcdn.com",
+
+  // ✅ MapQuest CSS + tile fonts added
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.mqcdn.com",
+  "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.mqcdn.com",
+
+  "font-src 'self' https://fonts.gstatic.com https://api.mqcdn.com",
+
+  // ✅ MapQuest map tiles are served from mqcdn.com subdomains
+  "img-src 'self' data: blob: https: https://*.mqcdn.com",
+
   "media-src 'self' data: blob: https:",
   "frame-src 'self' https://aquarient-agentforce.my.site.com",
   "frame-ancestors 'self' https://aquarient-agentforce.my.site.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
+  // ✅ worker-src needed for MapQuest internal web workers
+  "worker-src 'self' blob:",
 ];
 
 const securityHeaders = [
