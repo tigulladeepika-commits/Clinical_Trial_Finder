@@ -7,27 +7,13 @@ const rawApiUrl =
 
 const apiUrl = rawApiUrl ? rawApiUrl.replace(/\/+$/, "") : "";
 
-const rawFrameAncestors =
-  process.env.FRAME_ANCESTORS?.trim() ||
-  process.env.NEXT_PUBLIC_FRAME_ANCESTORS?.trim() ||
-  "'self'";
-
-const frameAncestors = rawFrameAncestors
-  .split(/[,\s]+/)
-  .map((source) => source.trim())
-  .filter(Boolean)
-  // strip obvious placeholders or invalid tokens like '<URL>' or '{subdomain}'
-  .filter((s) => !/[<>\{\}]/.test(s))
-  .filter((s) => !/(URL|subdomain)/i.test(s))
-  .join(" ") || "'self'";
-
 const cspDirectives = [
   "default-src 'self'",
   apiUrl ? `connect-src 'self' ${apiUrl}` : "connect-src 'self'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob: https:",
-  `frame-src 'self' ${frameAncestors}`,
-  `frame-ancestors ${frameAncestors}`,
+  "frame-src 'self' https://aquarient-agentforce.my.site.com",
+  "frame-ancestors 'self' https://aquarient-agentforce.my.site.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -36,12 +22,13 @@ const cspDirectives = [
 const securityHeaders = [
   {
     key: "Content-Security-Policy",
-    value: cspDirectives.filter(Boolean).join('; '),
+    value: cspDirectives.join("; "),
   },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "geolocation=()" },
-  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  // ❌ REMOVED: X-Frame-Options — it overrides CSP frame-ancestors in some browsers
+  // ❌ REMOVED: Cross-Origin-Opener-Policy: same-origin — breaks cross-origin embedding
   { key: "Cross-Origin-Embedder-Policy", value: "unsafe-none" },
 ];
 
@@ -49,28 +36,14 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: process.cwd(),
   async rewrites() {
-    if (!apiUrl) {
-      return [];
-    }
-
+    if (!apiUrl) return [];
     return [
-      {
-        source: "/api/:path*",
-        destination: `${apiUrl}/api/:path*`,
-      },
-      {
-        source: "/health",
-        destination: `${apiUrl}/health`,
-      },
+      { source: "/api/:path*", destination: `${apiUrl}/api/:path*` },
+      { source: "/health", destination: `${apiUrl}/health` },
     ];
   },
   async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: securityHeaders,
-      },
-    ];
+    return [{ source: "/(.*)", headers: securityHeaders }];
   },
 };
 
