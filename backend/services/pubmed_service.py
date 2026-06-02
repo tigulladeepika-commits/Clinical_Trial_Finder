@@ -55,6 +55,8 @@ COMMON_LAST_NAMES = {
 
 def clean_name(raw_name: str) -> str:
     name = raw_name
+
+    # Strip credentials
     for cred in [
         ", M.D.", ",M.D.", " M.D.", ", MD", ",MD", " MD",
         ", D.O.", ",D.O.", " D.O.", ", DO", ",DO", " DO",
@@ -64,8 +66,19 @@ def clean_name(raw_name: str) -> str:
         ",FAHA", ", FAHA", ",FACS", ", FACS", ",FACOG", ", FACOG",
     ]:
         name = name.replace(cred, "")
+
+    # Remove honorific prefixes (Dr., Prof., etc.)
+    name = re.sub(r'\b(Dr\.?|Prof\.?|Drs\.?)\b', '', name, flags=re.IGNORECASE)
+
+    # Remove stray dashes/double-dashes (e.g. "MOHADJER --")
+    name = re.sub(r'\s*--+\s*', ' ', name)
+    name = re.sub(r'(?<!\w)-(?!\w)', ' ', name)  # lone dashes, not hyphenated names
+
+    # Remove leftover commas
     name = name.replace(",", "").strip()
-    return " ".join(w.capitalize() for w in name.split())
+
+    # Capitalize and collapse whitespace
+    return " ".join(w.capitalize() for w in name.split() if w)
 
 
 def _get_mesh_term(specialty: str) -> str:
@@ -89,12 +102,6 @@ def _build_queries(
     specialty: str,
     disease: str,
 ) -> list[tuple[str, int]]:
-    """
-    Build queries from most to least specific.
-    NO date filter — CEO requested all papers shown.
-    For VERY_COMMON names, TIER 0 uses ultra-specific specialty topics
-    that score 75 — bypassing the heavy common-name penalty.
-    """
     parts = clean.split()
     if len(parts) < 2:
         return [(f'"{clean}"[Author]', 10)]
@@ -194,10 +201,6 @@ def _build_queries(
 
 
 def _get_specific_topics(spec_lower: str, disease: str) -> list[str]:
-    """
-    Return ultra-specific topic terms for a given specialty.
-    These are niche enough that false matches are extremely rare.
-    """
     topics = []
     disease_lower = disease.lower()
 
@@ -250,10 +253,6 @@ async def pubmed_lookup(
     client: httpx.AsyncClient,
     disease: str = "",
 ) -> dict:
-    """
-    PubMed lookup — ALL papers, no time filter.
-    Uses name + disease + specialty for accurate matching.
-    """
     clean = clean_name(name)
     is_common = _is_common_name(clean)
 
@@ -300,10 +299,6 @@ async def pubmed_lookup(
                     query, count,
                 )
             elif not found_tier0 and (not best_pmids or conf_bonus > best_conf_bonus):
-                # FIX 2: Removed early break (conf_bonus >= 50 and count >= 1).
-                # The tier 0 collection above handles deduplication and merging —
-                # the early break was preventing lower-tier queries from running
-                # and contributing PMIDs to the merged set.
                 best_count      = count
                 best_pmids      = pmids
                 best_query      = query
