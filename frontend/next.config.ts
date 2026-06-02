@@ -16,7 +16,10 @@ const frameAncestors = rawFrameAncestors
   .split(/[,\s]+/)
   .map((source) => source.trim())
   .filter(Boolean)
-  .join(" ");
+  // strip obvious placeholders or invalid tokens like '<URL>' or '{subdomain}'
+  .filter((s) => !/[<>\{\}]/.test(s))
+  .filter((s) => !/(URL|subdomain)/i.test(s))
+  .join(" ") || "'self'";
 
 const cspDirectives = [
   "default-src 'self'",
