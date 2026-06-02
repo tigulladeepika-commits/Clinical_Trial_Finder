@@ -7,8 +7,22 @@ const rawApiUrl =
 
 const apiUrl = rawApiUrl ? rawApiUrl.replace(/\/+$/, "") : "";
 
+const rawFrameAncestors =
+  process.env.FRAME_ANCESTORS?.trim() ||
+  process.env.NEXT_PUBLIC_FRAME_ANCESTORS?.trim() ||
+  "'self'";
+
+const frameAncestors = rawFrameAncestors
+  .split(/[,\s]+/)
+  .map((source) => source.trim())
+  .filter(Boolean)
+  .join(" ");
+
 const securityHeaders = [
-  { key: "X-Frame-Options", value: "DENY" },
+  {
+    key: "Content-Security-Policy",
+    value: `frame-ancestors ${frameAncestors};`,
+  },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "geolocation=()" },
