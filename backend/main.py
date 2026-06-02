@@ -44,6 +44,7 @@ from api import physicians as physicians_router_module        # noqa: E402
 from api import leads as leads_router_module                  # noqa: E402
 from api import publications as publications_router_module    # noqa: E402
 from api.apollo import router as apollo_router                # noqa: E402
+from services.rate_limiting import register_rate_limiter, start_rate_limiter_purge  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,6 +71,9 @@ async def lifespan(app: FastAPI):
     zip_database.initialize(background=not cfg.ZIP_LOAD_SYNC)
     logger.info("ZIP DB initializing (sync=%s)", cfg.ZIP_LOAD_SYNC)
 
+    start_rate_limiter_purge()
+    logger.info("Rate limiting enabled | window=%ds", cfg.RATE_LIMIT_WINDOW)
+
     logger.info("Clintrial Navigator V3 ready on port %d", cfg.PORT)
     yield
     # --- shutdown ---
@@ -83,6 +87,7 @@ app = FastAPI(
     description="Clinical trial discovery + physician search",
     lifespan=lifespan,
 )
+register_rate_limiter(app)
 
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
