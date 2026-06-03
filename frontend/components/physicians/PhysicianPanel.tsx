@@ -297,11 +297,24 @@ export default function PhysicianPanel({
     return (
       <div>
         {kpiBar}
-        <div style={{ padding: 10, display: "flex", justifyContent: "flex-end", gap: 8, background: "#fff", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ padding: "10px 16px", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, background: "#fff", borderBottom: "1px solid var(--border)" }}>
           <button
-            className="pp-search-btn"
             onClick={() => setShowAIInsights((s) => !s)}
-            style={{ height: 36, padding: "6px 12px" }}
+            style={{
+              height: 36,
+              padding: "0 16px",
+              background: showAIInsights ? "var(--ink-3, #6b7280)" : "var(--blue-600, #2563eb)",
+              color: "#fff",
+              border: "none",
+              borderRadius: "var(--radius-md, 8px)",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: "var(--font-sans)",
+              letterSpacing: "0.2px",
+              whiteSpace: "nowrap",
+              transition: "all 0.16s",
+            }}
           >
             {showAIInsights ? "Back to Details" : "View AI Insights"}
           </button>

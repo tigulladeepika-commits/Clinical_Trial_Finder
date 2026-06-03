@@ -106,6 +106,8 @@ def clean_name(raw_name: str) -> str:
     name = name.replace(",", "").strip()
     # Strip leading dots e.g. '. STEPHEN C MANUS' -> 'STEPHEN C MANUS'
     name = re.sub(r'^[.\s]+', '', name).strip()
+    # Strip trailing suffix tokens e.g. "Sr." "Jr." "II" "III"
+    name = re.sub(r'\s+(Sr\.?|Jr\.?|II|III|IV)$', '', name, flags=re.IGNORECASE).strip()
     return " ".join(w.capitalize() for w in name.split() if w)
 
 

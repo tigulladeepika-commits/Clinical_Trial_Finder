@@ -97,14 +97,14 @@ async def _groq_summary(
     if publications:
         pub_lines = "\n".join(
             f"- {p.get('title', '')} ({p.get('year', 'n/d')})"
-            for p in publications[:8]
+            for p in publications[:5]
         )
-        pub_context = f"\n\nSelected publications:\n{pub_lines}"
+        pub_context = f"\n\nSelected publications (summarize themes only, do NOT quote titles):\n{pub_lines}"
     else:
         pub_context = ""
 
     prompt = (
-        f"Write a concise 3-sentence professional profile for a physician.\n"
+        f"Write a concise 2-sentence professional summary for a physician. Be brief and specific. Do NOT quote paper titles.\n"
         f"Name: {name}\n"
         f"Specialty: {specialty}\n"
         f"Clinical context: {disease}"

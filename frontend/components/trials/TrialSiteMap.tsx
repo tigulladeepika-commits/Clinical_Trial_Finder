@@ -499,12 +499,6 @@ export default function TrialSiteMap({
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
       <div className="tsm-map-wrap">
-        {trialTitle && (
-          <div className="tsm-map-header">
-            <div className="tsm-map-heading-title">{trialTitle}</div>
-            {condition && <div className="tsm-map-heading-subtitle">{condition}</div>}
-          </div>
-        )}
 
         {!mapKey || mappableSites.length === 0 ? (
           <div className="tsm-empty-map" style={{ height: 420 }}>

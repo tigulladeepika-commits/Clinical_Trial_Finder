@@ -16,6 +16,7 @@ Clinical Trial Finder is implemented as a Next.js frontend paired with a FastAPI
 - Support geographic exploration without making the map the only source of truth
 - Degrade safely when external services fail or return partial data
 - Automatically match trial conditions to medical specialties
+- Surface AI-enriched physician insights using publication metadata, OpenAlex metrics, and Groq summaries
 - Capture user interest and streamline coordinator follow-up through optional CRM integration
 
 ## Runtime Topology
@@ -38,9 +39,13 @@ Clinical Trial Finder is implemented as a Next.js frontend paired with a FastAPI
 | `backend/main.py` | FastAPI app creation, CORS setup, health endpoint |
 | `backend/api/trials.py` | API routes for trial search, sites, condition-specialty mapping |
 | `backend/api/physicians.py` | API routes for physician search and suggested specialists |
+| `backend/api/publications.py` | API routes for physician publication lookup |
 | `backend/api/leads.py` | API routes for lead capture and CRM integration |
 | `backend/services/clinicaltrials_api.py` | Upstream study fetch, mapping, local filtering with advanced gates |
 | `backend/services/nppes.py` | NPPES physician registry queries with caching and geocoding |
+| `backend/services/physician_insights_service.py` | AI enrichment pipeline for physician research and profile summaries |
+| `backend/services/openalex_service.py` | Publication and citation metrics lookup for physicians |
+| `backend/services/publication_verifier.py` | Publication relevance verification before AI summarization |
 | `backend/services/mapquest_api.py` | Fallback address geocoding via MapQuest |
 | `backend/services/zip_database.py` | US ZIP code radius queries for physician location search |
 | `backend/services/taxonomy.py` | Condition-to-specialty mapping with 4-pass resolution algorithm |
