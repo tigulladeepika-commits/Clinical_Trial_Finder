@@ -5,10 +5,11 @@ import { submitLead, fetchPhysicianEmail } from "@/lib/api";
 import type { Physician, SelectedSite } from "@/types/physician";
 
 interface Props {
-  physician:   Physician;
-  site:        SelectedSite;
-  onBack:      () => void;
-  onAddAsLead: (physician: Physician) => void;
+  physician:        Physician;
+  site:             SelectedSite;
+  onBack:           () => void;
+  onAddAsLead:      (physician: Physician) => void;
+  onViewAIInsights?: () => void;
 }
 
 function initials(name: string): string {
@@ -164,7 +165,7 @@ type LeadFlow =
   | "done"
   | "error";
 
-export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsLead }: Props) {
+export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsLead, onViewAIInsights }: Props) {
   const [leadFlow,    setLeadFlow]    = useState<LeadFlow>("idle");
   const [popupReason, setPopupReason] = useState<"not_found" | "no_email">("not_found");
 
@@ -402,6 +403,27 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
             Back
           </button>
           <div className="pdp-header-title">Physician Details</div>
+          {onViewAIInsights && (
+            <button
+              onClick={onViewAIInsights}
+              style={{
+                height: 36,
+                padding: "0 16px",
+                background: "var(--blue-600, #2563eb)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "var(--radius-md, 8px)",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontFamily: "var(--font-sans)",
+                whiteSpace: "nowrap",
+                transition: "all 0.16s",
+              }}
+            >
+              View AI Insights
+            </button>
+          )}
           <button
             className="pdp-lead-btn"
             onClick={handleAddAsLead}

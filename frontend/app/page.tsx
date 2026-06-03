@@ -570,6 +570,7 @@ function HomeInner() {
                     {siteData && !sitesLoading && selectedSite && (
                       <PhysicianPanel
                         site={selectedSite}
+                        userCondition={filtersFromUrl.condition}
                         initialRadius={selectedRadius}
                         physicians={nearbyPhysicians}
                         total={physicianTotal}
