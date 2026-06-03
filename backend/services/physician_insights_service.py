@@ -238,7 +238,7 @@ async def enrich_physician(
                 specialty       = specialty,
                 npi_state       = npi_state,
                 client          = client,
-                physician_name  = name,
+                physician_name  = pubmed_service.clean_name(name),
             )
             logger.info(
                 "Verified publications: %d / %d kept",

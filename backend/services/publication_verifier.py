@@ -68,15 +68,31 @@ def _author_name_filter(publications: list[dict], physician_name: str) -> list[d
     for pub in publications:
         authors = pub.get("authors", [])
         if not authors:
+            # Reject EuropePMC papers with no authors - unverifiable
+            if pub.get("source", "") == "Europe PMC":
+                logger.info("Author filter reject: EuropePMC no authors: %r", pub.get("title","")[:50])
+                continue
+            # PubMed no-author - keep with benefit of doubt
             kept.append(pub)
             continue
-
-        matched = any(
-            last_name in a.lower() and
-            any(i in a.lower() for i in first_initials)
-            for a in authors
-        )
-
+        # Word boundary match - prevents "burns" matching "Abushouk"
+        import re as _re
+        matched = False
+        for author in authors:
+            a_lower = author.lower()
+            # Must contain last name as whole word
+            if not _re.search(rf"\b{_re.escape(last_name)}\b", a_lower):
+                continue
+            # Last name found - check any first initial matches
+            author_parts = a_lower.replace(",", "").split()
+            for ap in author_parts:
+                if ap != last_name and ap[0] in first_initials:
+                    matched = True
+                    break
+            if matched:
+                break
+            if matched:
+                break
         if matched:
             kept.append(pub)
         else:
@@ -186,13 +202,15 @@ STRICT rules — answer NO for:
 - Health policy papers from other countries (e.g. "diabetes drugs in New Zealand")
 - Papers about skin conditions (psoriasis, alopecia, dermatology) unless specialty is Dermatology
 - Papers about myeloma, lymphoma, cancer unless specialty includes Oncology
-- Non-medical science (physics, chemistry, engineering, geology)
+- Non-medical science: physics, quantum computing, nanotechnology, semiconductor, photonics, optics, engineering, geology, chemistry (ALWAYS NO regardless of specialty)
 - Neuroscience/neurology papers unless specialty includes Neurology
-- Basic molecular biology with no clinical medicine relevance
+- Basic molecular biology, genomics, proteomics with no direct clinical application
 - Ophthalmology, eye, retina, vitreous, ocular papers unless specialty is Ophthalmology
 - Papers about nuclear disasters, Chernobyl, radiation epidemiology unless specialty is Radiation Oncology
-- Papers about infectious disease, antibiotics, bacteriology unless specialty includes Infectious Disease or the physician's specialty directly relates
+- Papers about infectious disease, antibiotics, bacteriology unless specialty includes Infectious Disease
 - Epidemiological letters or case reports from a completely different subspecialty
+- Mitochondrial biology, cellular biophysics, nanomechanics — ALWAYS NO for clinical specialties
+- Papers about electron channels, qubits, photocurrents, nanoresonators — ALWAYS NO
 
 Answer YES for:
 - Papers directly about the specialty's diseases and treatments

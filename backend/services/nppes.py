@@ -18,6 +18,16 @@ Fix v2.1.3:
     the assembled name before returning. Credentials (M.D., MD, etc.) are
     preserved because they are appended separately from the NPPES credential
     field and carry clinical meaning in the UI.
+
+Fix v2.1.4:
+  - _clean_display_name() now strips leading dots/punctuation that appear
+    in some NPPES name_prefix fields (e.g. ". DEE MCLEOD" -> "Dee Mcleod").
+  - parse_physician() now uses a smarter primary taxonomy selection:
+    first tries a taxonomy marked primary=True with a non-empty desc,
+    then falls back to any taxonomy with a non-empty desc, then falls
+    back to the first taxonomy. This fixes cases where NPPES marks a
+    blank "Specialist" entry as primary while the real specialty
+    (e.g. "Radiology - Radiation Oncology") is on another entry.
 """
 
 import logging
@@ -71,6 +81,9 @@ def _clean_display_name(raw: str) -> str:
     # Remove isolated dashes that are NOT part of a hyphenated name
     # e.g. "DAVIS -," → "DAVIS ," but keeps "Jean-Pierre"
     name = re.sub(r'(?<!\w)-(?!\w)', ' ', name)
+
+    # Remove leading dots/punctuation e.g. ". DEE MCLEOD" -> "DEE MCLEOD"
+    name = re.sub(r'^[\s\.\,]+', '', name)
 
     # Collapse multiple spaces and strip
     return " ".join(name.split()).strip()
@@ -149,9 +162,16 @@ def parse_physician(result: Dict) -> Optional[Dict]:
         (a for a in addresses if a.get("address_purpose") == "LOCATION"),
         addresses[0] if addresses else {},
     )
+    # Smarter taxonomy selection (Fix v2.1.4)
+    # Priority 1: primary=True AND non-empty desc
+    # Priority 2: any taxonomy with non-empty desc
+    # Priority 3: first taxonomy (fallback)
     primary_tax = next(
-        (t for t in taxonomies if t.get("primary")),
-        taxonomies[0] if taxonomies else {},
+        (t for t in taxonomies if t.get("primary") and str(t.get("desc") or "").strip()),
+        next(
+            (t for t in taxonomies if str(t.get("desc") or "").strip()),
+            taxonomies[0] if taxonomies else {},
+        ),
     )
 
     prefix = str(basic.get("name_prefix") or "").strip()

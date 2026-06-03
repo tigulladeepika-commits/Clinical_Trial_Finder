@@ -559,15 +559,20 @@ async def get_physician_insights(
         insights = cache.get(npi, cache_key) or {}
         logger.debug("AI insights cache hit | npi=%s disease=%r", npi, cache_key)
     else:
-        insights = await enrich_physician(
-            npi=npi,
-            name=clean_name,
-            specialty=clean_specialty,
-            disease=clean_disease,
-            groq_api_key=getattr(cfg, "GROQ_API_KEY", ""),
-            npi_state=state_code,
-        )
-        cache.set(npi, cache_key, insights)
+        broader_key = (clean_specialty or "").split(",")[0].strip()
+        if broader_key and broader_key != cache_key and cache.exists(npi, broader_key):
+            insights = cache.get(npi, broader_key) or {}
+            logger.info("AI insights cache hit (broader key) | npi=%s key=%r", npi, broader_key)
+        else:
+            insights = await enrich_physician(
+                npi=npi,
+                name=clean_name,
+                specialty=clean_specialty,
+                disease=clean_disease,
+                groq_api_key=getattr(cfg, "GROQ_API_KEY", ""),
+                npi_state=state_code,
+            )
+            cache.set(npi, cache_key, insights)
 
     async with httpx.AsyncClient(timeout=openalex_service.HTTP_TIMEOUT) as client:
         metrics = await openalex_service.openalex_lookup(clean_name, client)

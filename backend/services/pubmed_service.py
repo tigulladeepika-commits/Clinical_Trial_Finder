@@ -86,6 +86,9 @@ SPECIFIC_TOPIC_TERMS = {
 
 def clean_name(raw_name: str) -> str:
     name = raw_name
+    # Strip semicolon credentials e.g. "MD; M.Cl.Sc"
+    if ";" in name:
+        name = name.split(";")[0].strip()
 
     for cred in [
         ", M.D.", ",M.D.", " M.D.", ", MD", ",MD", " MD",
@@ -97,10 +100,12 @@ def clean_name(raw_name: str) -> str:
     ]:
         name = name.replace(cred, "")
 
-    name = re.sub(r'\b(Dr\.?|Prof\.?|Drs\.?)\b', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\b(Dr\.?|Prof\.?|Drs\.?|Mr\.?|Ms\.?|Mrs\.?)\b', '', name, flags=re.IGNORECASE)
     name = re.sub(r'\s*--+\s*', ' ', name)
     name = re.sub(r'(?<!\w)-(?!\w)', ' ', name)
     name = name.replace(",", "").strip()
+    # Strip leading dots e.g. '. STEPHEN C MANUS' -> 'STEPHEN C MANUS'
+    name = re.sub(r'^[.\s]+', '', name).strip()
     return " ".join(w.capitalize() for w in name.split() if w)
 
 
@@ -126,6 +131,38 @@ def _is_common_name(clean_name_str: str) -> bool:
 # Ordering matters: higher-confidence queries come first so Tier 0 is populated
 # as early as possible.
 
+DISEASE_MESH_MAP = {
+    "heart attack":                "Myocardial Infarction",
+    "acute myocardial infarction": "Myocardial Infarction",
+    "myocardial infarction":       "Myocardial Infarction",
+    "ami":                         "Myocardial Infarction",
+    "stroke":                      "Stroke",
+    "heart failure":               "Heart Failure",
+    "congestive heart failure":    "Heart Failure",
+    "chf":                         "Heart Failure",
+    "afib":                        "Atrial Fibrillation",
+    "atrial fibrillation":         "Atrial Fibrillation",
+    "copd":                        "Pulmonary Disease, Chronic Obstructive",
+    "diabetes":                    "Diabetes Mellitus",
+    "hypertension":                "Hypertension",
+    "high blood pressure":         "Hypertension",
+    "cancer":                      "Neoplasms",
+    "lung cancer":                 "Lung Neoplasms",
+    "breast cancer":               "Breast Neoplasms",
+    "cardiovascular disease":      "Cardiovascular Diseases",
+    "aortic stenosis":             "Aortic Valve Stenosis",
+    "pulmonary hypertension":      "Hypertension, Pulmonary",
+    "coronary artery disease":     "Coronary Artery Disease",
+    "peripheral artery disease":   "Peripheral Arterial Disease",
+    "deep vein thrombosis":        "Venous Thrombosis",
+    "dvt":                         "Venous Thrombosis",
+    "pulmonary embolism":          "Pulmonary Embolism",
+}
+
+def _normalize_disease(disease: str) -> str:
+    """Map common disease names to PubMed MeSH terms for better search results."""
+    return DISEASE_MESH_MAP.get(disease.lower().strip(), disease.strip())
+
 def _build_queries(
     clean: str,
     specialty: str,
@@ -142,7 +179,7 @@ def _build_queries(
     middle_init  = middle_name[0].upper() if middle_name else ""
 
     mesh          = _get_mesh_term(specialty)
-    disease_clean = disease.strip() if disease else ""
+    disease_clean = _normalize_disease(disease) if disease else ""
     spec_lower    = specialty.lower() if specialty else ""
 
     # Handle hyphenated first names (e.g. "Jean-Pierre" → "JP")
@@ -176,14 +213,14 @@ def _build_queries(
     # ── Tier 1 (35–64): disease/mesh broadening ───────────────────────────────
 
     if disease_clean:
-        raw.append((f'"{last} {first}"[Author] AND "{disease_clean}"[Title/Abstract]', 60))
-        raw.append((f'"{last} {first}"[Author] AND "{disease_clean}"[MeSH Terms]', 55))
+        raw.append((f'"{last} {initials}"[Author] AND "{disease_clean}"[Title/Abstract]', 60))
+        raw.append((f'"{last} {initials}"[Author] AND "{disease_clean}"[MeSH Terms]', 55))
 
     if mesh:
-        raw.append((f'"{last} {first}"[Author] AND "{mesh}"[MeSH Terms]', 50))
-        raw.append((f'"{last} {first}"[Author] AND "{mesh}"[Title/Abstract]', 45))
+        raw.append((f'"{last} {initials}"[Author] AND "{mesh}"[MeSH Terms]', 50))
+        raw.append((f'"{last} {initials}"[Author] AND "{mesh}"[Title/Abstract]', 45))
 
-    raw.append((f'"{last} {first}"[Author]', 35))
+    raw.append((f'"{last} {initials}"[Author]', 35))
 
     if disease_clean:
         raw.append((f'"{last} {full_initials}"[Author] AND "{disease_clean}"[Title/Abstract]', 30))
