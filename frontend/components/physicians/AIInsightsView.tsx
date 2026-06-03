@@ -204,8 +204,6 @@ export default function AIInsightsView({ physician, site, onBack }: Props) {
         </div>
       </section>
 
-      <section className="aiv-card">
-
       <style jsx>{`
         .aiv-page {
           padding: 24px; overflow-y: auto; height: 100%; background: #f5f7fb;
