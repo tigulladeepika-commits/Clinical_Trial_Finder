@@ -85,13 +85,6 @@ export interface PublicationItem {
   verified_author_match?: boolean;
 }
 
-export interface PublicationFetchResponse {
-  npi:          string;
-  name:         string;
-  count:        number;
-  publications: Publication[];
-}
-
 export interface PhysicianInsight {
   npi:          string;
   name:         string;

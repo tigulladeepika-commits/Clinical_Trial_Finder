@@ -14,7 +14,6 @@ import type {
   SuggestedPhysicianParams,
   PhysicianFetchResponse,
   SuggestedPhysicianFetchResponse,
-  PublicationFetchResponse,
   PhysicianInsight,
   LeadPayload,
   Physician,
@@ -145,40 +144,6 @@ export async function fetchSuggestedPhysicians(
   );
 }
 
-/**
- * Fetch recent PubMed publications for a physician.
- *
- * The NPI is used as the URL path segment (cache-friendly, unique).
- * The actual PubMed search uses name + optional specialty since PubMed
- * indexes by author name, not by NPI.
- *
- * Never throws — returns an empty publications array on any error so
- * the PhysicianDetailPanel degrades gracefully.
- */
-export async function fetchPhysicianPublications(
-  npi:      string,
-  name:     string,
-  specialty?: string | null,
-  signal?:  AbortSignal,
-): Promise<PublicationFetchResponse> {
-  const empty: PublicationFetchResponse = { npi, name, count: 0, publications: [] };
-
-  if (!npi?.trim() || !name?.trim()) return empty;
-
-  try {
-    const qs = new URLSearchParams({ name: name.trim() });
-    if (specialty?.trim()) qs.append("specialty", specialty.trim());
-
-    return await apiFetch<PublicationFetchResponse>(
-      `/api/physicians/${encodeURIComponent(npi)}/publications?${qs.toString()}`,
-      undefined,
-      signal,
-    );
-  } catch (err) {
-    console.warn(`[fetchPhysicianPublications] Failed for NPI ${npi}:`, err);
-    return empty;
-  }
-}
 
 /**
  * Fetch the NUCC specialty list for a medical condition string.

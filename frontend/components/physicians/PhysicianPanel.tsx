@@ -272,6 +272,11 @@ export default function PhysicianPanel({
     );
   }, [radius, selectedLabels, resolvedSpecialty, site.condition, onSearch]);
 
+  const openPhysicianDetail = useCallback((physician: Physician) => {
+    setShowAIInsights(false);
+    setDetailPhys(physician);
+  }, []);
+
   // ── Filtered options for dropdown search ────────────────────────────────
   const filteredOptions = useMemo(() => {
     const q = dropdownSearch.toLowerCase();
@@ -707,7 +712,7 @@ export default function PhysicianPanel({
                 physician={p}
                 nctId={site.nct_id}
                 siteName={site.facility}
-                onClick={(phys) => setDetailPhys(phys)}
+                onClick={openPhysicianDetail}
               />
             </div>
           ))}
@@ -767,7 +772,7 @@ export default function PhysicianPanel({
                     physician={p}
                     nctId={site.nct_id}
                     siteName={site.facility}
-                    onClick={(phys) => setDetailPhys(phys)}
+                    onClick={openPhysicianDetail}
                   />
                 </div>
               ))}
