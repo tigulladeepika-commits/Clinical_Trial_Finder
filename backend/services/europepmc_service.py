@@ -14,15 +14,47 @@ RETRY_DELAY   = 1.5
 
 
 def _clean_name(raw_name: str) -> str:
+    """
+    Clean a raw physician name for use in Europe PMC author search.
+
+    Handles:
+      - Credentials (M.D., MD, Ph.D., DO, MPH, FACC, etc.)
+      - Honorific prefixes (Dr., Mr., Mrs., Prof.)
+      - Leading/trailing dash sequences e.g. "-- WILLIAM BURTON DAVIS --"
+      - Isolated dashes not part of hyphenated names
+      - Leftover commas and excess whitespace
+      - Title-cases the result
+    """
     name = raw_name
+
+    # Remove credentials
     for cred in [
         ", M.D.", ",M.D.", " M.D.", ", MD", ",MD", " MD",
-        ", DO", ",DO", " DO", ", Ph.D.", ", PhD",
-        ",FACC", ", FACC", ",FSCAI", ", FSCAI",
+        ", D.O.", ",D.O.", " D.O.", ", DO", ",DO", " DO",
+        ", Ph.D.", ", PhD", ", M.D", ",M.D",
+        ", MD, MPH", ",MD,MPH", " MD MPH", ", MPH", ",MPH", " MPH",
+        ",FACC", ", FACC", ",FSCAI", ", FSCAI", ",FACP", ", FACP",
+        ",FAHA", ", FAHA", ",FACS", ", FACS", ",FACOG", ", FACOG",
     ]:
         name = name.replace(cred, "")
+
+    # Remove honorific titles
+    name = re.sub(
+        r'\b(Dr\.?|Mr\.?|Mrs\.?|Ms\.?|Prof\.?|Drs\.?)\b',
+        '',
+        name,
+        flags=re.IGNORECASE,
+    )
+
+    # Remove leading/trailing dash sequences e.g. "-- WILLIAM BURTON DAVIS --"
+    name = re.sub(r'\s*--+\s*', ' ', name)
+
+    # Remove isolated dashes not part of hyphenated names
+    name = re.sub(r'(?<!\w)-(?!\w)', ' ', name)
+
+    # Remove leftover commas, collapse whitespace, title-case
     name = name.replace(",", "").strip()
-    return " ".join(w.capitalize() for w in name.split())
+    return " ".join(w.capitalize() for w in name.split() if w)
 
 
 def _build_queries(

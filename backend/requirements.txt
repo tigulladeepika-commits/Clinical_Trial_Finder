@@ -10,4 +10,5 @@ email-validator==2.2.0
 python-dotenv==1.0.1
 geopy
 slowapi
+requests
 # rapidfuzz removed due to platform wheel incompatibilities; using difflib fallback

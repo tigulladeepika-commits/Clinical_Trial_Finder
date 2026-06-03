@@ -10,8 +10,8 @@ const apiUrl = rawApiUrl ? rawApiUrl.replace(/\/+$/, "") : "";
 const cspDirectives = [
   "default-src 'self'",
   apiUrl
-    ? `connect-src 'self' ${apiUrl} https://api.mqcdn.com https://www.mapquestapi.com wss: ws:`
-    : "connect-src 'self' https://api.mqcdn.com https://www.mapquestapi.com wss: ws:",
+    ? `connect-src 'self' ${apiUrl} https://*.mqcdn.com https://*.mapquestapi.com https://attribution.aws.mapquest.com wss: ws:`
+    : "connect-src 'self' https://*.mqcdn.com https://*.mapquestapi.com https://attribution.aws.mapquest.com wss: ws:",
 
   // ✅ MapQuest JS added
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://api.mqcdn.com",

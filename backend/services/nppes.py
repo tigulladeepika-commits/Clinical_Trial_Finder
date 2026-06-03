@@ -10,11 +10,18 @@ Fix v2.1.2:
   - geocode_address() no longer stores the ZIP centroid fallback in the
     LRU cache — caching a centroid under an address key would prevent a
     future successful geocode of the same address after a transient error.
-  - No changes to parse_physician(), fetch(), fetch_with_retry(), or
-    apply_coord_jitter().
+  - No changes to fetch(), fetch_with_retry(), or apply_coord_jitter().
+
+Fix v2.1.3:
+  - parse_physician() now calls _clean_display_name() to strip NPI registry
+    artifacts (leading/trailing dashes, honorific prefixes like Dr./Mr.) from
+    the assembled name before returning. Credentials (M.D., MD, etc.) are
+    preserved because they are appended separately from the NPPES credential
+    field and carry clinical meaning in the UI.
 """
 
 import logging
+import re
 import time
 from typing import Dict, List, Optional, Tuple
 
@@ -33,6 +40,44 @@ NPPES_BASE_URL = "https://npiregistry.cms.hhs.gov/api/"
 _addr_cache = LRUCache(cfg.GEOCODE_CACHE_SIZE)
 
 
+# ── Display-name cleaning ─────────────────────────────────────────────────────
+
+def _clean_display_name(raw: str) -> str:
+    """
+    Strip NPI registry artifacts from an assembled physician name.
+
+    Handles:
+      - Leading/trailing dash sequences  e.g. "-- WILLIAM BURTON DAVIS --"
+      - Honorific prefixes               e.g. "Dr.", "Mr.", "Mrs.", "Prof."
+      - Isolated dashes that are not     part of a hyphenated name
+      - Excess whitespace
+
+    Credentials (M.D., MD, etc.) are NOT removed here — they are appended
+    separately in parse_physician() from the NPPES credential field.
+    """
+    name = raw
+
+    # Remove -- artifacts like "-- WILLIAM --" or "--ALAN--"
+    name = re.sub(r'\s*--+\s*', ' ', name)
+
+    # Remove honorific titles (Dr., Mr., Mrs., Ms., Prof.)
+    name = re.sub(
+        r'\b(Dr\.?|Mr\.?|Mrs\.?|Ms\.?|Prof\.?)\b',
+        '',
+        name,
+        flags=re.IGNORECASE,
+    )
+
+    # Remove isolated dashes that are NOT part of a hyphenated name
+    # e.g. "DAVIS -," → "DAVIS ," but keeps "Jean-Pierre"
+    name = re.sub(r'(?<!\w)-(?!\w)', ' ', name)
+
+    # Collapse multiple spaces and strip
+    return " ".join(name.split()).strip()
+
+
+# ── NPPES fetch helpers ───────────────────────────────────────────────────────
+
 def fetch(params: Dict) -> Tuple[List, int]:
     """
     Fetch physician data from NPPES registry.
@@ -41,7 +86,7 @@ def fetch(params: Dict) -> Tuple[List, int]:
         params: Query parameters (postal_code, taxonomy_description, etc.)
 
     Returns:
-        Tuple of (results list, total count) 
+        Tuple of (results list, total count)
     """
     clean = {k: str(v).strip() for k, v in params.items() if v and str(v).strip()}
     query = {
@@ -96,8 +141,8 @@ def parse_physician(result: Dict) -> Optional[Dict]:
     Returns:
         Processed physician dict or None
     """
-    basic = result.get("basic", {})
-    addresses = result.get("addresses", [])
+    basic      = result.get("basic", {})
+    addresses  = result.get("addresses", [])
     taxonomies = result.get("taxonomies", [])
 
     addr = next(
@@ -110,23 +155,28 @@ def parse_physician(result: Dict) -> Optional[Dict]:
     )
 
     prefix = str(basic.get("name_prefix") or "").strip()
-    first = str(basic.get("first_name") or "").strip()
+    first  = str(basic.get("first_name")  or "").strip()
     middle = str(basic.get("middle_name") or "").strip()
-    last = str(basic.get("last_name") or "").strip()
+    last   = str(basic.get("last_name")   or "").strip()
     suffix = str(basic.get("name_suffix") or "").strip()
-    cred = str(basic.get("credential") or "").strip()
+    cred   = str(basic.get("credential")  or "").strip()
 
+    # Assemble raw name from NPPES parts, then strip registry artifacts
+    # (dashes, honorifics) before presenting to the UI.
     name_parts = [prefix, first, middle, last, suffix]
-    name = " ".join([p for p in name_parts if p]).strip() or "Unknown Provider"
+    raw_name   = " ".join([p for p in name_parts if p]).strip() or "Unknown Provider"
+    name       = _clean_display_name(raw_name)
+
+    # Re-attach credential (M.D., MD, etc.) — kept intentionally for display.
     if cred:
         name += f", {cred}"
 
-    addr1 = str(addr.get("address_1") or "")
-    addr2 = str(addr.get("address_2") or "")
-    city = str(addr.get("city") or "")
-    state = str(addr.get("state") or "")
-    zipcode = str(addr.get("postal_code") or "")[:5]
-    phone = str(addr.get("telephone_number") or "")
+    addr1    = str(addr.get("address_1")        or "")
+    addr2    = str(addr.get("address_2")        or "")
+    city     = str(addr.get("city")             or "")
+    state    = str(addr.get("state")            or "")
+    zipcode  = str(addr.get("postal_code")      or "")[:5]
+    phone    = str(addr.get("telephone_number") or "")
 
     full_address = ", ".join(p for p in [addr1, addr2, city, state, zipcode] if p)
     all_tax = [
@@ -135,30 +185,32 @@ def parse_physician(result: Dict) -> Optional[Dict]:
     ]
 
     return {
-        "npi": str(result.get("number") or ""),
-        "name": name,
+        "npi":           str(result.get("number") or ""),
+        "name":          name,
         "taxonomy_code": str(primary_tax.get("code") or ""),
         "taxonomy_desc": str(primary_tax.get("desc") or ""),
         "all_taxonomies": all_tax,
-        "address": full_address,
-        "address_1": addr1,
-        "city": city,
-        "state": state,
-        "zip": zipcode,
-        "phone": phone,
-        "lat": None,
-        "lng": None,
+        "address":       full_address,
+        "address_1":     addr1,
+        "city":          city,
+        "state":         state,
+        "zip":           zipcode,
+        "phone":         phone,
+        "lat":           None,
+        "lng":           None,
         "distance_miles": None,
         # _geocoded is set by batch_geocode_for_display(); False here means
         # "only ZIP centroid coords assigned so far" (set in app.py).
-        "_geocoded": False,
+        "_geocoded":     False,
     }
 
 
+# ── Geocoding ─────────────────────────────────────────────────────────────────
+
 def geocode_address(
-    addr1: str,
-    city: str,
-    state: str,
+    addr1:   str,
+    city:    str,
+    state:   str,
     zipcode: str,
 ) -> Tuple[Optional[float], Optional[float], bool]:
     """
@@ -166,9 +218,9 @@ def geocode_address(
     Successful results are cached to avoid repeated requests.
 
     Args:
-        addr1: Street address
-        city: City name
-        state: State code
+        addr1:   Street address
+        city:    City name
+        state:   State code
         zipcode: ZIP code
 
     Returns:
@@ -178,7 +230,12 @@ def geocode_address(
     """
     from services import zip_database
 
-    key = f"{addr1.lower().strip()},{city.lower().strip()},{state.upper().strip()},{zipcode[:5]}"
+    key = (
+        f"{addr1.lower().strip()},"
+        f"{city.lower().strip()},"
+        f"{state.upper().strip()},"
+        f"{zipcode[:5]}"
+    )
     cached = _addr_cache.get(key)
     if cached is not None:
         # Cache only holds address-level successes
@@ -190,8 +247,8 @@ def geocode_address(
             resp = http_client.get(
                 "https://api.geoapify.com/v1/geocode/search",
                 params={
-                    "text": query,
-                    "limit": 1,
+                    "text":   query,
+                    "limit":  1,
                     "filter": "countrycode:us",
                     "apiKey": cfg.GEOAPIFY_API_KEY,
                 },
@@ -237,8 +294,8 @@ def batch_geocode_for_display(physicians: List[Dict]) -> None:
             p["address_1"], p["city"], p["state"], p["zip"]
         )
         if lat is not None and lng is not None:
-            p["lat"] = lat
-            p["lng"] = lng
+            p["lat"]      = lat
+            p["lng"]      = lng
             p["_geocoded"] = is_address_level
         else:
             p["_geocoded"] = False
@@ -262,10 +319,10 @@ def apply_coord_jitter(physicians: List[Dict]) -> None:
         lat, lng = p.get("lat"), p.get("lng")
         if lat is None or lng is None:
             continue
-        key = (round(lat, 6), round(lng, 6))
+        key   = (round(lat, 6), round(lng, 6))
         count = seen.get(key, 0)
         if count > 0:
-            angle = (count * 137.5) % 360
+            angle  = (count * 137.5) % 360
             radius = 0.00008 * math.ceil(count / 4)
             p["lat"] = lat + radius * math.cos(math.radians(angle))
             p["lng"] = lng + radius * math.sin(math.radians(angle))
