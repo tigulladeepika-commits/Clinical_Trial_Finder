@@ -204,19 +204,7 @@ export default function AIInsightsView({ physician, site, onBack }: Props) {
         </div>
       </section>
 
-      {/* Awards */}
       <section className="aiv-card">
-        <h2>🏆 Awards & Recognition</h2>
-        {insights.awards?.length ? (
-          <ul className="aiv-awards">
-            {insights.awards.map((award, idx) => (
-              <li key={idx}>{award}</li>
-            ))}
-          </ul>
-        ) : (
-          <p>No awards data available currently.</p>
-        )}
-      </section>
 
       <style jsx>{`
         .aiv-page {
@@ -358,7 +346,6 @@ export default function AIInsightsView({ physician, site, onBack }: Props) {
           font-weight: 600; white-space: nowrap;
         }
 
-        .aiv-awards { padding-left: 20px; }
 
         @media (max-width: 768px) {
           .aiv-page { padding: 16px; }
