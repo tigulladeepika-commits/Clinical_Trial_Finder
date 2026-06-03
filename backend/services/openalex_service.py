@@ -196,6 +196,28 @@ async def openalex_lookup(name: str, client: httpx.AsyncClient) -> dict:
 
         logger.info("OpenAlex: research_areas=%s", research_areas)
 
+        # Validate research areas are medical — reject engineering/CS researchers
+        _MEDICAL_FIELDS = {
+            "medicine", "biology", "chemistry", "pharmacology", "psychology",
+            "cardiology", "neurology", "oncology", "surgery", "pathology",
+            "immunology", "biochemistry", "epidemiology", "health", "clinical",
+            "medical", "disease", "patient", "treatment", "therapy", "diagnosis",
+            "radiology", "pediatrics", "dermatology", "urology", "gastroenterology",
+        }
+        _NON_MEDICAL_FIELDS = {
+            "software", "engineering", "computer science", "programming",
+            "electrical", "mechanical", "physics", "mathematics",
+            "electronics", "semiconductor", "nanotechnology", "quantum",
+        }
+        if research_areas:
+            areas_lower = " ".join(research_areas).lower()
+            medical_hits = sum(1 for f in _MEDICAL_FIELDS if f in areas_lower)
+            non_medical_hits = sum(1 for f in _NON_MEDICAL_FIELDS if f in areas_lower)
+            if medical_hits == 0 and non_medical_hits > 0:
+                logger.info("OpenAlex: REJECTED non-medical areas=%s", research_areas)
+                research_areas = []
+
+
         return {
             "research_areas":         research_areas,
             "total_citations":        author.get("cited_by_count", 0),
