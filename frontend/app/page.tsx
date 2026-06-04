@@ -269,8 +269,6 @@ function HomeInner() {
           display: grid;
           grid-template-columns: 30% 70%;
           align-items: start;
-          min-height: calc(100vh - ${SEARCH_H}px);
-          overflow: hidden;
           animation: fadeIn 0.25s ease both;
         }
         @media (max-width: 900px) {
@@ -285,7 +283,6 @@ function HomeInner() {
           position: sticky; top: ${SEARCH_H}px;
           max-height: calc(100vh - ${SEARCH_H}px);
           overflow-y: auto;
-          min-height: 0;
         }
 
         /* ── Right panel ── */
