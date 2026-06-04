@@ -169,6 +169,7 @@ def _build_queries(
     clean: str,
     specialty: str,
     disease: str,
+    common_name: bool = False,
 ) -> list[tuple[str, int]]:
     parts = clean.split()
     if len(parts) < 2:
@@ -198,6 +199,12 @@ def _build_queries(
     # ── Tier 0 (conf_bonus >= 65): specific-topic + high-precision author forms ──
 
     specific_topics = _get_specific_topics(spec_lower, disease_clean)
+    # Full first name query e.g. "Mouhamed Sabouni[Author]" (no quotes)
+    # PubMed matches partial author names - finds MA/AMR style indexing
+    # Only for uncommon names - avoids false matches for Chen/Kim/Wang etc.
+    if first and last and not common_name:
+        raw_full_name = f"{first} {last}[Author]"
+        raw.insert(0, (raw_full_name, 80))
     for topic in specific_topics:
         raw.append((f'"{last} {initials}"[Author] AND "{topic}"[Title/Abstract]', 75))
         if full_initials != initials:
@@ -325,7 +332,7 @@ async def pubmed_lookup(
         clean, specialty, disease, is_common,
     )
 
-    queries = _build_queries(clean, specialty, disease)
+    queries = _build_queries(clean, specialty, disease, common_name=is_common)
 
     best_pmids      : list[str] = []
     best_query      : str       = ""

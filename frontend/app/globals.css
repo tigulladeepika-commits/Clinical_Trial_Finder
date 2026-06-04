@@ -87,12 +87,27 @@ button, input, select, textarea {
   font-family: var(--font-sans);
 }
 
-/* Invisible scrollbar */
+/* Scrollbars — visible on scrollable panels, hidden elsewhere */
 * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-mid) transparent;
+}
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-mid);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* Hide scrollbars on small UI elements that shouldn't show them */
+button, input, select, .badge, .chip, .btn {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-*::-webkit-scrollbar { display: none; }
+button::-webkit-scrollbar,
+input::-webkit-scrollbar,
+select::-webkit-scrollbar { display: none; }
 
 :focus-visible {
   outline: 2px solid var(--blue-500);

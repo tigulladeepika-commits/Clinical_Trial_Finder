@@ -289,6 +289,9 @@ function HomeInner() {
         .detail-panel {
           display: flex; flex-direction: column;
           background: var(--surface); min-width: 0;
+          position: sticky; top: var(--search-h);
+          max-height: calc(100vh - var(--search-h));
+          overflow-y: auto;
         }
 
         /* ── Trial detail header ── */
