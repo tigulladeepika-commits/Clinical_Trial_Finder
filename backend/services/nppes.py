@@ -28,6 +28,21 @@ Fix v2.1.4:
     back to the first taxonomy. This fixes cases where NPPES marks a
     blank "Specialist" entry as primary while the real specialty
     (e.g. "Radiology - Radiation Oncology") is on another entry.
+
+Fix v2.1.5:
+  - _is_generic_desc() introduced to identify overly broad taxonomy
+    descriptions (e.g. "Allopathic & Osteopathic Physicians", "Specialist")
+    that carry no clinical meaning in the UI.
+  - parse_physician() taxonomy selection now deprioritises generic descs:
+    Priority 1 — primary=True with a specific (non-generic) desc
+    Priority 2 — any taxonomy with a specific (non-generic) desc
+    Priority 3 — primary=True with any non-empty desc
+    Priority 4 — any taxonomy with any non-empty desc
+    Priority 5 — first taxonomy (absolute fallback)
+  This fixes cases where a primary=True entry has a broad parent-category
+  desc (e.g. "Allopathic & Osteopathic Physicians") while the real clinical
+  specialty (e.g. "Radiology - Radiation Oncology") sits on a non-primary
+  entry — the specific specialty is now always preferred for display.
 """
 
 import logging
@@ -48,6 +63,24 @@ NPPES_BASE_URL = "https://npiregistry.cms.hhs.gov/api/"
 
 # Cache for geocoded addresses — only stores successful address-level results.
 _addr_cache = LRUCache(cfg.GEOCODE_CACHE_SIZE)
+
+# Generic taxonomy descriptions that carry no clinical meaning in the UI.
+# When NPPES marks one of these as primary=True, we look for a more specific
+# specialty on another taxonomy entry instead.
+_GENERIC_TAXONOMY_DESCS = frozenset({
+    "",
+    "allopathic & osteopathic physicians",
+    "specialist",
+    "doctor of medicine",
+    "physician",
+    "medical doctor",
+    "doctors of medicine",
+})
+
+
+def _is_generic_desc(desc: str) -> bool:
+    """Return True if the taxonomy description is too broad to be useful."""
+    return desc.lower().strip() in _GENERIC_TAXONOMY_DESCS
 
 
 # ── Display-name cleaning ─────────────────────────────────────────────────────
@@ -162,16 +195,41 @@ def parse_physician(result: Dict) -> Optional[Dict]:
         (a for a in addresses if a.get("address_purpose") == "LOCATION"),
         addresses[0] if addresses else {},
     )
-    # Smarter taxonomy selection (Fix v2.1.4)
-    # Priority 1: primary=True AND non-empty desc
-    # Priority 2: any taxonomy with non-empty desc
-    # Priority 3: first taxonomy (fallback)
-    primary_tax = next(
-        (t for t in taxonomies if t.get("primary") and str(t.get("desc") or "").strip()),
+
+    # Smarter taxonomy selection (Fix v2.1.5)
+    # Priority 1: primary=True AND specific (non-generic) desc
+    # Priority 2: any taxonomy with a specific (non-generic) desc
+    # Priority 3: primary=True with any non-empty desc
+    # Priority 4: any taxonomy with any non-empty desc
+    # Priority 5: first taxonomy (absolute fallback)
+    primary_tax = (
         next(
+            (
+                t for t in taxonomies
+                if t.get("primary")
+                and not _is_generic_desc(str(t.get("desc") or ""))
+            ),
+            None,
+        )
+        or next(
+            (
+                t for t in taxonomies
+                if not _is_generic_desc(str(t.get("desc") or ""))
+            ),
+            None,
+        )
+        or next(
+            (
+                t for t in taxonomies
+                if t.get("primary") and str(t.get("desc") or "").strip()
+            ),
+            None,
+        )
+        or next(
             (t for t in taxonomies if str(t.get("desc") or "").strip()),
-            taxonomies[0] if taxonomies else {},
-        ),
+            None,
+        )
+        or (taxonomies[0] if taxonomies else {})
     )
 
     prefix = str(basic.get("name_prefix") or "").strip()

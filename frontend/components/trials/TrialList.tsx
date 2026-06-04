@@ -46,7 +46,7 @@ function TrialList({ trials, totalCount, selectedId, onSelect, hasMore, onLoadMo
           color: var(--blue-200);
           border: 1px solid rgba(255,255,255,0.1);
         }
-        .tl-list { flex: 1; overflow-y: auto; }
+        .tl-list { flex: 1; overflow-y: auto; min-height: 0; }
         .tl-item {
           padding: 13px 16px;
           border-bottom: 1px solid var(--border);

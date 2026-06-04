@@ -705,7 +705,7 @@ export default function PhysicianPanel({
         {/* Count bar */}
         {!loading && physicians.length > 0 && (
           <div className="pp-count-bar">
-            <span><strong>{physicians.length}</strong> of <strong>{total}</strong> physicians</span>
+            <span><strong>{physicians.length}</strong> of <strong>{total}</strong> HCPs/HCOs</span>
             {hasMore && (
               <button className="pp-load-more-top" onClick={() => setShowMainModal(true)} disabled={loading}>
                 Load More
@@ -762,13 +762,13 @@ export default function PhysicianPanel({
           )}
         </div>
 
-        {/* Suggested Physicians section */}
+        {/* Recommended HCPs/HCOs section */}
         {(suggested.searched || suggested.loading) && (
           <>
             <div className="pp-section-hdr">
               <div>
                 <div className="pp-section-title">
-                  ⭐ Suggested Physicians
+                  ⭐ Recommended HCPs/HCOs
                   <span className="pp-section-badge">Trial-related</span>
                 </div>
                 <div className="pp-section-sub">
@@ -786,7 +786,7 @@ export default function PhysicianPanel({
               {suggested.loading && (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", color: "var(--muted)", fontSize: 12, fontWeight: 600 }}>
                   <div className="pp-spinner-sm" />
-                  Finding suggested physicians…
+                  Finding recommended HCPs/HCOs…
                 </div>
               )}
               {!suggested.loading && suggested.error && (
