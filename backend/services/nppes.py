@@ -53,6 +53,7 @@ from requests import Timeout
 from core.config import cfg
 from core.helpers import LRUCache
 from services.http_client import http_client
+from services import taxonomy as tax_service
  
  
 logger = logging.getLogger(__name__)
@@ -309,11 +310,17 @@ def parse_physician(result: Dict) -> Optional[Dict]:
         for t in taxonomies
     ]
  
+    # If NPPES returned desc=None for the taxonomy, look it up from NUCC CSV
+    tax_code = str(primary_tax.get("code") or "")
+    tax_desc = str(primary_tax.get("desc") or "").strip()
+    if not tax_desc or tax_desc.lower() == "none":
+        tax_desc = tax_service.get_desc_by_code(tax_code)
+
     return {
         "npi":            str(result.get("number") or ""),
         "name":           name,
-        "taxonomy_code":  str(primary_tax.get("code") or ""),
-        "taxonomy_desc":  str(primary_tax.get("desc") or ""),
+        "taxonomy_code":  tax_code,
+        "taxonomy_desc":  tax_desc,
         "all_taxonomies": all_tax,
         "address":        full_address,
         "address_1":      addr1,

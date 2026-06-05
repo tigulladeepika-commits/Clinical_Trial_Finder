@@ -972,6 +972,15 @@ def _build_entries(rows: List[tuple]) -> List[Dict]:
     return out
 
 
+# Code -> display name lookup built from NUCC CSV
+_code_to_desc: dict = {}
+
+
+def get_desc_by_code(code: str) -> str:
+    """Return display name for a NUCC taxonomy code, empty string if unknown."""
+    return _code_to_desc.get(str(code or "").strip(), "")
+
+
 def _load_taxonomy_background() -> None:
     global _taxonomy_loaded, _taxonomy_source
 
@@ -989,10 +998,10 @@ def _load_taxonomy_background() -> None:
     try:
         resp = http_client.get(NUCC_CSV_URL, timeout=30)
         resp.raise_for_status()
-        reader = csv.DictReader(io.StringIO(resp.text))
+        all_rows = list(csv.DictReader(io.StringIO(resp.text)))
         rows = [
             (r.get("Classification", "").strip(), r.get("Specialization", "").strip())
-            for r in reader
+            for r in all_rows
             if r.get("Classification", "").strip()
         ]
         if rows:
@@ -1002,6 +1011,17 @@ def _load_taxonomy_background() -> None:
                 _taxonomy_entries[:] = live
                 _taxonomy_source = "NUCC CSV"
             logger.info("NUCC CSV loaded: %d entries", len(live))
+        # Build code -> display name lookup
+        global _code_to_desc
+        code_map = {}
+        for r in all_rows:
+            code = r.get("Code", "").strip()
+            display = r.get("Display Name", "").strip()
+            if code and display:
+                code_map[code] = display
+        if code_map:
+            _code_to_desc = code_map
+            logger.info("NUCC code->desc lookup built: %d codes", len(code_map))
     except Exception as e:
         logger.warning("NUCC CSV fetch failed: %s — keeping seed", e)
 
