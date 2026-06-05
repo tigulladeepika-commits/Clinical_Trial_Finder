@@ -334,14 +334,10 @@ async def _search_with_auto_relax(
             result_l3["filter_relaxed"] = "general_specialty"
             return result_l3
 
-    # ── Level 4: absolute last resort — Internal Medicine ───────────────────
-    # Internal Medicine is the parent of most specialties in NUCC taxonomy
-    # and guarantees results in virtually any metro area
-    result_l4 = await _run_physician_search(
-        lat, lng, radius, ["Internal Medicine"], max_display
-    )
-    result_l4["filter_relaxed"] = "internal_medicine_fallback"
-    return result_l4
+    # Level 4 removed — clinical trial platform shows only relevant specialists
+    # If no specialists found after Level 1-3, return empty result
+    # Frontend will show "No physicians found" message
+    return result
 
 
 # ── /search ───────────────────────────────────────────────────────────────────
@@ -499,13 +495,13 @@ async def suggested_physicians(
                 condition, all_resolved,
             )
 
-    # Level 3: absolute last resort
+    # Level 3 fallback removed — return empty if no relevant specialties found
     if not all_resolved:
-        all_resolved = ["Internal Medicine"]
         logger.info(
-            "Suggested /suggested | condition=%r fell back to Internal Medicine",
+            "Suggested /suggested | condition=%r - no specialties resolved, skipping",
             condition,
         )
+        return {"physicians": [], "total": 0, "has_more": False}
 
     query_descriptions = all_resolved[: cfg.MAX_TAX_QUERIES + 2]
     exclude_set = set(exclude_npis or [])

@@ -107,9 +107,9 @@ async def _groq_summary(
         f"Write a concise 2-sentence professional summary for a physician. Be brief and specific. Do NOT quote paper titles.\n"
         f"Name: {name}\n"
         f"Specialty: {specialty}\n"
-        f"Clinical context: {disease}"
         f"{pub_context}\n\n"
-        "Focus on their specialty, clinical expertise, and research contributions. "
+        "Focus ONLY on their specialty and actual research contributions listed above. "
+        "Do NOT assume clinical expertise not supported by the publications. "
         "Do not invent facts. Return plain text only — no JSON, no bullet points."
     )
 
