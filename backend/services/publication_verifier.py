@@ -45,7 +45,7 @@ async def verify_publications(
         )
 
     # FIX 1: was asyncio.run(...) which raises RuntimeError inside FastAPI's event loop
-    verified = await _groq_title_verify(papers_to_verify, specialty, client)
+    verified = await _groq_title_verify(papers_to_verify, specialty, client, physician_name=physician_name)
     logger.info(
         "Groq title verify: %d → %d papers (specialty=%r)",
         len(papers_to_verify), len(verified), specialty,
@@ -78,19 +78,42 @@ def _author_name_filter(publications: list[dict], physician_name: str) -> list[d
         # Word boundary match - prevents "burns" matching "Abushouk"
         import re as _re
         matched = False
+        # Full first name from physician (e.g. "Earl" from "Earl James Brink")
+        physician_first_full = parts[0].lower() if parts else ""
         for author in authors:
             a_lower = author.lower()
             # Must contain last name as whole word
             if not _re.search(rf"\b{_re.escape(last_name)}\b", a_lower):
                 continue
-            # Last name found - check any first initial matches
+            # Last name found — now check first name
             author_parts = a_lower.replace(",", "").split()
-            for ap in author_parts:
-                if ap != last_name and ap[0] in first_initials:
+            # If author string contains a full word >= 3 chars that isn't the
+            # last name, treat it as a full first name and require exact match.
+            author_first_candidates = [
+                ap for ap in author_parts
+                if ap != last_name and len(ap) >= 3
+            ]
+            if author_first_candidates and physician_first_full:
+                # Full first name available on both sides — require exact match
+                if any(af == physician_first_full for af in author_first_candidates):
                     matched = True
                     break
-            if matched:
-                break
+                # Also accept if physician first name starts with author initial
+                # (handles "E Brink" matching "Earl Brink") — but NOT "E.E. Brink"
+                author_initials_only = [
+                    ap for ap in author_parts
+                    if ap != last_name and len(ap) == 1
+                ]
+                if author_initials_only:
+                    if any(ai == physician_first_full[0] for ai in author_initials_only):
+                        matched = True
+                        break
+            else:
+                # Fallback: initial match (original logic)
+                for ap in author_parts:
+                    if ap != last_name and ap[0] in first_initials:
+                        matched = True
+                        break
             if matched:
                 break
         if matched:
@@ -150,6 +173,15 @@ def _affiliation_filter(publications: list[dict], npi_state: str) -> list[dict]:
         affiliation = pub.get("affiliation", "").lower()
 
         if not affiliation:
+            # Fix: reject old papers with no affiliation — high collision risk.
+            # A physician active today is unlikely to have published before 1975.
+            pub_year = int(pub.get("year") or pub.get("pub_year") or 9999)
+            if pub_year < 1975:
+                logger.info(
+                    "Affiliation reject (no affiliation + old paper %d): %r",
+                    pub_year, pub.get("title", "")[:60],
+                )
+                continue
             pub["affiliation_verified"] = None
             kept.append(pub)
             continue
@@ -182,18 +214,22 @@ async def _groq_title_verify(
     publications: list[dict],
     specialty: str,
     client: httpx.AsyncClient,
+    physician_name: str = "",
 ) -> list[dict]:
     if not publications or not GROQ_API_KEY:
         return publications
 
     titles_text = "\n".join(
-        f"{i+1}. {pub.get('title', 'Unknown')}"
+        f"{i+1}. [{pub.get('year', '?')}] {pub.get('title', 'Unknown')}"
         for i, pub in enumerate(publications)
     )
+    name_context = f"Physician name: {physician_name}" if physician_name else ""
 
     prompt = f"""You are a strict medical publication verifier for a US clinical trial platform.
 
 Physician specialty: {specialty}
+{name_context}
+IMPORTANT: Papers before 1975 are almost certainly from a different researcher - answer NO for any paper before 1975.
 
 For each paper title, answer YES if the paper is directly relevant to this medical specialty, or NO if it is not.
 

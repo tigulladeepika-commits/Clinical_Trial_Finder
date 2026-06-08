@@ -65,6 +65,10 @@ COMMON_LAST_NAMES = {
     "taylor", "anderson", "thomas", "jackson", "white",
     "harris", "martin", "thompson", "moore", "robinson",
     "drury",
+    # Collision-prone surnames added for disambiguation
+    "brink", "burns", "cook", "stone", "young", "price", "fox",
+    "hunt", "ross", "bell", "gray", "cole", "reed", "ward",
+    "morgan", "cooper", "bailey", "brooks", "kelly", "sanders",
 }
 
 VERY_COMMON_LAST_NAMES = {
