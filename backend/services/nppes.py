@@ -117,6 +117,15 @@ def _select_primary_taxonomy(taxonomies: list) -> dict:
     """
     if not taxonomies:
         return {}
+    # Issues 1 & 2: enrich desc for ALL entries before priority scoring.
+    # NPPES returns desc=None for some codes (e.g. 2085R0001X = Radiation Oncology).
+    # Without enrichment the real primary entry loses to a generic Specialist entry.
+    for _t in taxonomies:
+        _td = str(_t.get("desc") or "").strip()
+        if not _td or _td.lower() == "none":
+            _enriched = tax_service.get_desc_by_code(str(_t.get("code") or ""))
+            if _enriched:
+                _t["desc"] = _enriched
  
     # P1 — primary AND specific
     p1 = next(
@@ -315,6 +324,14 @@ def parse_physician(result: Dict) -> Optional[Dict]:
     tax_desc = str(primary_tax.get("desc") or "").strip()
     if not tax_desc or tax_desc.lower() == "none":
         tax_desc = tax_service.get_desc_by_code(tax_code)
+
+    # ── Issue 3: enrich all_tax so PhysicianDetailPanel never shows raw codes ──
+    for _at in all_tax:
+        if not str(_at.get("desc") or "").strip() or str(_at.get("desc") or "").lower() == "none":
+            _enriched = tax_service.get_desc_by_code(str(_at.get("code") or ""))
+            if _enriched:
+                _at["desc"] = _enriched
+    # ── end enrichment ────────────────────────────────────────────────────
 
     return {
         "npi":            str(result.get("number") or ""),
