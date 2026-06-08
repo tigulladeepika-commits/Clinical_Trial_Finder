@@ -92,6 +92,7 @@ function HomeInner() {
     hasMore,
     refetch,
     loadMore,
+    correctedQuery,
   } = useTrials(
     hasResults ? filtersFromUrl.condition : null,
     filtersFromUrl.city   || null,
@@ -162,7 +163,7 @@ function HomeInner() {
     pinnedTrialSpecialtyRef.current = undefined;
     pinnedUserSpecialtyRef.current  = undefined;
 
-    const userSearchCondition = filtersFromUrl.condition.trim();
+    const userSearchCondition = (correctedQuery || filtersFromUrl.condition).trim();
     const trialCondition      = site.condition?.trim() ?? "";
 
     let trialSpecialty: string | undefined;
