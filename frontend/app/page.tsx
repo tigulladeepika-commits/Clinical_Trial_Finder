@@ -192,7 +192,7 @@ function HomeInner() {
     const initialSpecialty = userSpecialty ?? trialSpecialty;
 
     searchPhysicians(site, radius, trialSpecialty, userSpecialty, initialSpecialty);
-  }, [resetPhysicians, searchPhysicians, filtersFromUrl.condition]);
+  }, [resetPhysicians, searchPhysicians, filtersFromUrl.condition, correctedQuery]);
 
   const handlePhysicianSearch = useCallback(
     (radius: number, _specialty: string, panelUserSpecialty: string, _initialSpecialty: string) => {
