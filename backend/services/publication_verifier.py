@@ -321,6 +321,12 @@ STRICT rules — answer NO for:
 - Epidemiological letters or case reports from a completely different subspecialty
 - Mitochondrial biology, cellular biophysics, nanomechanics — ALWAYS NO for clinical specialties
 - Papers about electron channels, qubits, photocurrents, nanoresonators — ALWAYS NO
+- Surgical procedure papers (cholecystectomy, cholecystitis, cholangiogram, laparoscopic surgery, appendectomy, hernia repair, SAGES guidelines, intraoperative imaging, rib fractures, trauma surgery, scooter injuries, coagulopathy, thromboelastography) unless specialty includes Surgery
+- Trauma/emergency medicine papers unless specialty includes Emergency Medicine or Surgery
+- Pediatric surgery, cleft palate, plastic surgery papers unless specialty includes those areas
+- Mindfulness, meditation, polyvagal theory, vagal tone, respiratory sinus arrhythmia papers unless specialty is Psychiatry or Neurology
+- Psychology, behavioral science, social science papers unless specialty includes Psychiatry
+- Animal husbandry, veterinary, public health intervention papers for animals
 
 Answer YES for:
 - Papers directly about the specialty's diseases and treatments
