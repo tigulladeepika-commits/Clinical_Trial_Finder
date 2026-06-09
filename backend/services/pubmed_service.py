@@ -1,24 +1,31 @@
 import asyncio
 import httpx
 import logging
+import os
 import re
 from datetime import datetime
 from typing import Optional
+
+from dotenv import load_dotenv
+from pathlib import Path
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
 PUBMED_SEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 PUBMED_FETCH_URL  = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 
-HTTP_TIMEOUT = 15.0
-MAX_RESULTS  = 20
+HTTP_TIMEOUT   = 15.0
+MAX_RESULTS    = 20
+NCBI_API_KEY   = os.getenv("NCBI_API_KEY", "")
 MIN_RESULTS  = 5
 MAX_RETRIES  = 2
 RETRY_DELAY  = 1.5
 
 # NCBI E-utilities are publicly accessible without an API key.
 # Free tier allows 3 requests/second — semaphore is set accordingly.
-PUBMED_CONCURRENCY = 3
+# Bumped from 3 to 8 after adding NCBI_API_KEY (rate limit 3/sec -> 10/sec)
+PUBMED_CONCURRENCY = 8
 
 CURRENT_YEAR = datetime.now().year
 
@@ -347,13 +354,16 @@ async def pubmed_lookup(
     found_tier0     : bool      = False
 
     for query, conf_bonus in queries:
-        data = await _fetch_with_retry(client, PUBMED_SEARCH_URL, {
+        params = {
             "db":      "pubmed",
             "term":    query,
             "retmax":  MAX_RESULTS,
             "retmode": "json",
             "sort":    "relevance",
-        })
+        }
+        if NCBI_API_KEY:
+            params["api_key"] = NCBI_API_KEY
+        data = await _fetch_with_retry(client, PUBMED_SEARCH_URL, params)
         if not data:
             continue
 
@@ -407,11 +417,14 @@ async def pubmed_lookup(
         best_query, best_count, best_conf_bonus,
     )
 
-    summary_data = await _fetch_with_retry(client, PUBMED_FETCH_URL, {
+    fetch_params = {
         "db":      "pubmed",
         "id":      ",".join(best_pmids[:MAX_RESULTS]),
         "retmode": "json",
-    })
+    }
+    if NCBI_API_KEY:
+        fetch_params["api_key"] = NCBI_API_KEY
+    summary_data = await _fetch_with_retry(client, PUBMED_FETCH_URL, fetch_params)
 
     if not summary_data:
         return _empty_pubmed()
