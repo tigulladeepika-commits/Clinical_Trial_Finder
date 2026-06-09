@@ -80,6 +80,9 @@ async def enrich_batch(
         await asyncio.sleep(index * _ENRICH_DELAY)
 
         async with semaphore:
+            # Stagger enrichments to avoid burst Groq rate limit errors
+            import asyncio as _asyncio
+            await _asyncio.sleep(1.5)
             await enrich_one(
                 npi          = p.get("npi", ""),
                 name         = p.get("name", "Unknown Physician"),

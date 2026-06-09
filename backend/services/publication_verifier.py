@@ -284,6 +284,25 @@ def _affiliation_filter(publications: list[dict], npi_state: str) -> list[dict]:
     return kept
 
 
+
+def _keyword_fallback_filter(publications: list[dict], specialty: str) -> list[dict]:
+    spec_lower = specialty.lower()
+    reject = []
+    reject += ["quantum","nanotechnology","semiconductor","aerospace","metallurgy"]
+    is_surgical = any(s in spec_lower for s in ["surg","orthop","trauma","vascular surgery"])
+    if not is_surgical:
+        reject += ["laparoscopic","cholangiogram","cholecystectomy","cholecystitis",
+                   "intraoperative","thromboelastography","rib fracture",
+                   "scooter injur","cleft lip","cleft palate","epidural analgesia"]
+    is_psych = any(s in spec_lower for s in ["psych","neurol","mental"])
+    if not is_psych:
+        reject += ["polyvagal","vagal tone","mindfulness","meditation",
+                   "respiratory sinus arrhythmia","loving-kindness","panic disorder"]
+    reject += ["war of 1812","extradition","war on terror","economic development",
+               "northwest ohio","swinish multitude","cycling time trial","fan cooling"]
+    kept = [p for p in publications if not any(t in p.get("title","").lower() for t in reject)]
+    return kept if kept else publications
+
 async def _groq_title_verify(
     publications: list[dict],
     specialty: str,
@@ -342,53 +361,65 @@ Return ONLY a JSON array, no other text:
 Titles:
 {titles_text}"""
 
-    try:
-        resp = await client.post(
-            GROQ_URL,
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type":  "application/json",
-            },
-            json={
-                "model":       GROQ_MODEL,
-                "max_tokens":  500,
-                "temperature": 0.0,
-                "messages":    [{"role": "user", "content": prompt}],
-            },
-            timeout=HTTP_TIMEOUT,
-        )
+    for _attempt in range(3):
+        try:
+            resp = await client.post(
+                GROQ_URL,
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type":  "application/json",
+                },
+                json={
+                    "model":       GROQ_MODEL,
+                    "max_tokens":  500,
+                    "temperature": 0.0,
+                    "messages":    [{"role": "user", "content": prompt}],
+                },
+                timeout=HTTP_TIMEOUT,
+            )
 
-        if resp.status_code != 200:
-            logger.warning("Groq verify failed %d — keeping all papers", resp.status_code)
-            return publications
+            if resp.status_code == 429:
+                import asyncio as _aio
+                wait = 2.0 * (2 ** _attempt)
+                logger.warning("Groq 429 attempt %d - waiting %.1fs", _attempt+1, wait)
+                if _attempt < 2:
+                    await _aio.sleep(wait)
+                    continue
+                logger.warning("Groq 429 exhausted - keyword fallback")
+                return _keyword_fallback_filter(publications, specialty)
 
-        raw = resp.json()["choices"][0]["message"]["content"].strip()
-        logger.debug("Groq raw response: %s", raw[:300])
+            if resp.status_code != 200:
+                logger.warning("Groq failed %d - keyword fallback", resp.status_code)
+                return _keyword_fallback_filter(publications, specialty)
 
-        json_match = re.search(r'\[.*?\]', raw, re.DOTALL)
-        if not json_match:
-            logger.warning("Groq verify: no JSON found — keeping all papers")
-            return publications
+            raw = resp.json()["choices"][0]["message"]["content"].strip()
+            logger.debug("Groq raw response: %s", raw[:300])
 
-        results = json.loads(json_match.group())
-        relevant_indices = {
-            item["index"] for item in results
-            if item.get("relevant", True)
-        }
+            json_match = re.search(r'\[.*?\]', raw, re.DOTALL)
+            if not json_match:
+                logger.warning("Groq verify: no JSON found - keyword fallback")
+                return _keyword_fallback_filter(publications, specialty)
 
-        verified = []
-        for i, pub in enumerate(publications):
-            idx = i + 1
-            if idx in relevant_indices:
-                verified.append(pub)
-            else:
-                logger.info(
-                    "Groq rejected paper: %r",
-                    pub.get("title", "")[:60],
-                )
+            results = json.loads(json_match.group())
+            relevant_indices = {
+                item["index"] for item in results
+                if item.get("relevant", True)
+            }
 
-        return verified if verified else publications
+            verified = []
+            for i, pub in enumerate(publications):
+                idx = i + 1
+                if idx in relevant_indices:
+                    verified.append(pub)
+                else:
+                    logger.info(
+                        "Groq rejected paper: %r",
+                        pub.get("title", "")[:60],
+                    )
 
-    except Exception as exc:
-        logger.warning("Groq title verify error: %s — keeping all papers", exc)
-        return publications
+            return verified if verified else publications
+
+        except Exception as exc:
+            logger.warning("Groq title verify error: %s - keyword fallback", exc)
+            return _keyword_fallback_filter(publications, specialty)
+        break
