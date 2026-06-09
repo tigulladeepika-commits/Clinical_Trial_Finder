@@ -18,6 +18,70 @@ GROQ_MODEL   = "llama-3.3-70b-versatile"
 HTTP_TIMEOUT = 15.0
 
 
+
+def _exact_name_confirm(publications: list[dict], physician_name: str) -> list[dict]:
+    """
+    Post-Groq final confirmation: verify the physician's last name + first
+    initial actually appears in each paper's author list.
+
+    Handles PubMed format ("Tsokos GC"), S2 format ("George C. Tsokos"),
+    and short formats ("G Tsokos", "Tsokos G").
+
+    Papers with no authors are kept (benefit of doubt).
+    S2 papers with affiliation_verified=True are kept without re-checking.
+    """
+    if not physician_name:
+        return publications
+
+    parts = physician_name.strip().split()
+    if len(parts) < 2:
+        return publications
+
+    last_name    = parts[-1].lower()
+    first_initial = parts[0][0].lower() if parts[0] else ""
+
+    kept = []
+    for pub in publications:
+        # S2 papers already verified at author level — skip re-check
+        if pub.get("affiliation_verified") is True and pub.get("source") == "Semantic Scholar":
+            kept.append(pub)
+            continue
+
+        authors = pub.get("authors", [])
+        if not authors:
+            kept.append(pub)
+            continue
+
+        matched = False
+        for author in authors:
+            a = author.lower().replace(".", "").replace(",", "").strip()
+            a_parts = a.split()
+
+            # Must contain last name as whole word
+            if last_name not in a_parts:
+                continue
+
+            # Last name found — check first initial
+            for ap in a_parts:
+                if ap != last_name and ap[0] == first_initial:
+                    matched = True
+                    break
+
+            if matched:
+                break
+
+        if matched:
+            kept.append(pub)
+        else:
+            logger.info(
+                "Name confirm reject: physician=%r not confirmed in authors=%r title=%r",
+                physician_name,
+                authors[:3],
+                pub.get("title", "")[:50],
+            )
+
+    return kept
+
 # FIX 1: Changed from sync to async, replaced asyncio.run() with await
 async def verify_publications(
     publications: list[dict],
@@ -51,6 +115,16 @@ async def verify_publications(
         len(papers_to_verify), len(verified), specialty,
     )
 
+
+    # Final layer: confirm physician name in paper authors
+    if physician_name and verified:
+        confirmed = _exact_name_confirm(verified, physician_name)
+        logger.info(
+            "Name confirm: %d -> %d papers (physician=%r)",
+            len(verified), len(confirmed), physician_name,
+        )
+        if confirmed:
+            verified = confirmed
     return verified
 
 
