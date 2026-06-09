@@ -239,19 +239,22 @@ async def semantic_scholar_lookup(
                 continue
 
         # Reject if candidate is clearly non-medical (Physics, Engineering, CS)
+        # Reject clearly non-medical fields
         NON_MEDICAL_FIELDS = {
             "physics", "engineering", "computer science", "chemistry",
-            "mathematics", "geology", "materials science", "environmental science",
-            "economics", "political science", "sociology", "psychology",
-            "biology", "art", "history", "philosophy", "linguistics",
+            "mathematics", "geology", "materials science",
+            "economics", "political science", "law", "business",
+            "art", "history", "philosophy", "linguistics", "finance",
         }
+        # Fields that mismatch clinical medical specialties
+        CLINICAL_MISMATCH_FIELDS = {"psychology", "sociology", "social science"}
         candidate_papers = candidate.get("papers") or []
         candidate_fields: set[str] = set()
         for paper in candidate_papers[:10]:
             for field in (paper.get("fieldsOfStudy") or []):
                 candidate_fields.add(field.lower())
-        
         medical_fields = {"medicine"}
+        # Hard reject: no medicine + has non-medical
         if candidate_fields and not candidate_fields.intersection(medical_fields):
             if candidate_fields.intersection(NON_MEDICAL_FIELDS):
                 logger.info(
@@ -259,15 +262,39 @@ async def semantic_scholar_lookup(
                     s2_name, list(candidate_fields)[:3],
                 )
                 continue
-
-        # Accept this candidate
-        matched_author      = candidate
-        matched_affiliation = affiliations[0] if affiliations else None
-        logger.info(
-            "S2: matched author %r | affiliations=%r | papers=%d",
-            s2_name, affiliations[:2], paper_count,
-        )
-        break
+        # Specialty-aware reject: psychology dominant for clinical specialties
+        if candidate_fields and specialty:
+            spec_lower = specialty.lower()
+            is_clinical = any(s in spec_lower for s in [
+                "cardio", "oncol", "radiol", "surg", "nephro", "gastro",
+                "pulmon", "rheuma", "endocrin", "hematol", "infect",
+                "dermat", "urol", "ophthal", "orthop", "neurosurg",
+            ])
+            if is_clinical and candidate_fields and not candidate_fields.intersection(medical_fields):
+                if candidate_fields.intersection(CLINICAL_MISMATCH_FIELDS):
+                    logger.info(
+                        "S2: rejecting mismatch candidate %r specialty=%r (fields=%r)",
+                        s2_name, specialty, list(candidate_fields)[:3],
+                    )
+                    continue
+        # Score this candidate — prefer medical-only fields over mixed
+        _score = 0
+        if candidate_fields and "medicine" in candidate_fields:
+            _score += 10
+        if candidate_fields and not candidate_fields.intersection(
+            {"psychology", "sociology", "social science", "history", "law"}
+        ):
+            _score += 5
+        if affiliations:
+            _score += 3
+        if matched_author is None or _score > getattr(matched_author, "_score", 0):
+            candidate._score = _score
+            matched_author = candidate
+            matched_affiliation = affiliations[0] if affiliations else None
+            logger.info(
+                "S2: candidate %r score=%d | affiliations=%r | papers=%d",
+                s2_name, _score, affiliations[:2], paper_count,
+            )
 
     if not matched_author:
         logger.info("S2: no matching author found for %r (state=%s)", clean, npi_state)
