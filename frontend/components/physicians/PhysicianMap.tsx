@@ -293,11 +293,11 @@ export default function PhysicianMap({
         </div>`, {
         className: "phys-popup", offset: [0, -10], maxWidth: 280, closeButton: true,
       });
+      marker.on("mouseover", () => { marker.openPopup(); });
+      marker.on("mouseout",  () => { /* keep popup open until user closes */ });
       marker.on("click", () => {
         map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 14), { animate: true, duration: 0.8 });
         onSelect(p);
-        marker.closeTooltip();
-        marker.openPopup();
       });
       if (mainCluster) mainCluster.addLayer(marker); else marker.addTo(map);
       return marker;
@@ -328,11 +328,11 @@ export default function PhysicianMap({
         </div>`, {
         className: "phys-popup-suggested", offset: [0, -10], maxWidth: 280, closeButton: true,
       });
+      marker.on("mouseover", () => { marker.openPopup(); });
+      marker.on("mouseout",  () => { /* keep popup open until user closes */ });
       marker.on("click", () => {
         map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 14), { animate: true, duration: 0.8 });
         onSelect(p);
-        marker.closeTooltip();
-        marker.openPopup();
       });
       if (suggestedCluster) suggestedCluster.addLayer(marker); else marker.addTo(map);
       return marker;
@@ -478,7 +478,7 @@ export default function PhysicianMap({
 
       {/* ── Legend — top-left (FIX 1: no more floating banner, radius row added here) ── */}
       <div style={{
-        position: "absolute", top: 10, left: 10, zIndex: 1000,
+        position: "absolute", top: isExpanded ? 60 : 10, left: 10, zIndex: 1000,
         background: "rgba(255,255,255,0.95)",
         border: "1px solid #e2e8f0", borderRadius: 10,
         padding: "9px 13px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
@@ -587,28 +587,46 @@ export default function PhysicianMap({
         </button>
       </div>
 
-      {/* ── Fullscreen expand button — bottom-right ───────────────────────── */}
-      <button
-        onClick={() => {
-          setIsExpanded((v) => {
-            const next = !v;
-            // Force MapQuest to redraw tiles after resize
+      {/* ── Expand button (bottom-right) + Back button (top-left when expanded) ── */}
+      {isExpanded && (
+        <button
+          onClick={() => {
+            setIsExpanded(false);
             setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 100);
-            return next;
-          });
-        }}
-        title={isExpanded ? "Exit fullscreen" : "Expand map"}
-        style={{
-          position: "absolute", bottom: 40, right: 10, zIndex: 1000,
-          background: "white", border: "1px solid #e2e8f0",
-          borderRadius: 8, width: 32, height: 32,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-          fontSize: 14, color: "#374151",
-        }}
-      >
-        {isExpanded ? "✕" : "⛶"}
-      </button>
+          }}
+          title="Exit fullscreen"
+          style={{
+            position: "absolute", top: 10, left: 10, zIndex: 1001,
+            background: "white", border: "1px solid #e2e8f0",
+            borderRadius: 8, height: 32, padding: "0 12px",
+            display: "flex", alignItems: "center", gap: 6,
+            cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+            fontSize: 13, fontWeight: 600, color: "#374151",
+            fontFamily: "'Sora', sans-serif",
+          }}
+        >
+          ← Back
+        </button>
+      )}
+      {!isExpanded && (
+        <button
+          onClick={() => {
+            setIsExpanded(true);
+            setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 100);
+          }}
+          title="Expand map"
+          style={{
+            position: "absolute", bottom: 40, right: 10, zIndex: 1000,
+            background: "white", border: "1px solid #e2e8f0",
+            borderRadius: 8, width: 32, height: 32,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+            fontSize: 14, color: "#374151",
+          }}
+        >
+          ⛶
+        </button>
+      )}
       {/* ── Zoom controls + level badge — top-right ───────────────────────── */}
       <div style={{
         position: "absolute", top: 10, right: 10, zIndex: 1000,

@@ -521,8 +521,47 @@ export default function TrialSiteMap({
       `}</style>
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
-      <div className="tsm-map-wrap">
+      <div className="tsm-map-wrap" style={{
+        position: isExpanded ? "fixed" : "relative",
+        top: isExpanded ? 0 : undefined,
+        left: isExpanded ? 0 : undefined,
+        width: isExpanded ? "100vw" : undefined,
+        height: isExpanded ? "100vh" : undefined,
+        zIndex: isExpanded ? 9999 : undefined,
+        background: isExpanded ? "white" : undefined,
+        overflow: isExpanded ? "hidden" : undefined,
+      }}>
 
+        {/* Expand button */}
+        {!isExpanded && mappableSites.length > 0 && (
+          <button
+            onClick={() => { setIsExpanded(true); setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100); }}
+            title="Expand map"
+            style={{
+              position: "absolute", bottom: 50, right: 10, zIndex: 1000,
+              background: "white", border: "1px solid #e2e8f0",
+              borderRadius: 8, width: 32, height: 32,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              fontSize: 14, color: "#374151",
+            }}
+          >⛶</button>
+        )}
+        {isExpanded && (
+          <button
+            onClick={() => { setIsExpanded(false); setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100); }}
+            title="Exit fullscreen"
+            style={{
+              position: "absolute", top: 10, left: 10, zIndex: 1001,
+              background: "white", border: "1px solid #e2e8f0",
+              borderRadius: 8, height: 32, padding: "0 12px",
+              display: "flex", alignItems: "center", gap: 6,
+              cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              fontSize: 13, fontWeight: 600, color: "#374151",
+              fontFamily: "sans-serif",
+            }}
+          >← Back</button>
+        )}
         {!mapKey || mappableSites.length === 0 ? (
           <div className="tsm-empty-map" style={{ height: 420 }}>
             <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.35 }}>
@@ -643,24 +682,34 @@ export default function TrialSiteMap({
             {showCriteria && (
               <div className="tsm-criteria-body">
                 {inclusionCriteria && (
-                  <div>
-                    <div className="tsm-crit-label" style={{ color: "var(--green-700)" }}>Inclusion criteria</div>
-                    <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, listStyleType: "disc" }}>
-                      {inclusionCriteria.split(/\n|;/).map((item, i) => {
-                        const t = item.replace(/^[-•*\d+\.\s]+/, "").trim();
-                        return t ? <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{t}</li> : null;
-                      })}
+                  <div style={{ marginBottom: 12 }}>
+                    <div className="tsm-crit-label" style={{ color: "var(--green-700)", fontWeight: 700, marginBottom: 6 }}>
+                      Inclusion Criteria
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: 18, listStyleType: "disc" }}>
+                      {inclusionCriteria
+                        .split(/\n/)
+                        .map((line) => line.replace(/^[\-\u2022*0-9.\s]+/, "").trim())
+                        .filter((line) => { if (!line) return false; const low = line.toLowerCase(); return !low.startsWith("inclusion criteria") && !low.startsWith("exclusion criteria"); })
+                        .map((line, i) => (
+                          <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{line}</li>
+                        ))}
                     </ul>
                   </div>
                 )}
                 {exclusionCriteria && (
                   <div>
-                    <div className="tsm-crit-label" style={{ color: "var(--coral-600)" }}>Exclusion criteria</div>
-                    <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, listStyleType: "disc" }}>
-                      {exclusionCriteria.split(/\n|;/).map((item, i) => {
-                        const t = item.replace(/^[-•*\d+\.\s]+/, "").trim();
-                        return t ? <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{t}</li> : null;
-                      })}
+                    <div className="tsm-crit-label" style={{ color: "var(--coral-600)", fontWeight: 700, marginBottom: 6 }}>
+                      Exclusion Criteria
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: 18, listStyleType: "disc" }}>
+                      {exclusionCriteria
+                        .split(/\n/)
+                        .map((line) => line.replace(/^[\-\u2022*0-9.\s]+/, "").trim())
+                        .filter((line) => { if (!line) return false; const low = line.toLowerCase(); return !low.startsWith("inclusion criteria") && !low.startsWith("exclusion criteria"); })
+                        .map((line, i) => (
+                          <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{line}</li>
+                        ))}
                     </ul>
                   </div>
                 )}
