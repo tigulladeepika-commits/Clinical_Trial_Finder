@@ -114,7 +114,7 @@ export default function TrialSiteMap({
       @keyframes tsmModalIn{from{opacity:0;transform:scale(.96) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
       .tsm-backdrop{position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;animation:tsmFadeIn .22s ease both;}
       .tsm-modal{position:relative;width:100%;max-width:1100px;height:80vh;max-height:780px;background:white;border-radius:20px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.28);animation:tsmModalIn .26s cubic-bezier(.22,1,.36,1) both;}
-      .tsm-close{position:absolute;top:14px;left:14px;z-index:1100;display:flex;align-items:center;gap:6px;padding:0 14px;height:34px;background:white;border:1px solid #e2e8f0;border-radius:20px;cursor:pointer;font-size:13px;font-weight:600;color:#374151;box-shadow:0 2px 8px rgba(0,0,0,.12);transition:all .15s;white-space:nowrap;}
+      .tsm-close{position:absolute;top:14px;right:14px;z-index:1101;width:36px;height:36px;background:white;border:1px solid #e2e8f0;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#64748b;box-shadow:0 2px 8px rgba(0,0,0,.12);transition:all .15s;}
       .tsm-close:hover{background:#fee2e2;color:#dc2626;border-color:#fecaca;}
     `;
     document.head.appendChild(style);
@@ -125,33 +125,47 @@ export default function TrialSiteMap({
     const ready = () => window.L?.mapquest;
     if (ready()) { cb(); return; }
 
-    const addLink = (id: string, href: string) => {
+    const addLink = (id: string, href: string, preload = false) => {
       if (document.getElementById(id)) return;
-      const l = document.createElement("link"); l.id = id; l.rel = "stylesheet"; l.href = href;
+      // Add preload hint first for faster fetch
+      if (preload) {
+        const pre = document.createElement("link");
+        pre.rel = "preload"; pre.as = "style"; pre.href = href;
+        document.head.appendChild(pre);
+      }
+      const l = document.createElement("link");
+      l.id = id; l.rel = "stylesheet"; l.href = href;
       document.head.appendChild(l);
     };
-    addLink("mq-css",    "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.css");
-    addLink("mc-css-t",  "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css");
-    addLink("mc-css2-t", "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css");
+    // Load all CSS immediately in parallel
+    addLink("mq-css",    "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.css", true);
+    addLink("mc-css-t",  "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css", true);
+    addLink("mc-css2-t", "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css", true);
 
     const waitReady = (afterLoad: () => void) => {
       if (ready()) { afterLoad(); return; }
-      const iv = setInterval(() => { if (ready()) { clearInterval(iv); afterLoad(); } }, 100);
+      const iv = setInterval(() => { if (ready()) { clearInterval(iv); afterLoad(); } }, 50);
     };
 
-    const loadMQ = (afterMQ: () => void) => {
-      if (document.getElementById("mq-js")) { waitReady(afterMQ); return; }
-      const s = document.createElement("script"); s.id = "mq-js";
-      s.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
-      s.onload = afterMQ; document.head.appendChild(s);
-    };
-
-    loadMQ(() => {
-      if (document.getElementById("mc-js-t")) { waitReady(cb); return; }
+    // Load MarkerCluster in parallel with MapQuest (doesn't depend on it)
+    const loadMC = () => {
+      if (document.getElementById("mc-js-t")) return;
       const mc = document.createElement("script"); mc.id = "mc-js-t";
       mc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js";
-      mc.onload = cb; document.head.appendChild(mc);
-    });
+      mc.async = true; mc.defer = true;
+      document.head.appendChild(mc);
+    };
+
+    if (document.getElementById("mq-js")) {
+      loadMC();
+      waitReady(cb);
+      return;
+    }
+    const s = document.createElement("script"); s.id = "mq-js";
+    s.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
+    s.async = true;
+    s.onload = () => { loadMC(); waitReady(cb); };
+    document.head.appendChild(s);
   }, []);
 
   // ── Core map builder — works for both inline and modal containers ─────────
@@ -306,10 +320,11 @@ export default function TrialSiteMap({
   const activeType = MAP_TYPES.find((t) => t.id === mapType)!;
 
   // ── Map overlay controls (zoom + type + legend) ───────────────────────────
-  const Controls = () => (
+  // In modal: ✕ is top-right, zoom shifts below it. Legend is top-left, no conflict.
+  const Controls = ({ expanded = false }: { expanded?: boolean }) => (
     <>
-      {/* Zoom — top-right */}
-      <div style={{ position: "absolute", top: 12, right: 12, zIndex: 1000, display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
+      {/* Zoom — top-right, shifted below ✕ button in modal */}
+      <div style={{ position: "absolute", top: expanded ? 60 : 12, right: 12, zIndex: 1000, display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
         <div style={{ width: 36, height: 20, background: "white", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 10, fontWeight: 700, color: "#475569", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" }}>{currentZoom}</div>
         {[
           { icon: "+", title: "Zoom in",  fn: zoomIn,  disabled: currentZoom >= MAX_ZOOM },
@@ -341,7 +356,7 @@ export default function TrialSiteMap({
         </button>
       </div>
 
-      {/* Legend — top-left */}
+      {/* Legend toggle — top-left, no conflict with ✕ which is top-right */}
       <button onClick={() => setShowLegend((v) => !v)}
         style={{ position: "absolute", top: 12, left: 12, zIndex: 1000, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: "7px 12px", boxShadow: "0 2px 6px rgba(0,0,0,.08)", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#334155", display: "flex", alignItems: "center", gap: 5 }}>
         <span>◎</span>{showLegend ? "Hide legend" : "Status legend"}
@@ -405,7 +420,7 @@ export default function TrialSiteMap({
         ) : (
           <>
             <div ref={inlineMapRef} style={{ height: 420, width: "100%", background: "#e8edf2" }} />
-            <Controls />
+            <Controls expanded={false} />
             {/* Expand button */}
             <button onClick={() => setIsExpanded(true)} title="Expand map"
               style={{ position: "absolute", bottom: 56, right: 10, zIndex: 1000, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.12)", fontSize: 14, color: "#374151" }}>
@@ -419,10 +434,10 @@ export default function TrialSiteMap({
       {isExpanded && (
         <div className="tsm-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setIsExpanded(false); }}>
           <div className="tsm-modal">
-            <button className="tsm-close" onClick={() => setIsExpanded(false)} title="Close">← Back</button>
+            <button className="tsm-close" onClick={() => setIsExpanded(false)} title="Close">✕</button>
             {/* Fresh map div for modal — Leaflet inits here independently */}
             <div ref={modalMapRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
-            <Controls />
+            <Controls expanded={true} />
           </div>
         </div>
       )}

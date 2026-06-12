@@ -106,7 +106,7 @@ export default function PhysicianMap({
       @keyframes pmModalIn{from{opacity:0;transform:scale(.96) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
       .pm-backdrop{position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;animation:pmFadeIn .22s ease both;}
       .pm-modal{position:relative;width:100%;max-width:1200px;height:82vh;max-height:820px;background:white;border-radius:20px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.28);animation:pmModalIn .26s cubic-bezier(.22,1,.36,1) both;}
-      .pm-close{position:absolute;top:14px;left:14px;z-index:1100;display:flex;align-items:center;gap:6px;padding:0 14px;height:34px;background:white;border:1px solid #e2e8f0;border-radius:20px;cursor:pointer;font-size:13px;font-weight:600;color:#374151;box-shadow:0 2px 8px rgba(0,0,0,.12);transition:all .15s;white-space:nowrap;}
+      .pm-close{position:absolute;top:14px;right:14px;z-index:1100;width:36px;height:36px;background:white;border:1px solid #e2e8f0;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#64748b;box-shadow:0 2px 8px rgba(0,0,0,.12);transition:all .15s;}
       .pm-close:hover{background:#fee2e2;color:#dc2626;border-color:#fecaca;}
     `;
     document.head.appendChild(style);
@@ -126,20 +126,28 @@ export default function PhysicianMap({
 
     const waitReady = (fn: () => void) => {
       if (window.L?.mapquest) { fn(); return; }
-      const iv = setInterval(() => { if (window.L?.mapquest) { clearInterval(iv); fn(); } }, 100);
+      const iv = setInterval(() => { if (window.L?.mapquest) { clearInterval(iv); fn(); } }, 50);
     };
-    const loadMQ = (after: () => void) => {
-      if (document.getElementById("mq-js")) { waitReady(after); return; }
-      const s = document.createElement("script"); s.id = "mq-js";
-      s.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
-      s.onload = after; document.head.appendChild(s);
-    };
-    loadMQ(() => {
-      if (document.getElementById("mc-js")) { waitReady(cb); return; }
+
+    // Load MarkerCluster in parallel (doesn't depend on MapQuest)
+    const loadMC = () => {
+      if (document.getElementById("mc-js")) return;
       const mc = document.createElement("script"); mc.id = "mc-js";
       mc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js";
-      mc.onload = cb; document.head.appendChild(mc);
-    });
+      mc.async = true; mc.defer = true;
+      document.head.appendChild(mc);
+    };
+
+    if (document.getElementById("mq-js")) {
+      loadMC();
+      waitReady(cb);
+      return;
+    }
+    const s = document.createElement("script"); s.id = "mq-js";
+    s.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
+    s.async = true;
+    s.onload = () => { loadMC(); waitReady(cb); };
+    document.head.appendChild(s);
   }, []);
 
   // ── Core map builder ─────────────────────────────────────────────────────
@@ -230,7 +238,7 @@ export default function PhysicianMap({
       const size  = isSelected ? 30 : 24;
       const icon  = L.divIcon({ html: suggestedMarkerHtml(color, size, isSelected), className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
       const marker = L.marker([p.lat, p.lng], { icon });
-      marker.bindPopup(buildPopup(p, "#14b8a6", "#f0fdfa", "#99f6e4", "TRIAL-RELEVANT HCP"), { className: "phys-popup-suggested", offset: [0, -10], maxWidth: 280, closeButton: true });
+      marker.bindPopup(buildPopup(p, "#14b8a6", "#f0fdfa", "#99f6e4", "TRIAL-RELEVANT"), { className: "phys-popup-suggested", offset: [0, -10], maxWidth: 280, closeButton: true });
       marker.on("mouseover", () => marker.openPopup());
       marker.on("click", () => { map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 14), { animate: true, duration: 0.8 }); onSelect(p); });
       if (suggestedCluster) suggestedCluster.addLayer(marker); else marker.addTo(map);
@@ -344,9 +352,10 @@ export default function PhysicianMap({
   const activeType = MAP_TYPES.find((t) => t.id === mapType)!;
 
   // ── Shared overlay controls ───────────────────────────────────────────────
-  const Controls = () => (
+  // In modal: ✕ is top-right, zoom shifts below it. Legend is top-left, no conflict.
+  const Controls = ({ expanded = false }: { expanded?: boolean }) => (
     <>
-      {/* Legend — top-left */}
+      {/* Legend — top-left, no conflict with ✕ which is top-right */}
       <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1000, background: "rgba(255,255,255,.95)", border: "1px solid #e2e8f0", borderRadius: 10, padding: "9px 13px", boxShadow: "0 2px 8px rgba(0,0,0,.08)", display: "flex", flexDirection: "column", gap: 7 }}>
         {[
           { fill: "#ef4444", label: "Trial site",                    shape: "hospital"  },
@@ -373,8 +382,8 @@ export default function PhysicianMap({
         </div>
       </div>
 
-      {/* Zoom — top-right */}
-      <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
+      {/* Zoom — top-right, shifted below ✕ button in modal */}
+      <div style={{ position: "absolute", top: expanded ? 60 : 10, right: 10, zIndex: 1000, display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
         <div style={{ width: 32, height: 20, background: "white", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 10, fontWeight: 700, color: "#475569", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace" }}>{currentZoom}</div>
         {[
           { icon: "+", title: "Zoom in",  fn: zoomIn,  disabled: currentZoom >= MAX_ZOOM },
@@ -411,9 +420,9 @@ export default function PhysicianMap({
   return (
     <>
       {/* ── Inline map — fixed px height so it always renders ─────────────── */}
-      <div style={{ position: "relative", width: "100%", height: DEFAULT_HEIGHT, overflow: "hidden" }}>
+      <div style={{ position: "relative", width: "100%", height: DEFAULT_HEIGHT }}>
         <div ref={inlineMapRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
-        <Controls />
+        <Controls expanded={false} />
         <button onClick={() => setIsExpanded(true)} title="Expand map"
           style={{ position: "absolute", bottom: 56, right: 10, zIndex: 1000, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.12)", fontSize: 12, color: "#374151" }}>⛶</button>
       </div>
@@ -422,9 +431,9 @@ export default function PhysicianMap({
       {isExpanded && (
         <div className="pm-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setIsExpanded(false); }}>
           <div className="pm-modal">
-            <button className="pm-close" onClick={() => setIsExpanded(false)} title="Close">← Back</button>
+            <button className="pm-close" onClick={() => setIsExpanded(false)} title="Close">✕</button>
             <div ref={modalMapRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
-            <Controls />
+            <Controls expanded={true} />
           </div>
         </div>
       )}
