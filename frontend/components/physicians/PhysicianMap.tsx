@@ -85,18 +85,12 @@ export default function PhysicianMap({
   const mapRef          = useRef<any>(null);
   const markersRef      = useRef<any[]>([]);
   const tileLayerRef    = useRef<any>(null);
-  // FIX 2: ref to the radius circle so we can update it reactively
   const radiusCircleRef = useRef<any>(null);
-  // FIX 4: ref to the outer wrapper, used to measure header offset on expand
-  const outerRef        = useRef<HTMLDivElement>(null);
 
   const [mapType,      setMapType]      = useState<MapType>("map");
   const [currentZoom,  setCurrentZoom]  = useState(10);
   const [isExpanded,   setIsExpanded]   = useState(false);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
-  // FIX 4: distance from top of viewport to the map container, captured
-  // right before expanding, so the expanded view starts below any header
-  const [expandTop,    setExpandTop]    = useState(0);
 
   const mappable          = physicians.filter((p) => p.lat != null && p.lng != null);
   const mappableSuggested = suggestedPhysicians.filter((p) => p.lat != null && p.lng != null);
@@ -132,18 +126,56 @@ export default function PhysicianMap({
     mapRef.current.fitBounds(window.L.latLngBounds(pts), { padding: [40, 40] });
   };
 
-  // FIX 4: expand/collapse helpers — measure the header offset before going fullscreen
+  // FIX: robust resize helper — waits for layout to settle, then tells
+  // Leaflet to recalculate its size so tiles render correctly.
+  const refreshMapSize = () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (mapRef.current) {
+          mapRef.current.invalidateSize();
+          // Re-fit so the view re-centers nicely after the resize
+          const pts: [number, number][] = [
+            [selectedSite.lat, selectedSite.lng],
+            ...mappable.map((p) => [p.lat!, p.lng!] as [number, number]),
+            ...mappableSuggested.map((p) => [p.lat!, p.lng!] as [number, number]),
+          ];
+          if (pts.length > 1) {
+            mapRef.current.fitBounds(window.L.latLngBounds(pts), { padding: [40, 40] });
+          }
+        }
+      });
+    });
+  };
+
+  // FIX: expand/collapse just toggle a true fullscreen overlay — no scroll math needed
   const handleExpand = () => {
-    const top = outerRef.current?.getBoundingClientRect().top ?? 0;
-    setExpandTop(Math.max(top, 0));
     setIsExpanded(true);
-    setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 100);
+    setShowTypeMenu(false);
+    setTimeout(refreshMapSize, 60);
   };
 
   const handleCollapse = () => {
     setIsExpanded(false);
-    setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 100);
+    setShowTypeMenu(false);
+    setTimeout(refreshMapSize, 60);
   };
+
+  // FIX: lock page scroll while the fullscreen map overlay is open,
+  // so nothing behind it is visible or scrollable
+  useEffect(() => {
+    if (!isExpanded) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prevOverflow; };
+  }, [isExpanded]);
+
+  // Close fullscreen on Escape for convenience
+  useEffect(() => {
+    if (!isExpanded) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleCollapse(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isExpanded]);
 
   const initMap = () => {
     if (!mapDivRef.current || mapRef.current) return;
@@ -237,7 +269,6 @@ export default function PhysicianMap({
     const siteMarker = L.marker([selectedSite.lat, selectedSite.lng], { icon: siteIcon }).addTo(map);
     siteMarker.setZIndexOffset(1000);
 
-    // FIX 2 + FIX 3: green circle, saved to ref
     const radiusCircle = L.circle([selectedSite.lat, selectedSite.lng], {
       radius:      radius * 1609.34,
       color:       "#16a34a",
@@ -276,7 +307,6 @@ export default function PhysicianMap({
         </div>
       </div>`;
 
-    // Marker cluster groups — auto-clusters nearby pins, spiderfies on max zoom
     const mainCluster      = (window.L as any).markerClusterGroup
       ? (window.L as any).markerClusterGroup({ spiderfyOnMaxZoom: true, zoomToBoundsOnClick: true, maxClusterRadius: 60 })
       : null;
@@ -356,13 +386,11 @@ export default function PhysicianMap({
     }
   };
 
-  // Bridge for popup "View Details" button — popups run in map DOM context
   useEffect(() => {
     (window as any).__viewPhysician = (npi: string) => {
       const p = [...physicians, ...suggestedPhysicians].find((x) => x.npi === npi);
       if (p) {
         onSelect(p);
-        // Scroll physician card into view after short delay for state update
         setTimeout(() => {
           const card = document.querySelector(`[data-npi="${npi}"]`);
           if (card) {
@@ -375,7 +403,6 @@ export default function PhysicianMap({
     return () => { delete (window as any).__viewPhysician; };
   }, [physicians, suggestedPhysicians, onSelect]);
 
-  // Map init effect
   useEffect(() => {
     if (!mapKey) return;
     const loadAndInit = () => {
@@ -405,7 +432,6 @@ export default function PhysicianMap({
       script.id = "mq-js";
       script.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
       script.onload = () => {
-        // Load markercluster after MapQuest
         if (!document.getElementById("mc-js")) {
           const mc = document.createElement("script");
           mc.id = "mc-js";
@@ -444,7 +470,6 @@ export default function PhysicianMap({
   suggestedPhysicians.map(p => p.npi).join(","),
   ]);
 
-  // FIX 2: reactively update the circle radius whenever the prop changes
   useEffect(() => {
     if (!radiusCircleRef.current) return;
     radiusCircleRef.current.setRadius(radius * 1609.34);
@@ -469,14 +494,15 @@ export default function PhysicianMap({
 
   return (
     <div
-      ref={outerRef}
       style={{
         position: isExpanded ? "fixed" : "relative",
-        // FIX 4: start below whatever header sits above the map instead of top:0
-        top: isExpanded ? expandTop : undefined,
+        // FIX: true fullscreen overlay — covers header + everything else
+        top: isExpanded ? 0 : undefined,
         left: isExpanded ? 0 : undefined,
+        right: isExpanded ? 0 : undefined,
+        bottom: isExpanded ? 0 : undefined,
         width: isExpanded ? "100vw" : "100%",
-        height: isExpanded ? `calc(100vh - ${expandTop}px)` : "100%",
+        height: isExpanded ? "100vh" : "100%",
         zIndex: isExpanded ? 9999 : undefined,
         background: isExpanded ? "white" : undefined,
         overflow: "hidden",
@@ -486,7 +512,7 @@ export default function PhysicianMap({
       {/* ── Map canvas ───────────────────────────────────────────────────── */}
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
 
-      {/* ── Legend — top-left (FIX 1: no more floating banner, radius row added here) ── */}
+      {/* ── Legend — top-left ── */}
       <div style={{
         position: "absolute", top: isExpanded ? 60 : 10, left: 10, zIndex: 1000,
         background: "rgba(255,255,255,0.95)",
@@ -521,7 +547,6 @@ export default function PhysicianMap({
           </div>
         ))}
 
-        {/* FIX 1 + FIX 3: radius row inside the legend, green pill, reflects current prop */}
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
           borderTop: "1px solid #e2e8f0", paddingTop: 7, marginTop: 1,
@@ -597,8 +622,8 @@ export default function PhysicianMap({
         </button>
       </div>
 
-      {/* ── Expand button (bottom-right) + Back button (top-left when expanded) ── */}
-      {isExpanded && (
+      {/* ── Expand / Back button ── */}
+      {isExpanded ? (
         <button
           onClick={handleCollapse}
           title="Exit fullscreen"
@@ -614,8 +639,7 @@ export default function PhysicianMap({
         >
           ← Back
         </button>
-      )}
-      {!isExpanded && (
+      ) : (
         <button
           onClick={handleExpand}
           title="Expand map"
@@ -631,6 +655,7 @@ export default function PhysicianMap({
           ⛶
         </button>
       )}
+
       {/* ── Zoom controls + level badge — top-right ───────────────────────── */}
       <div style={{
         position: "absolute", top: 10, right: 10, zIndex: 1000,
