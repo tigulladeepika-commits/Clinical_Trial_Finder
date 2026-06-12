@@ -80,6 +80,7 @@ export default function TrialSiteMap({
   inclusionCriteria, exclusionCriteria, onFindPhysicians,
 }: Props) {
   const mapKey         = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
+  const [isExpanded,   setIsExpanded]   = useState(false);
   const mapDivRef      = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const tileLayerRef   = useRef<any>(null);
@@ -315,10 +316,32 @@ export default function TrialSiteMap({
       css.href = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.css";
       document.head.appendChild(css);
     }
+    if (!document.getElementById("mc-css-t")) {
+      const mcc = document.createElement("link");
+      mcc.id = "mc-css-t"; mcc.rel = "stylesheet";
+      mcc.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css";
+      document.head.appendChild(mcc);
+    }
+    if (!document.getElementById("mc-css2-t")) {
+      const mcc2 = document.createElement("link");
+      mcc2.id = "mc-css2-t"; mcc2.rel = "stylesheet";
+      mcc2.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css";
+      document.head.appendChild(mcc2);
+    }
     if (!document.getElementById("mq-js")) {
       const script = document.createElement("script");
       script.id = "mq-js";
       script.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
+      script.onload = () => {
+        if (!document.getElementById("mc-js-t")) {
+          const mc = document.createElement("script");
+          mc.id = "mc-js-t";
+          mc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js";
+          mc.onload = () => { if (window.L?.mapquest) initMap(); };
+          document.head.appendChild(mc);
+        } else { initMap(); }
+      };
+      // Remove original onload below
       script.onload = loadAndInit;
       document.head.appendChild(script);
     } else {

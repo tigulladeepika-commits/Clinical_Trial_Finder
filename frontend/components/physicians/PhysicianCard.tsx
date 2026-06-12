@@ -322,6 +322,7 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
 
       <div
         className="phys-card"
+        data-npi={physician.npi}
         onClick={() => onClick(physician)}
         role="button"
         tabIndex={0}

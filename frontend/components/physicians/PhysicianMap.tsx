@@ -296,6 +296,7 @@ export default function PhysicianMap({
       marker.on("click", () => {
         map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 14), { animate: true, duration: 0.8 });
         onSelect(p);
+        marker.closeTooltip();
         marker.openPopup();
       });
       if (mainCluster) mainCluster.addLayer(marker); else marker.addTo(map);
@@ -330,6 +331,7 @@ export default function PhysicianMap({
       marker.on("click", () => {
         map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 14), { animate: true, duration: 0.8 });
         onSelect(p);
+        marker.closeTooltip();
         marker.openPopup();
       });
       if (suggestedCluster) suggestedCluster.addLayer(marker); else marker.addTo(map);
@@ -352,7 +354,17 @@ export default function PhysicianMap({
   useEffect(() => {
     (window as any).__viewPhysician = (npi: string) => {
       const p = [...physicians, ...suggestedPhysicians].find((x) => x.npi === npi);
-      if (p) { onSelect(p); }
+      if (p) {
+        onSelect(p);
+        // Scroll physician card into view after short delay for state update
+        setTimeout(() => {
+          const card = document.querySelector(`[data-npi="${npi}"]`);
+          if (card) {
+            card.scrollIntoView({ behavior: "smooth", block: "center" });
+            (card as HTMLElement).click();
+          }
+        }, 150);
+      }
     };
     return () => { delete (window as any).__viewPhysician; };
   }, [physicians, suggestedPhysicians, onSelect]);
@@ -575,17 +587,24 @@ export default function PhysicianMap({
         </button>
       </div>
 
-      {/* ── Fullscreen expand button — top-left ──────────────────────────── */}
+      {/* ── Fullscreen expand button — bottom-right ───────────────────────── */}
       <button
-        onClick={() => setIsExpanded((v) => !v)}
+        onClick={() => {
+          setIsExpanded((v) => {
+            const next = !v;
+            // Force MapQuest to redraw tiles after resize
+            setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 100);
+            return next;
+          });
+        }}
         title={isExpanded ? "Exit fullscreen" : "Expand map"}
         style={{
-          position: "absolute", top: 10, left: 10, zIndex: 1000,
+          position: "absolute", bottom: 40, right: 10, zIndex: 1000,
           background: "white", border: "1px solid #e2e8f0",
-          borderRadius: 8, width: 34, height: 34,
+          borderRadius: 8, width: 32, height: 32,
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-          fontSize: 16, color: "#374151",
+          fontSize: 14, color: "#374151",
         }}
       >
         {isExpanded ? "✕" : "⛶"}
