@@ -90,6 +90,7 @@ export default function PhysicianMap({
 
   const [mapType,      setMapType]      = useState<MapType>("map");
   const [currentZoom,  setCurrentZoom]  = useState(10);
+  const [isExpanded,   setIsExpanded]   = useState(false);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
 
   const mappable          = physicians.filter((p) => p.lat != null && p.lng != null);
@@ -257,6 +258,16 @@ export default function PhysicianMap({
         </div>
       </div>`;
 
+    // Marker cluster groups — auto-clusters nearby pins, spiderfies on max zoom
+    const mainCluster      = (window.L as any).markerClusterGroup
+      ? (window.L as any).markerClusterGroup({ spiderfyOnMaxZoom: true, zoomToBoundsOnClick: true, maxClusterRadius: 60 })
+      : null;
+    const suggestedCluster = (window.L as any).markerClusterGroup
+      ? (window.L as any).markerClusterGroup({ spiderfyOnMaxZoom: true, zoomToBoundsOnClick: true, maxClusterRadius: 60 })
+      : null;
+    if (mainCluster)      map.addLayer(mainCluster);
+    if (suggestedCluster) map.addLayer(suggestedCluster);
+
     const mainMarkers = mappable.map((p) => {
       const isSelected = p.npi === selectedNpi;
       const color      = isSelected ? "#1d4ed8" : "#2563eb";
@@ -265,17 +276,29 @@ export default function PhysicianMap({
         html: doctorMarkerHtml(color, size, isSelected),
         className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
       });
-      const marker = L.marker([p.lat, p.lng], { icon }).addTo(map);
+      const marker = L.marker([p.lat, p.lng], { icon });
       marker.bindTooltip(
         `<div style="font-weight:700;">${p.name}</div>
          ${p.taxonomy_desc ? `<div style="font-size:11px;color:#3b82f6;">${p.taxonomy_desc}</div>` : ""}
          <div style="font-size:10px;color:#94a3b8;margin-top:3px;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>`,
         { permanent: false, direction: "top", offset: [0, -12], className: "phys-tooltip" }
       );
-      marker.bindPopup(buildPopupHtml(p, "#2563eb", "#f0f9ff", "#dbeafe"), {
+      marker.bindPopup(buildPopupHtml(p, "#2563eb", "#f0f9ff", "#dbeafe") + `
+        <div style="padding:8px 16px 12px;">
+          <button onclick="window.__viewPhysician && window.__viewPhysician('${p.npi}')"
+            style="width:100%;padding:7px 0;background:#2563eb;color:white;border:none;border-radius:8px;
+            font-size:12px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;">
+            View Details →
+          </button>
+        </div>`, {
         className: "phys-popup", offset: [0, -10], maxWidth: 280, closeButton: true,
       });
-      marker.on("click", () => { onSelect(p); marker.openPopup(); });
+      marker.on("click", () => {
+        map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 14), { animate: true, duration: 0.8 });
+        onSelect(p);
+        marker.openPopup();
+      });
+      if (mainCluster) mainCluster.addLayer(marker); else marker.addTo(map);
       return marker;
     });
 
@@ -287,17 +310,29 @@ export default function PhysicianMap({
         html: suggestedMarkerHtml(color, size, isSelected),
         className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
       });
-      const marker = L.marker([p.lat, p.lng], { icon }).addTo(map);
+      const marker = L.marker([p.lat, p.lng], { icon });
       marker.bindTooltip(
         `<div style="font-weight:700;">⭐ ${p.name}</div>
          ${p.taxonomy_desc ? `<div style="font-size:11px;color:#14b8a6;">${p.taxonomy_desc}</div>` : ""}
          <div style="font-size:10px;color:#0d9488;margin-top:3px;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>`,
         { permanent: false, direction: "top", offset: [0, -12], className: "phys-tooltip-suggested" }
       );
-      marker.bindPopup(buildPopupHtml(p, "#14b8a6", "#f0fdfa", "#99f6e4", "SUGGESTED"), {
+      marker.bindPopup(buildPopupHtml(p, "#14b8a6", "#f0fdfa", "#99f6e4", "SUGGESTED") + `
+        <div style="padding:8px 16px 12px;">
+          <button onclick="window.__viewPhysician && window.__viewPhysician('${p.npi}')"
+            style="width:100%;padding:7px 0;background:#14b8a6;color:white;border:none;border-radius:8px;
+            font-size:12px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif;">
+            View Details →
+          </button>
+        </div>`, {
         className: "phys-popup-suggested", offset: [0, -10], maxWidth: 280, closeButton: true,
       });
-      marker.on("click", () => { onSelect(p); marker.openPopup(); });
+      marker.on("click", () => {
+        map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 14), { animate: true, duration: 0.8 });
+        onSelect(p);
+        marker.openPopup();
+      });
+      if (suggestedCluster) suggestedCluster.addLayer(marker); else marker.addTo(map);
       return marker;
     });
 
@@ -313,6 +348,15 @@ export default function PhysicianMap({
     }
   };
 
+  // Bridge for popup "View Details" button — popups run in map DOM context
+  useEffect(() => {
+    (window as any).__viewPhysician = (npi: string) => {
+      const p = [...physicians, ...suggestedPhysicians].find((x) => x.npi === npi);
+      if (p) { onSelect(p); }
+    };
+    return () => { delete (window as any).__viewPhysician; };
+  }, [physicians, suggestedPhysicians, onSelect]);
+
   // Map init effect
   useEffect(() => {
     if (!mapKey) return;
@@ -326,14 +370,45 @@ export default function PhysicianMap({
       css.href = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.css";
       document.head.appendChild(css);
     }
+    if (!document.getElementById("mc-css")) {
+      const mcc = document.createElement("link");
+      mcc.id = "mc-css"; mcc.rel = "stylesheet";
+      mcc.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css";
+      document.head.appendChild(mcc);
+    }
+    if (!document.getElementById("mc-css2")) {
+      const mcc2 = document.createElement("link");
+      mcc2.id = "mc-css2"; mcc2.rel = "stylesheet";
+      mcc2.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css";
+      document.head.appendChild(mcc2);
+    }
     if (!document.getElementById("mq-js")) {
       const script = document.createElement("script");
       script.id = "mq-js";
       script.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
-      script.onload = loadAndInit;
+      script.onload = () => {
+        // Load markercluster after MapQuest
+        if (!document.getElementById("mc-js")) {
+          const mc = document.createElement("script");
+          mc.id = "mc-js";
+          mc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js";
+          mc.onload = loadAndInit;
+          document.head.appendChild(mc);
+        } else {
+          loadAndInit();
+        }
+      };
       document.head.appendChild(script);
     } else {
-      loadAndInit();
+      if (!document.getElementById("mc-js")) {
+        const mc = document.createElement("script");
+        mc.id = "mc-js";
+        mc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js";
+        mc.onload = loadAndInit;
+        document.head.appendChild(mc);
+      } else {
+        loadAndInit();
+      }
     }
     return () => {
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
@@ -375,7 +450,16 @@ export default function PhysicianMap({
   const activeType = MAP_TYPES.find((t) => t.id === mapType)!;
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
+    <div style={{
+        position: isExpanded ? "fixed" : "relative",
+        top: isExpanded ? 0 : undefined,
+        left: isExpanded ? 0 : undefined,
+        width: isExpanded ? "100vw" : "100%",
+        height: isExpanded ? "100vh" : "100%",
+        zIndex: isExpanded ? 9999 : undefined,
+        background: isExpanded ? "white" : undefined,
+        overflow: "hidden",
+      }}>
 
       {/* ── Map canvas ───────────────────────────────────────────────────── */}
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
@@ -391,7 +475,7 @@ export default function PhysicianMap({
         {[
           { fill: "#ef4444", label: "Trial site", shape: "hospital"  },
           { fill: "#2563eb", label: "HCPs/HCOs",       shape: "doctor"    },
-          { fill: "#14b8a6", label: "Trial-Relevant HCPs/HCOs",    shape: "suggested" },
+          { fill: "#14b8a6", label: "HCPs/HCOs Trial-Relevant",    shape: "suggested" },
         ].map(({ fill, label, shape }) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <svg width="14" height="14" viewBox="0 0 30 30">
@@ -491,6 +575,21 @@ export default function PhysicianMap({
         </button>
       </div>
 
+      {/* ── Fullscreen expand button — top-left ──────────────────────────── */}
+      <button
+        onClick={() => setIsExpanded((v) => !v)}
+        title={isExpanded ? "Exit fullscreen" : "Expand map"}
+        style={{
+          position: "absolute", top: 10, left: 10, zIndex: 1000,
+          background: "white", border: "1px solid #e2e8f0",
+          borderRadius: 8, width: 34, height: 34,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+          fontSize: 16, color: "#374151",
+        }}
+      >
+        {isExpanded ? "✕" : "⛶"}
+      </button>
       {/* ── Zoom controls + level badge — top-right ───────────────────────── */}
       <div style={{
         position: "absolute", top: 10, right: 10, zIndex: 1000,

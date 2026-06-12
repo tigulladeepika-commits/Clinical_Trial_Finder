@@ -622,13 +622,23 @@ export default function TrialSiteMap({
                 {inclusionCriteria && (
                   <div>
                     <div className="tsm-crit-label" style={{ color: "var(--green-700)" }}>Inclusion criteria</div>
-                    <p className="tsm-crit-text">{inclusionCriteria}</p>
+                    <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, listStyleType: "disc" }}>
+                      {inclusionCriteria.split(/\n|;/).map((item, i) => {
+                        const t = item.replace(/^[-•*\d+\.\s]+/, "").trim();
+                        return t ? <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{t}</li> : null;
+                      })}
+                    </ul>
                   </div>
                 )}
                 {exclusionCriteria && (
                   <div>
                     <div className="tsm-crit-label" style={{ color: "var(--coral-600)" }}>Exclusion criteria</div>
-                    <p className="tsm-crit-text">{exclusionCriteria}</p>
+                    <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, listStyleType: "disc" }}>
+                      {exclusionCriteria.split(/\n|;/).map((item, i) => {
+                        const t = item.replace(/^[-•*\d+\.\s]+/, "").trim();
+                        return t ? <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{t}</li> : null;
+                      })}
+                    </ul>
                   </div>
                 )}
               </div>
