@@ -552,7 +552,7 @@ export default function TrialSiteMap({
             onClick={() => { setIsExpanded(false); setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100); }}
             title="Exit fullscreen"
             style={{
-              position: "absolute", top: 10, left: 10, zIndex: 1001,
+              position: "absolute", top: 10, left: 10, zIndex: 1100,
               background: "white", border: "1px solid #e2e8f0",
               borderRadius: 8, height: 32, padding: "0 12px",
               display: "flex", alignItems: "center", gap: 6,
@@ -579,7 +579,7 @@ export default function TrialSiteMap({
           </div>
         ) : (
           <>
-            <div ref={mapDivRef} style={{ height: "420px", width: "100%", background: "#e8edf2" }} />
+            <div ref={mapDivRef} style={{ height: isExpanded ? "100vh" : "420px", width: "100%", background: "#e8edf2" }} />
 
             {/* Zoom controls + badge — top-right */}
             <div className="tsm-map-controls">
@@ -681,38 +681,56 @@ export default function TrialSiteMap({
             </button>
             {showCriteria && (
               <div className="tsm-criteria-body">
-                {inclusionCriteria && (
-                  <div style={{ marginBottom: 12 }}>
-                    <div className="tsm-crit-label" style={{ color: "var(--green-700)", fontWeight: 700, marginBottom: 6 }}>
-                      Inclusion Criteria
-                    </div>
-                    <ul style={{ margin: 0, paddingLeft: 18, listStyleType: "disc" }}>
-                      {inclusionCriteria
-                        .split(/\n/)
-                        .map((line) => line.replace(/^[\-\u2022*0-9.\s]+/, "").trim())
-                        .filter((line) => { if (!line) return false; const low = line.toLowerCase(); return !low.startsWith("inclusion criteria") && !low.startsWith("exclusion criteria"); })
-                        .map((line, i) => (
-                          <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{line}</li>
-                        ))}
-                    </ul>
-                  </div>
-                )}
-                {exclusionCriteria && (
-                  <div>
-                    <div className="tsm-crit-label" style={{ color: "var(--coral-600)", fontWeight: 700, marginBottom: 6 }}>
-                      Exclusion Criteria
-                    </div>
-                    <ul style={{ margin: 0, paddingLeft: 18, listStyleType: "disc" }}>
-                      {exclusionCriteria
-                        .split(/\n/)
-                        .map((line) => line.replace(/^[\-\u2022*0-9.\s]+/, "").trim())
-                        .filter((line) => { if (!line) return false; const low = line.toLowerCase(); return !low.startsWith("inclusion criteria") && !low.startsWith("exclusion criteria"); })
-                        .map((line, i) => (
-                          <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{line}</li>
-                        ))}
-                    </ul>
-                  </div>
-                )}
+                {(() => {
+                  // ClinicalTrials.gov sometimes puts both criteria in inclusionCriteria
+                  // Split on "Exclusion Criteria" keyword if found
+                  const rawInclusion = inclusionCriteria || "";
+                  const rawExclusion = exclusionCriteria || "";
+                  const exclKeyword = /exclusion criteria/i;
+                  let inclText = rawInclusion;
+                  let exclText = rawExclusion;
+
+                  // If inclusion contains exclusion section, split it
+                  const splitIdx = rawInclusion.search(exclKeyword);
+                  if (splitIdx > 0 && !rawExclusion) {
+                    inclText = rawInclusion.slice(0, splitIdx);
+                    exclText = rawInclusion.slice(splitIdx);
+                  }
+
+                  const parseLines = (text: string) =>
+                    text.split(/\n/)
+                      .map((l) => l.replace(/^[-•*0-9.\s]+/, "").trim())
+                      .filter((l) => l && !/^(inclusion|exclusion)\s*criteria\s*:?$/i.test(l));
+
+                  return (
+                    <>
+                      {inclText && (
+                        <div style={{ marginBottom: 12 }}>
+                          <div className="tsm-crit-label" style={{ color: "var(--green-700)", fontWeight: 700, marginBottom: 6 }}>
+                            Inclusion Criteria
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: 18, listStyleType: "disc" }}>
+                            {parseLines(inclText).map((line, i) => (
+                              <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{line}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {exclText && (
+                        <div>
+                          <div className="tsm-crit-label" style={{ color: "var(--coral-600)", fontWeight: 700, marginBottom: 6 }}>
+                            Exclusion Criteria
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: 18, listStyleType: "disc" }}>
+                            {parseLines(exclText).map((line, i) => (
+                              <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{line}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>

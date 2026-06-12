@@ -277,12 +277,6 @@ export default function PhysicianMap({
         className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
       });
       const marker = L.marker([p.lat, p.lng], { icon });
-      marker.bindTooltip(
-        `<div style="font-weight:700;">${p.name}</div>
-         ${p.taxonomy_desc ? `<div style="font-size:11px;color:#3b82f6;">${p.taxonomy_desc}</div>` : ""}
-         <div style="font-size:10px;color:#94a3b8;margin-top:3px;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>`,
-        { permanent: false, direction: "top", offset: [0, -12], className: "phys-tooltip" }
-      );
       marker.bindPopup(buildPopupHtml(p, "#2563eb", "#f0f9ff", "#dbeafe") + `
         <div style="padding:8px 16px 12px;">
           <button onclick="window.__viewPhysician && window.__viewPhysician('${p.npi}')"
@@ -312,12 +306,6 @@ export default function PhysicianMap({
         className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
       });
       const marker = L.marker([p.lat, p.lng], { icon });
-      marker.bindTooltip(
-        `<div style="font-weight:700;">⭐ ${p.name}</div>
-         ${p.taxonomy_desc ? `<div style="font-size:11px;color:#14b8a6;">${p.taxonomy_desc}</div>` : ""}
-         <div style="font-size:10px;color:#0d9488;margin-top:3px;font-family:'IBM Plex Mono',monospace;">NPI ${p.npi}</div>`,
-        { permanent: false, direction: "top", offset: [0, -12], className: "phys-tooltip-suggested" }
-      );
       marker.bindPopup(buildPopupHtml(p, "#14b8a6", "#f0fdfa", "#99f6e4", "SUGGESTED") + `
         <div style="padding:8px 16px 12px;">
           <button onclick="window.__viewPhysician && window.__viewPhysician('${p.npi}')"
