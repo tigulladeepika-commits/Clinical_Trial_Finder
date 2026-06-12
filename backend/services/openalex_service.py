@@ -160,10 +160,28 @@ async def openalex_lookup(name: str, client: httpx.AsyncClient) -> dict:
         # Without this, a common name like "James Lee" returns a random author
         # who happens to rank first in OpenAlex's relevance sort.
         clean_lower = clean.lower()
-        author = next(
-            (i for i in items if i.get("display_name", "").lower() == clean_lower),
-            items[0] if items else None,
-        )
+        exact_matches = [i for i in items if i.get("display_name", "").lower() == clean_lower]
+        candidates = exact_matches if exact_matches else items
+
+        # Among candidates prefer the one with medical concepts
+        _MEDICAL_SIGNALS = {
+            "medicine", "biology", "pharmacology", "immunology", "pathology",
+            "clinical", "medical", "health", "disease", "surgery", "oncology",
+            "cardiology", "neurology", "dermatology", "rheumatology", "therapy",
+        }
+        def _medical_score(candidate: dict) -> int:
+            concepts = candidate.get("x_concepts", []) or []
+            names = " ".join(c.get("display_name", "").lower() for c in concepts)
+            return sum(1 for s in _MEDICAL_SIGNALS if s in names)
+
+        author = max(candidates, key=_medical_score) if candidates else None
+        # If top candidate has zero medical score — return empty to avoid wrong match
+        if author and _medical_score(author) == 0 and len(candidates) > 0:
+            logger.info(
+                "OpenAlex: no medical concepts found for %r — skipping",
+                clean,
+            )
+            return _empty()
         if not author:
             logger.info("OpenAlex: no usable result for %r", clean)
             return _empty()
@@ -195,6 +213,30 @@ async def openalex_lookup(name: str, client: httpx.AsyncClient) -> dict:
             ]
 
         logger.info("OpenAlex: research_areas=%s", research_areas)
+
+        # Validate research areas are medical — reject engineering/CS researchers
+        _MEDICAL_FIELDS = {
+            "medicine", "biology", "pharmacology", "psychology",
+            "cardiology", "neurology", "oncology", "surgery", "pathology",
+            "immunology", "biochemistry", "epidemiology", "health", "clinical",
+            "medical", "disease", "patient", "treatment", "therapy", "diagnosis",
+            "radiology", "pediatrics", "dermatology", "urology", "gastroenterology",
+            "rheumatology", "arthritis", "infectious disease", "hematology",
+        }
+        _NON_MEDICAL_FIELDS = {
+            "software", "engineering", "computer science", "programming",
+            "electrical", "mechanical", "physics", "mathematics",
+            "electronics", "semiconductor", "nanotechnology", "quantum",
+            "aerospace", "civil engineering", "metallurgy",
+        }
+        if research_areas:
+            areas_lower = " ".join(research_areas).lower()
+            medical_hits = sum(1 for f in _MEDICAL_FIELDS if f in areas_lower)
+            non_medical_hits = sum(1 for f in _NON_MEDICAL_FIELDS if f in areas_lower)
+            if medical_hits == 0 and non_medical_hits > 0:
+                logger.info("OpenAlex: REJECTED non-medical areas=%s", research_areas)
+                research_areas = []
+
 
         return {
             "research_areas":         research_areas,

@@ -19,8 +19,8 @@ Source asset: `docs/assets/playbook-screen-guide.svg`
 | Primary purpose | Search public clinical trials, review study sites, and find specialist physicians |
 | Main input | Condition or disease name |
 | Optional filters | City, state, phase, status, radius (for physician search) |
-| Main outputs | Trial list, study summary, site map, site location list, physician directory, lead capture |
-| External data sources | ClinicalTrials.gov, NPPES Physician Registry, MapQuest Geocoding |
+| Main outputs | Trial list, study summary, site map, site location list, physician directory, AI physician insights, lead capture |
+| External data sources | ClinicalTrials.gov, NPPES Physician Registry, MapQuest Geocoding, OpenAlex, PubMed, Europe PMC, Groq |
 | Map dependency | MapQuest browser key for interactive map display |
 | CRM integration | Optional Salesforce lead capture and auto-push |
 
@@ -32,6 +32,7 @@ Source asset: `docs/assets/playbook-screen-guide.svg`
 - Open one trial and inspect all returned study locations
 - View site locations on an interactive map when coordinates are available
 - **Find specialist physicians near trial sites** with automatic specialty matching
+- **View AI-enriched physician summaries** with publication metrics, research areas, and concise expertise overviews
 - **Capture your interest** in a trial and/or physician by providing contact information
 - **Auto-connect with providers** via optional Salesforce integration for follow-up
 
@@ -54,6 +55,7 @@ Source asset: `docs/assets/playbook-screen-guide.svg`
 - The current implementation only returns studies with US-based locations.
 - The map experience works best when `NEXT_PUBLIC_MAPQUEST_KEY` is configured.
 - Physician search automatically matches specialties to your condition and expands the search radius if fewer than 5 results are found.
+- AI physician insights may require `GROQ_API_KEY` and will surface publication metrics, research areas, and a concise physician summary.
 - The application does not enroll a participant into a study. It is strictly for search, review, and provider discovery.
 - Lead capture information is securely stored and can be pushed to Salesforce for follow-up by research coordinators.
 
@@ -209,7 +211,7 @@ The map panel also includes:
 4. The "Find Physicians" button appears.
 5. Adjust the search radius (default 25 miles).
 6. Review the list of nearby specialists in the matched specialty.
-7. Click a physician to center the map on their location.
+7. Click a physician to center the map on their location and optionally view AI Insights.
 8. Optionally capture your interest in the physician via the lead form.
 
 ### Scenario E: Capture Your Interest And Get Follow-Up (New)

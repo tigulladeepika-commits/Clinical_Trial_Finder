@@ -3,15 +3,22 @@ physician_insights_service.py
 
 Enrichment pipeline for a single physician:
 
-  1. Fetch publications from PubMed  (pubmed_service)
-  2. Fetch publications from EuropePMC  (europepmc_service)
-  3. Merge + deduplicate by PMID / title
-  4. Verify relevance via Groq  (publication_verification_service)
-  5. Generate a plain-text summary via Groq using the verified publications
+  1. Fetch publications from PubMed        (pubmed_service)         — primary
+  2. Fetch publications from EuropePMC     (europepmc_service)      — secondary
+  3. Fetch publications from Semantic Scholar (semantic_scholar_service) — tertiary + disambiguation
+  4. Merge + deduplicate by PMID / title
+  5. Verify relevance via Groq             (publication_verifier)
+  6. Generate a plain-text summary via Groq using the verified publications
      as context — falls back to a profile-only summary if Groq is unavailable.
 
 Publications come from real bibliographic databases, NOT from an LLM.
 Groq is used only for (a) title relevance verification and (b) summary text.
+
+S2 integration notes:
+  - S2 author search uses full name + state affiliation matching
+  - S2 results carry affiliation_verified=True — skip author name filter
+  - If S2 finds NO matching author for a physician, it suppresses that physician's
+    PubMed/EuropePMC results that have no affiliation (high collision risk)
 """
 
 from __future__ import annotations
@@ -28,6 +35,7 @@ from dotenv import load_dotenv
 import httpx
 
 from services import pubmed_service, europepmc_service
+from services.semantic_scholar_service import semantic_scholar_lookup
 from services.publication_verifier import verify_publications
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -43,21 +51,24 @@ HTTP_TIMEOUT = 20.0
 _MIN_CONFIDENCE = 15
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _merge_publications(
-    pubmed_pubs:  list[dict],
-    epmc_pubs:    list[dict],
+    pubmed_pubs: list[dict],
+    epmc_pubs:   list[dict],
+    s2_pubs:     list[dict],
 ) -> list[dict]:
     """
-    Merge PubMed and EuropePMC results, deduplicate by PMID then by title.
-    PubMed takes priority when both sources have the same paper.
+    Merge PubMed, EuropePMC, and Semantic Scholar results.
+    Deduplicate by PMID then by title.
+    PubMed takes priority, then EuropePMC, then S2.
+    S2 papers already have affiliation_verified=True set.
     """
     seen_pmids:  set[str] = set()
     seen_titles: set[str] = set()
-    merged: list[dict] = []
+    merged: list[dict]    = []
 
-    for pub in pubmed_pubs + epmc_pubs:
+    for pub in pubmed_pubs + epmc_pubs + s2_pubs:
         pmid  = (pub.get("pmid") or "").strip()
         title = (pub.get("title") or "").strip().lower()[:80]
 
@@ -97,19 +108,19 @@ async def _groq_summary(
     if publications:
         pub_lines = "\n".join(
             f"- {p.get('title', '')} ({p.get('year', 'n/d')})"
-            for p in publications[:8]
+            for p in publications[:5]
         )
-        pub_context = f"\n\nSelected publications:\n{pub_lines}"
+        pub_context = f"\n\nSelected publications (summarize themes only, do NOT quote titles):\n{pub_lines}"
     else:
         pub_context = ""
 
     prompt = (
-        f"Write a concise 3-sentence professional profile for a physician.\n"
+        f"Write a concise 2-sentence professional summary for a physician. Be brief and specific. Do NOT quote paper titles.\n"
         f"Name: {name}\n"
         f"Specialty: {specialty}\n"
-        f"Clinical context: {disease}"
         f"{pub_context}\n\n"
-        "Focus on their specialty, clinical expertise, and research contributions. "
+        "Focus ONLY on their specialty and actual research contributions listed above. "
+        "Do NOT assume clinical expertise not supported by the publications. "
         "Do not invent facts. Return plain text only — no JSON, no bullet points."
     )
 
@@ -174,8 +185,8 @@ async def enrich_physician(
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
 
-        # ── Step 1: Fetch publications from PubMed + EuropePMC in parallel ──
-        pubmed_result, epmc_result = await asyncio.gather(
+        # ── Step 1: Fetch from all three sources in parallel ──────────────
+        pubmed_result, epmc_result, s2_result = await asyncio.gather(
             pubmed_service.pubmed_lookup(
                 name      = name,
                 specialty = specialty,
@@ -188,12 +199,21 @@ async def enrich_physician(
                 client    = client,
                 disease   = disease,
             ),
+            semantic_scholar_lookup(
+                name      = name,
+                specialty = specialty,
+                npi_state = npi_state,
+                client    = client,
+                disease   = disease,
+            ),
             return_exceptions=True,
         )
 
-        # Handle exceptions from gather
+        # ── Step 2: Extract publications from each source ─────────────────
         pubmed_pubs: list[dict] = []
         epmc_pubs:   list[dict] = []
+        s2_pubs:     list[dict] = []
+        s2_author_verified = False
 
         if isinstance(pubmed_result, Exception):
             logger.warning("PubMed lookup exception for %r: %s", name, pubmed_result)
@@ -227,18 +247,57 @@ async def enrich_physician(
                     epmc_conf, len(epmc_result.get("publications", [])),
                 )
 
-        # ── Step 2: Merge + deduplicate ──────────────────────────────────────
-        merged = _merge_publications(pubmed_pubs, epmc_pubs)
-        logger.info("Merged publications: %d total", len(merged))
+        if isinstance(s2_result, Exception):
+            logger.warning("Semantic Scholar lookup exception for %r: %s", name, s2_result)
+        else:
+            s2_conf = s2_result.get("confidence", 0)
+            s2_author_id = s2_result.get("author_id")
+            s2_affiliation = s2_result.get("affiliation")
 
-        # ── Step 3: Verify relevance via Groq ────────────────────────────────
+            if s2_author_id:
+                # S2 found a verified author match
+                s2_author_verified = True
+                s2_pubs = s2_result.get("publications", [])
+                logger.info(
+                    "S2: matched author_id=%s affiliation=%r publications=%d",
+                    s2_author_id, s2_affiliation, len(s2_pubs),
+                )
+            else:
+                logger.info(
+                    "S2: no author match for %r (state=%s) — "
+                    "PubMed/EuropePMC results will be filtered more strictly",
+                    name, npi_state,
+                )
+                # S2 found no matching author — strip unverifiable PubMed papers
+                # (no affiliation + common name = high collision risk)
+                clean = pubmed_service.clean_name(name)
+                is_common = pubmed_service._is_common_name(clean)
+                if is_common:
+                    before = len(pubmed_pubs)
+                    pubmed_pubs = [
+                        p for p in pubmed_pubs
+                        if p.get("affiliation") or p.get("affiliation_verified")
+                    ]
+                    logger.info(
+                        "S2 no-match suppression: PubMed %d → %d papers (common name)",
+                        before, len(pubmed_pubs),
+                    )
+
+        # ── Step 3: Merge + deduplicate ───────────────────────────────────
+        merged = _merge_publications(pubmed_pubs, epmc_pubs, s2_pubs)
+        logger.info(
+            "Merged publications: %d total (pubmed=%d epmc=%d s2=%d)",
+            len(merged), len(pubmed_pubs), len(epmc_pubs), len(s2_pubs),
+        )
+
+        # ── Step 4: Verify relevance ──────────────────────────────────────
         if merged:
             verified = await verify_publications(
-                publications    = merged,
-                specialty       = specialty,
-                npi_state       = npi_state,
-                client          = client,
-                physician_name  = name,
+                publications   = merged,
+                specialty      = specialty,
+                npi_state      = npi_state,
+                client         = client,
+                physician_name = pubmed_service.clean_name(name),
             )
             logger.info(
                 "Verified publications: %d / %d kept",
@@ -247,7 +306,7 @@ async def enrich_physician(
         else:
             verified = []
 
-        # ── Step 4: Generate summary via Groq ────────────────────────────────
+        # ── Step 5: Generate Groq summary ─────────────────────────────────
         summary = await _groq_summary(
             name         = name,
             specialty    = specialty,
@@ -262,8 +321,8 @@ async def enrich_physician(
         status = "ready" if verified else "fallback"
 
         logger.info(
-            "Enrich complete | npi=%s | publications=%d | status=%s",
-            npi, len(verified), status,
+            "Enrich complete | npi=%s | publications=%d | status=%s | s2_verified=%s",
+            npi, len(verified), status, s2_author_verified,
         )
 
         return {

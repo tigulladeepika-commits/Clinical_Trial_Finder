@@ -87,12 +87,25 @@ button, input, select, textarea {
   font-family: var(--font-sans);
 }
 
-/* Invisible scrollbar */
+/* Invisible scrollbar globally */
 * {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 *::-webkit-scrollbar { display: none; }
+
+/* Show thin scrollbar ONLY for trials left panel */
+.trials-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-mid) transparent;
+}
+.trials-panel::-webkit-scrollbar { display: block; width: 4px; }
+.trials-panel::-webkit-scrollbar-track { background: transparent; }
+.trials-panel::-webkit-scrollbar-thumb {
+  background: var(--border-mid);
+  border-radius: 2px;
+}
+.trials-panel::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
 :focus-visible {
   outline: 2px solid var(--blue-500);

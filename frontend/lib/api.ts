@@ -321,10 +321,11 @@ export async function fetchPhysicianEmail(params: {
 }
 
 interface FetchAIInsightsParams {
-  npi:      string;
-  name:     string;
+  npi:       string;
+  name:      string;
   specialty: string;
-  disease:  string;
+  disease:   string;
+  npi_state?: string;
 }
 
 export async function fetchAIInsights({
@@ -332,12 +333,14 @@ export async function fetchAIInsights({
   name,
   specialty,
   disease,
+  npi_state,
 }: FetchAIInsightsParams): Promise<AIInsightsData> {
   const params = new URLSearchParams({
     name,
     specialty,
     disease,
   });
+  if (npi_state) params.append("npi_state", npi_state);
 
   const res = await fetch(
     `${BASE_URL}/api/physicians/${encodeURIComponent(npi)}/insights?${params.toString()}`

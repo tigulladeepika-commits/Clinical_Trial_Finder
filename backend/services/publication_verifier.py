@@ -18,6 +18,70 @@ GROQ_MODEL   = "llama-3.3-70b-versatile"
 HTTP_TIMEOUT = 15.0
 
 
+
+def _exact_name_confirm(publications: list[dict], physician_name: str) -> list[dict]:
+    """
+    Post-Groq final confirmation: verify the physician's last name + first
+    initial actually appears in each paper's author list.
+
+    Handles PubMed format ("Tsokos GC"), S2 format ("George C. Tsokos"),
+    and short formats ("G Tsokos", "Tsokos G").
+
+    Papers with no authors are kept (benefit of doubt).
+    S2 papers with affiliation_verified=True are kept without re-checking.
+    """
+    if not physician_name:
+        return publications
+
+    parts = physician_name.strip().split()
+    if len(parts) < 2:
+        return publications
+
+    last_name    = parts[-1].lower()
+    first_initial = parts[0][0].lower() if parts[0] else ""
+
+    kept = []
+    for pub in publications:
+        # S2 papers already verified at author level — skip re-check
+        if pub.get("affiliation_verified") is True and pub.get("source") == "Semantic Scholar":
+            kept.append(pub)
+            continue
+
+        authors = pub.get("authors", [])
+        if not authors:
+            kept.append(pub)
+            continue
+
+        matched = False
+        for author in authors:
+            a = author.lower().replace(".", "").replace(",", "").strip()
+            a_parts = a.split()
+
+            # Must contain last name as whole word
+            if last_name not in a_parts:
+                continue
+
+            # Last name found — check first initial
+            for ap in a_parts:
+                if ap != last_name and ap[0] == first_initial:
+                    matched = True
+                    break
+
+            if matched:
+                break
+
+        if matched:
+            kept.append(pub)
+        else:
+            logger.info(
+                "Name confirm reject: physician=%r not confirmed in authors=%r title=%r",
+                physician_name,
+                authors[:3],
+                pub.get("title", "")[:50],
+            )
+
+    return kept
+
 # FIX 1: Changed from sync to async, replaced asyncio.run() with await
 async def verify_publications(
     publications: list[dict],
@@ -45,12 +109,22 @@ async def verify_publications(
         )
 
     # FIX 1: was asyncio.run(...) which raises RuntimeError inside FastAPI's event loop
-    verified = await _groq_title_verify(papers_to_verify, specialty, client)
+    verified = await _groq_title_verify(papers_to_verify, specialty, client, physician_name=physician_name)
     logger.info(
         "Groq title verify: %d → %d papers (specialty=%r)",
         len(papers_to_verify), len(verified), specialty,
     )
 
+
+    # Final layer: confirm physician name in paper authors
+    if physician_name and verified:
+        confirmed = _exact_name_confirm(verified, physician_name)
+        logger.info(
+            "Name confirm: %d -> %d papers (physician=%r)",
+            len(verified), len(confirmed), physician_name,
+        )
+        if confirmed:
+            verified = confirmed
     return verified
 
 
@@ -68,15 +142,54 @@ def _author_name_filter(publications: list[dict], physician_name: str) -> list[d
     for pub in publications:
         authors = pub.get("authors", [])
         if not authors:
+            # Reject EuropePMC papers with no authors - unverifiable
+            if pub.get("source", "") == "Europe PMC":
+                logger.info("Author filter reject: EuropePMC no authors: %r", pub.get("title","")[:50])
+                continue
+            # PubMed no-author - keep with benefit of doubt
             kept.append(pub)
             continue
-
-        matched = any(
-            last_name in a.lower() and
-            any(i in a.lower() for i in first_initials)
-            for a in authors
-        )
-
+        # Word boundary match - prevents "burns" matching "Abushouk"
+        import re as _re
+        matched = False
+        # Full first name from physician (e.g. "Earl" from "Earl James Brink")
+        physician_first_full = parts[0].lower() if parts else ""
+        for author in authors:
+            a_lower = author.lower()
+            # Must contain last name as whole word
+            if not _re.search(rf"\b{_re.escape(last_name)}\b", a_lower):
+                continue
+            # Last name found — now check first name
+            author_parts = a_lower.replace(",", "").split()
+            # If author string contains a full word >= 3 chars that isn't the
+            # last name, treat it as a full first name and require exact match.
+            author_first_candidates = [
+                ap for ap in author_parts
+                if ap != last_name and len(ap) >= 3
+            ]
+            if author_first_candidates and physician_first_full:
+                # Full first name available on both sides — require exact match
+                if any(af == physician_first_full for af in author_first_candidates):
+                    matched = True
+                    break
+                # Also accept if physician first name starts with author initial
+                # (handles "E Brink" matching "Earl Brink") — but NOT "E.E. Brink"
+                author_initials_only = [
+                    ap for ap in author_parts
+                    if ap != last_name and len(ap) == 1
+                ]
+                if author_initials_only:
+                    if any(ai == physician_first_full[0] for ai in author_initials_only):
+                        matched = True
+                        break
+            else:
+                # Fallback: initial match (original logic)
+                for ap in author_parts:
+                    if ap != last_name and ap[0] in first_initials:
+                        matched = True
+                        break
+            if matched:
+                break
         if matched:
             kept.append(pub)
         else:
@@ -134,6 +247,15 @@ def _affiliation_filter(publications: list[dict], npi_state: str) -> list[dict]:
         affiliation = pub.get("affiliation", "").lower()
 
         if not affiliation:
+            # Fix: reject old papers with no affiliation — high collision risk.
+            # A physician active today is unlikely to have published before 1975.
+            pub_year = int(pub.get("year") or pub.get("pub_year") or 9999)
+            if pub_year < 1975:
+                logger.info(
+                    "Affiliation reject (no affiliation + old paper %d): %r",
+                    pub_year, pub.get("title", "")[:60],
+                )
+                continue
             pub["affiliation_verified"] = None
             kept.append(pub)
             continue
@@ -162,22 +284,45 @@ def _affiliation_filter(publications: list[dict], npi_state: str) -> list[dict]:
     return kept
 
 
+
+def _keyword_fallback_filter(publications: list[dict], specialty: str) -> list[dict]:
+    spec_lower = specialty.lower()
+    reject = []
+    reject += ["quantum","nanotechnology","semiconductor","aerospace","metallurgy"]
+    is_surgical = any(s in spec_lower for s in ["surg","orthop","trauma","vascular surgery"])
+    if not is_surgical:
+        reject += ["laparoscopic","cholangiogram","cholecystectomy","cholecystitis",
+                   "intraoperative","thromboelastography","rib fracture",
+                   "scooter injur","cleft lip","cleft palate","epidural analgesia"]
+    is_psych = any(s in spec_lower for s in ["psych","neurol","mental"])
+    if not is_psych:
+        reject += ["polyvagal","vagal tone","mindfulness","meditation",
+                   "respiratory sinus arrhythmia","loving-kindness","panic disorder"]
+    reject += ["war of 1812","extradition","war on terror","economic development",
+               "northwest ohio","swinish multitude","cycling time trial","fan cooling"]
+    kept = [p for p in publications if not any(t in p.get("title","").lower() for t in reject)]
+    return kept if kept else publications
+
 async def _groq_title_verify(
     publications: list[dict],
     specialty: str,
     client: httpx.AsyncClient,
+    physician_name: str = "",
 ) -> list[dict]:
     if not publications or not GROQ_API_KEY:
         return publications
 
     titles_text = "\n".join(
-        f"{i+1}. {pub.get('title', 'Unknown')}"
+        f"{i+1}. [{pub.get('year', '?')}] {pub.get('title', 'Unknown')}"
         for i, pub in enumerate(publications)
     )
+    name_context = f"Physician name: {physician_name}" if physician_name else ""
 
     prompt = f"""You are a strict medical publication verifier for a US clinical trial platform.
 
 Physician specialty: {specialty}
+{name_context}
+IMPORTANT: Papers before 1975 are almost certainly from a different researcher - answer NO for any paper before 1975.
 
 For each paper title, answer YES if the paper is directly relevant to this medical specialty, or NO if it is not.
 
@@ -186,13 +331,21 @@ STRICT rules — answer NO for:
 - Health policy papers from other countries (e.g. "diabetes drugs in New Zealand")
 - Papers about skin conditions (psoriasis, alopecia, dermatology) unless specialty is Dermatology
 - Papers about myeloma, lymphoma, cancer unless specialty includes Oncology
-- Non-medical science (physics, chemistry, engineering, geology)
+- Non-medical science: physics, quantum computing, nanotechnology, semiconductor, photonics, optics, engineering, geology, chemistry (ALWAYS NO regardless of specialty)
 - Neuroscience/neurology papers unless specialty includes Neurology
-- Basic molecular biology with no clinical medicine relevance
+- Basic molecular biology, genomics, proteomics with no direct clinical application
 - Ophthalmology, eye, retina, vitreous, ocular papers unless specialty is Ophthalmology
 - Papers about nuclear disasters, Chernobyl, radiation epidemiology unless specialty is Radiation Oncology
-- Papers about infectious disease, antibiotics, bacteriology unless specialty includes Infectious Disease or the physician's specialty directly relates
+- Papers about infectious disease, antibiotics, bacteriology unless specialty includes Infectious Disease
 - Epidemiological letters or case reports from a completely different subspecialty
+- Mitochondrial biology, cellular biophysics, nanomechanics — ALWAYS NO for clinical specialties
+- Papers about electron channels, qubits, photocurrents, nanoresonators — ALWAYS NO
+- Surgical procedure papers (cholecystectomy, cholecystitis, cholangiogram, laparoscopic surgery, appendectomy, hernia repair, SAGES guidelines, intraoperative imaging, rib fractures, trauma surgery, scooter injuries, coagulopathy, thromboelastography) unless specialty includes Surgery
+- Trauma/emergency medicine papers unless specialty includes Emergency Medicine or Surgery
+- Pediatric surgery, cleft palate, plastic surgery papers unless specialty includes those areas
+- Mindfulness, meditation, polyvagal theory, vagal tone, respiratory sinus arrhythmia papers unless specialty is Psychiatry or Neurology
+- Psychology, behavioral science, social science papers unless specialty includes Psychiatry
+- Animal husbandry, veterinary, public health intervention papers for animals
 
 Answer YES for:
 - Papers directly about the specialty's diseases and treatments
@@ -208,53 +361,65 @@ Return ONLY a JSON array, no other text:
 Titles:
 {titles_text}"""
 
-    try:
-        resp = await client.post(
-            GROQ_URL,
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type":  "application/json",
-            },
-            json={
-                "model":       GROQ_MODEL,
-                "max_tokens":  500,
-                "temperature": 0.0,
-                "messages":    [{"role": "user", "content": prompt}],
-            },
-            timeout=HTTP_TIMEOUT,
-        )
+    for _attempt in range(3):
+        try:
+            resp = await client.post(
+                GROQ_URL,
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type":  "application/json",
+                },
+                json={
+                    "model":       GROQ_MODEL,
+                    "max_tokens":  500,
+                    "temperature": 0.0,
+                    "messages":    [{"role": "user", "content": prompt}],
+                },
+                timeout=HTTP_TIMEOUT,
+            )
 
-        if resp.status_code != 200:
-            logger.warning("Groq verify failed %d — keeping all papers", resp.status_code)
-            return publications
+            if resp.status_code == 429:
+                import asyncio as _aio
+                wait = 2.0 * (2 ** _attempt)
+                logger.warning("Groq 429 attempt %d - waiting %.1fs", _attempt+1, wait)
+                if _attempt < 2:
+                    await _aio.sleep(wait)
+                    continue
+                logger.warning("Groq 429 exhausted - keyword fallback")
+                return _keyword_fallback_filter(publications, specialty)
 
-        raw = resp.json()["choices"][0]["message"]["content"].strip()
-        logger.debug("Groq raw response: %s", raw[:300])
+            if resp.status_code != 200:
+                logger.warning("Groq failed %d - keyword fallback", resp.status_code)
+                return _keyword_fallback_filter(publications, specialty)
 
-        json_match = re.search(r'\[.*?\]', raw, re.DOTALL)
-        if not json_match:
-            logger.warning("Groq verify: no JSON found — keeping all papers")
-            return publications
+            raw = resp.json()["choices"][0]["message"]["content"].strip()
+            logger.debug("Groq raw response: %s", raw[:300])
 
-        results = json.loads(json_match.group())
-        relevant_indices = {
-            item["index"] for item in results
-            if item.get("relevant", True)
-        }
+            json_match = re.search(r'\[.*?\]', raw, re.DOTALL)
+            if not json_match:
+                logger.warning("Groq verify: no JSON found - keyword fallback")
+                return _keyword_fallback_filter(publications, specialty)
 
-        verified = []
-        for i, pub in enumerate(publications):
-            idx = i + 1
-            if idx in relevant_indices:
-                verified.append(pub)
-            else:
-                logger.info(
-                    "Groq rejected paper: %r",
-                    pub.get("title", "")[:60],
-                )
+            results = json.loads(json_match.group())
+            relevant_indices = {
+                item["index"] for item in results
+                if item.get("relevant", True)
+            }
 
-        return verified if verified else publications
+            verified = []
+            for i, pub in enumerate(publications):
+                idx = i + 1
+                if idx in relevant_indices:
+                    verified.append(pub)
+                else:
+                    logger.info(
+                        "Groq rejected paper: %r",
+                        pub.get("title", "")[:60],
+                    )
 
-    except Exception as exc:
-        logger.warning("Groq title verify error: %s — keeping all papers", exc)
-        return publications
+            return verified if verified else publications
+
+        except Exception as exc:
+            logger.warning("Groq title verify error: %s - keyword fallback", exc)
+            return _keyword_fallback_filter(publications, specialty)
+        break

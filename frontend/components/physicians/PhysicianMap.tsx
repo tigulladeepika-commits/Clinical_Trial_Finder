@@ -87,16 +87,11 @@ export default function PhysicianMap({
   const tileLayerRef    = useRef<any>(null);
   // FIX 2: ref to the radius circle so we can update it reactively
   const radiusCircleRef = useRef<any>(null);
-  // FIX 4: ref to the outer wrapper, used to measure header offset on expand
-  const outerRef        = useRef<HTMLDivElement>(null);
 
   const [mapType,      setMapType]      = useState<MapType>("map");
   const [currentZoom,  setCurrentZoom]  = useState(10);
   const [isExpanded,   setIsExpanded]   = useState(false);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
-  // FIX 4: distance from top of viewport to the map container, captured
-  // right before expanding, so the expanded view starts below any header
-  const [expandTop,    setExpandTop]    = useState(0);
 
   const mappable          = physicians.filter((p) => p.lat != null && p.lng != null);
   const mappableSuggested = suggestedPhysicians.filter((p) => p.lat != null && p.lng != null);
@@ -130,19 +125,6 @@ export default function PhysicianMap({
       ...mappableSuggested.map((p) => [p.lat!, p.lng!] as [number, number]),
     ];
     mapRef.current.fitBounds(window.L.latLngBounds(pts), { padding: [40, 40] });
-  };
-
-  // FIX 4: expand/collapse helpers — measure the header offset before going fullscreen
-  const handleExpand = () => {
-    const top = outerRef.current?.getBoundingClientRect().top ?? 0;
-    setExpandTop(Math.max(top, 0));
-    setIsExpanded(true);
-    setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 100);
-  };
-
-  const handleCollapse = () => {
-    setIsExpanded(false);
-    setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 100);
   };
 
   const initMap = () => {
@@ -468,20 +450,16 @@ export default function PhysicianMap({
   const activeType = MAP_TYPES.find((t) => t.id === mapType)!;
 
   return (
-    <div
-      ref={outerRef}
-      style={{
+    <div style={{
         position: isExpanded ? "fixed" : "relative",
-        // FIX 4: start below whatever header sits above the map instead of top:0
-        top: isExpanded ? expandTop : undefined,
+        top: isExpanded ? 0 : undefined,
         left: isExpanded ? 0 : undefined,
         width: isExpanded ? "100vw" : "100%",
-        height: isExpanded ? `calc(100vh - ${expandTop}px)` : "100%",
+        height: isExpanded ? "100vh" : "100%",
         zIndex: isExpanded ? 9999 : undefined,
         background: isExpanded ? "white" : undefined,
         overflow: "hidden",
-      }}
-    >
+      }}>
 
       {/* ── Map canvas ───────────────────────────────────────────────────── */}
       <div ref={mapDivRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
@@ -600,7 +578,10 @@ export default function PhysicianMap({
       {/* ── Expand button (bottom-right) + Back button (top-left when expanded) ── */}
       {isExpanded && (
         <button
-          onClick={handleCollapse}
+          onClick={() => {
+            setIsExpanded(false);
+            setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 100);
+          }}
           title="Exit fullscreen"
           style={{
             position: "absolute", top: 10, left: 10, zIndex: 1001,
@@ -617,7 +598,10 @@ export default function PhysicianMap({
       )}
       {!isExpanded && (
         <button
-          onClick={handleExpand}
+          onClick={() => {
+            setIsExpanded(true);
+            setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 100);
+          }}
           title="Expand map"
           style={{
             position: "absolute", bottom: 40, right: 10, zIndex: 1000,

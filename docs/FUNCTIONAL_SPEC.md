@@ -14,7 +14,7 @@ This document defines the expected business behavior of Clinical Trial Finder fr
 
 ## Product Summary
 
-Clinical Trial Finder is a comprehensive web application that enables a public user to search ClinicalTrials.gov studies, filter result sets, inspect trial summaries, review study site locations through both a map view and a structured location list, discover specialist physicians near trial sites, and capture interest for follow-up engagement.
+Clinical Trial Finder is a comprehensive web application that enables a public user to search ClinicalTrials.gov studies, filter result sets, inspect trial summaries, review study site locations through both a map view and a structured location list, discover specialist physicians near trial sites, explore AI-enriched physician research insights, and capture interest for follow-up engagement.
 
 ## Business Objective
 
@@ -37,6 +37,7 @@ The product exists to reduce the effort required to move from a general conditio
 | Trial detail review | Open one trial and inspect summary, description, and locations | High |
 | Site mapping | Plot available site coordinates on a map | High |
 | Physician search | Find specialist physicians near trial sites with automatic specialty matching | High |
+| AI physician insights | Surface publication metrics, research areas, and summaries for selected physicians | Medium |
 | Auto-relax physician results | Expand specialty filter if fewer than 5 physicians found | High |
 | Lead capture | Allow users to express interest in trials/physicians and submit contact information | High |
 | Salesforce integration | Auto-push captured leads to Salesforce CRM for coordinator follow-up | Medium |
@@ -63,6 +64,7 @@ The product exists to reduce the effort required to move from a general conditio
 5. Find appropriate medical specialists near trial sites.
 6. Express interest in trials/physicians and receive follow-up from research coordinators.
 7. Access specialty-matched physicians automatically without manual research.
+8. Review AI-enriched physician summaries, publication counts, and research areas before following up.
 
 ## End-To-End Functional Flow
 
@@ -248,6 +250,7 @@ The product exists to reduce the effort required to move from a general conditio
 | FR-25 | The system shall store lead data securely in persistent JSON format. |
 | FR-26 | The system shall auto-push captured leads to Salesforce Web-to-Lead when SF_OID is configured. |
 | FR-27 | The system shall validate city/state combinations against indexed US locations before accepting search input. |
+| FR-28 | The system shall provide AI physician insights with publication metrics and condensed profile summaries for selected physicians. |
 | FR-28 | The system shall provide HTTP caching headers (5 min for trial search, 24 hr for site detail, 30 days for static data). |
 
 ## Validation Rules

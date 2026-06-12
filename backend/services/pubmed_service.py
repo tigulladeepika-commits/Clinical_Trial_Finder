@@ -1,24 +1,31 @@
 import asyncio
 import httpx
 import logging
+import os
 import re
 from datetime import datetime
 from typing import Optional
+
+from dotenv import load_dotenv
+from pathlib import Path
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
 PUBMED_SEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 PUBMED_FETCH_URL  = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 
-HTTP_TIMEOUT = 15.0
-MAX_RESULTS  = 20
+HTTP_TIMEOUT   = 15.0
+MAX_RESULTS    = 20
+NCBI_API_KEY   = os.getenv("NCBI_API_KEY", "")
 MIN_RESULTS  = 5
 MAX_RETRIES  = 2
 RETRY_DELAY  = 1.5
 
 # NCBI E-utilities are publicly accessible without an API key.
 # Free tier allows 3 requests/second — semaphore is set accordingly.
-PUBMED_CONCURRENCY = 3
+# Bumped from 3 to 8 after adding NCBI_API_KEY (rate limit 3/sec -> 10/sec)
+PUBMED_CONCURRENCY = 8
 
 CURRENT_YEAR = datetime.now().year
 
@@ -65,6 +72,10 @@ COMMON_LAST_NAMES = {
     "taylor", "anderson", "thomas", "jackson", "white",
     "harris", "martin", "thompson", "moore", "robinson",
     "drury",
+    # Collision-prone surnames added for disambiguation
+    "brink", "burns", "cook", "stone", "young", "price", "fox",
+    "hunt", "ross", "bell", "gray", "cole", "reed", "ward",
+    "morgan", "cooper", "bailey", "brooks", "kelly", "sanders",
 }
 
 VERY_COMMON_LAST_NAMES = {
@@ -86,6 +97,9 @@ SPECIFIC_TOPIC_TERMS = {
 
 def clean_name(raw_name: str) -> str:
     name = raw_name
+    # Strip semicolon credentials e.g. "MD; M.Cl.Sc"
+    if ";" in name:
+        name = name.split(";")[0].strip()
 
     for cred in [
         ", M.D.", ",M.D.", " M.D.", ", MD", ",MD", " MD",
@@ -97,10 +111,14 @@ def clean_name(raw_name: str) -> str:
     ]:
         name = name.replace(cred, "")
 
-    name = re.sub(r'\b(Dr\.?|Prof\.?|Drs\.?)\b', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\b(Dr\.?|Prof\.?|Drs\.?|Mr\.?|Ms\.?|Mrs\.?)\b', '', name, flags=re.IGNORECASE)
     name = re.sub(r'\s*--+\s*', ' ', name)
     name = re.sub(r'(?<!\w)-(?!\w)', ' ', name)
     name = name.replace(",", "").strip()
+    # Strip leading dots e.g. '. STEPHEN C MANUS' -> 'STEPHEN C MANUS'
+    name = re.sub(r'^[.\s]+', '', name).strip()
+    # Strip trailing suffix tokens e.g. "Sr." "Jr." "II" "III"
+    name = re.sub(r'\s+(Sr\.?|Jr\.?|II|III|IV)$', '', name, flags=re.IGNORECASE).strip()
     return " ".join(w.capitalize() for w in name.split() if w)
 
 
@@ -126,10 +144,43 @@ def _is_common_name(clean_name_str: str) -> bool:
 # Ordering matters: higher-confidence queries come first so Tier 0 is populated
 # as early as possible.
 
+DISEASE_MESH_MAP = {
+    "heart attack":                "Myocardial Infarction",
+    "acute myocardial infarction": "Myocardial Infarction",
+    "myocardial infarction":       "Myocardial Infarction",
+    "ami":                         "Myocardial Infarction",
+    "stroke":                      "Stroke",
+    "heart failure":               "Heart Failure",
+    "congestive heart failure":    "Heart Failure",
+    "chf":                         "Heart Failure",
+    "afib":                        "Atrial Fibrillation",
+    "atrial fibrillation":         "Atrial Fibrillation",
+    "copd":                        "Pulmonary Disease, Chronic Obstructive",
+    "diabetes":                    "Diabetes Mellitus",
+    "hypertension":                "Hypertension",
+    "high blood pressure":         "Hypertension",
+    "cancer":                      "Neoplasms",
+    "lung cancer":                 "Lung Neoplasms",
+    "breast cancer":               "Breast Neoplasms",
+    "cardiovascular disease":      "Cardiovascular Diseases",
+    "aortic stenosis":             "Aortic Valve Stenosis",
+    "pulmonary hypertension":      "Hypertension, Pulmonary",
+    "coronary artery disease":     "Coronary Artery Disease",
+    "peripheral artery disease":   "Peripheral Arterial Disease",
+    "deep vein thrombosis":        "Venous Thrombosis",
+    "dvt":                         "Venous Thrombosis",
+    "pulmonary embolism":          "Pulmonary Embolism",
+}
+
+def _normalize_disease(disease: str) -> str:
+    """Map common disease names to PubMed MeSH terms for better search results."""
+    return DISEASE_MESH_MAP.get(disease.lower().strip(), disease.strip())
+
 def _build_queries(
     clean: str,
     specialty: str,
     disease: str,
+    common_name: bool = False,
 ) -> list[tuple[str, int]]:
     parts = clean.split()
     if len(parts) < 2:
@@ -142,7 +193,7 @@ def _build_queries(
     middle_init  = middle_name[0].upper() if middle_name else ""
 
     mesh          = _get_mesh_term(specialty)
-    disease_clean = disease.strip() if disease else ""
+    disease_clean = _normalize_disease(disease) if disease else ""
     spec_lower    = specialty.lower() if specialty else ""
 
     # Handle hyphenated first names (e.g. "Jean-Pierre" → "JP")
@@ -159,6 +210,12 @@ def _build_queries(
     # ── Tier 0 (conf_bonus >= 65): specific-topic + high-precision author forms ──
 
     specific_topics = _get_specific_topics(spec_lower, disease_clean)
+    # Full first name query e.g. "Mouhamed Sabouni[Author]" (no quotes)
+    # PubMed matches partial author names - finds MA/AMR style indexing
+    # Only for uncommon names - avoids false matches for Chen/Kim/Wang etc.
+    if first and last and not common_name:
+        raw_full_name = f"{first} {last}[Author]"
+        raw.insert(0, (raw_full_name, 80))
     for topic in specific_topics:
         raw.append((f'"{last} {initials}"[Author] AND "{topic}"[Title/Abstract]', 75))
         if full_initials != initials:
@@ -176,14 +233,14 @@ def _build_queries(
     # ── Tier 1 (35–64): disease/mesh broadening ───────────────────────────────
 
     if disease_clean:
-        raw.append((f'"{last} {first}"[Author] AND "{disease_clean}"[Title/Abstract]', 60))
-        raw.append((f'"{last} {first}"[Author] AND "{disease_clean}"[MeSH Terms]', 55))
+        raw.append((f'"{last} {initials}"[Author] AND "{disease_clean}"[Title/Abstract]', 60))
+        raw.append((f'"{last} {initials}"[Author] AND "{disease_clean}"[MeSH Terms]', 55))
 
     if mesh:
-        raw.append((f'"{last} {first}"[Author] AND "{mesh}"[MeSH Terms]', 50))
-        raw.append((f'"{last} {first}"[Author] AND "{mesh}"[Title/Abstract]', 45))
+        raw.append((f'"{last} {initials}"[Author] AND "{mesh}"[MeSH Terms]', 50))
+        raw.append((f'"{last} {initials}"[Author] AND "{mesh}"[Title/Abstract]', 45))
 
-    raw.append((f'"{last} {first}"[Author]', 35))
+    raw.append((f'"{last} {initials}"[Author]', 35))
 
     if disease_clean:
         raw.append((f'"{last} {full_initials}"[Author] AND "{disease_clean}"[Title/Abstract]', 30))
@@ -286,7 +343,7 @@ async def pubmed_lookup(
         clean, specialty, disease, is_common,
     )
 
-    queries = _build_queries(clean, specialty, disease)
+    queries = _build_queries(clean, specialty, disease, common_name=is_common)
 
     best_pmids      : list[str] = []
     best_query      : str       = ""
@@ -297,13 +354,16 @@ async def pubmed_lookup(
     found_tier0     : bool      = False
 
     for query, conf_bonus in queries:
-        data = await _fetch_with_retry(client, PUBMED_SEARCH_URL, {
+        params = {
             "db":      "pubmed",
             "term":    query,
             "retmax":  MAX_RESULTS,
             "retmode": "json",
             "sort":    "relevance",
-        })
+        }
+        if NCBI_API_KEY:
+            params["api_key"] = NCBI_API_KEY
+        data = await _fetch_with_retry(client, PUBMED_SEARCH_URL, params)
         if not data:
             continue
 
@@ -357,11 +417,14 @@ async def pubmed_lookup(
         best_query, best_count, best_conf_bonus,
     )
 
-    summary_data = await _fetch_with_retry(client, PUBMED_FETCH_URL, {
+    fetch_params = {
         "db":      "pubmed",
         "id":      ",".join(best_pmids[:MAX_RESULTS]),
         "retmode": "json",
-    })
+    }
+    if NCBI_API_KEY:
+        fetch_params["api_key"] = NCBI_API_KEY
+    summary_data = await _fetch_with_retry(client, PUBMED_FETCH_URL, fetch_params)
 
     if not summary_data:
         return _empty_pubmed()

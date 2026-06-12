@@ -14,6 +14,7 @@ import type { Physician, SelectedSite } from "@/types/physician";
 
 interface Props {
   site:              SelectedSite;
+  userCondition?:    string;
   initialRadius?:    number;
   kpiBar?:           React.ReactNode;
   physicians:        Physician[];
@@ -39,100 +40,137 @@ interface TaxonomyOption {
 }
 
 const TAXONOMY_OPTIONS: TaxonomyOption[] = [
-  // ── Doctors ──────────────────────────────────────────────────────────────
-  { code: "207R00000X", label: "Internal Medicine",                  group: "Doctors" },
-  { code: "207RH0000X", label: "Hematology",                        group: "Doctors" },
-  { code: "207RH0003X", label: "Hematology & Oncology",             group: "Doctors" },
-  { code: "207RO0000X", label: "Medical Oncology",                  group: "Doctors" },
-  { code: "2086S0129X", label: "Surgical Oncology",                 group: "Doctors" },
-  { code: "2086X0206X", label: "Surgical Oncology (Thoracic)",      group: "Doctors" },
-  { code: "207RR0500X", label: "Rheumatology",                      group: "Doctors" },
-  { code: "207RE0101X", label: "Endocrinology, Diabetes & Metabolism", group: "Doctors" },
-  { code: "207RI0200X", label: "Infectious Disease",                group: "Doctors" },
-  { code: "207RG0300X", label: "Gastroenterology",                  group: "Doctors" },
-  { code: "207RP1001X", label: "Pulmonary Disease",                 group: "Doctors" },
-  { code: "207RC0000X", label: "Cardiovascular Disease",            group: "Doctors" },
-  { code: "207RN0300X", label: "Nephrology",                        group: "Doctors" },
-  { code: "2084N0400X", label: "Neurology",                         group: "Doctors" },
-  { code: "207T00000X", label: "Neurological Surgery (Neurosurgery)", group: "Doctors" },
-  { code: "207X00000X", label: "Orthopaedic Surgery",               group: "Doctors" },
-  { code: "207V00000X", label: "Obstetrics & Gynecology",           group: "Doctors" },
-  { code: "207VX0000X", label: "Gynecologic Oncology",              group: "Doctors" },
-  { code: "207W00000X", label: "Ophthalmology",                     group: "Doctors" },
-  { code: "207Y00000X", label: "Otolaryngology (ENT)",              group: "Doctors" },
-  { code: "207ZP0102X", label: "Anatomic & Clinical Pathology",     group: "Doctors" },
-  { code: "2085R0202X", label: "Diagnostic Radiology",              group: "Doctors" },
-  { code: "2085R0001X", label: "Radiation Oncology",                group: "Doctors" },
-  { code: "208600000X", label: "General Surgery",                   group: "Doctors" },
-  { code: "207Q00000X", label: "Family Medicine",                   group: "Doctors" },
-  { code: "207P00000X", label: "Emergency Medicine",                group: "Doctors" },
-  { code: "208M00000X", label: "Hospitalist",                       group: "Doctors" },
-  { code: "207N00000X", label: "Dermatology",                       group: "Doctors" },
-  { code: "207K00000X", label: "Allergy & Immunology",              group: "Doctors" },
-  { code: "207U00000X", label: "Physical Medicine & Rehabilitation", group: "Doctors" },
-  { code: "2084P0800X", label: "Psychiatry",                        group: "Doctors" },
-  { code: "207LP2900X", label: "Pain Medicine",                     group: "Doctors" },
-  { code: "207RC0001X", label: "Clinical Cardiac Electrophysiology", group: "Doctors" },
-  { code: "207RI0011X", label: "Interventional Cardiology",         group: "Doctors" },
-  { code: "207RU0001X", label: "Transplant Hepatology",             group: "Doctors" },
-  { code: "2086S0105X", label: "Transplant Surgery",                group: "Doctors" },
-  { code: "208VP0000X", label: "Pain Medicine (ABPM)",              group: "Doctors" },
-
-  // ── HCPs ─────────────────────────────────────────────────────────────────
-  { code: "363LF0000X", label: "Nurse Practitioner – Family",       group: "HCPs" },
-  { code: "363LA2200X", label: "Nurse Practitioner – Acute Care",   group: "HCPs" },
-  { code: "363LX0001X", label: "Nurse Practitioner – Oncology",     group: "HCPs" },
-  { code: "363LP0200X", label: "Nurse Practitioner – Pediatrics",   group: "HCPs" },
-  { code: "363LS0200X", label: "Nurse Practitioner – School",       group: "HCPs" },
-  { code: "367500000X", label: "Nurse Anesthetist (CRNA)",          group: "HCPs" },
-  { code: "364S00000X", label: "Clinical Nurse Specialist",         group: "HCPs" },
-  { code: "261QR0206X", label: "Research Facility / Clinical Research", group: "HCPs" },
-  { code: "390200000X", label: "Student (Health Care)",             group: "HCPs" },
-  { code: "374700000X", label: "Technician / Technologist",         group: "HCPs" },
-  { code: "246QB0000X", label: "Clinical Laboratory Scientist",     group: "HCPs" },
-  { code: "111N00000X", label: "Chiropractor",                      group: "HCPs" },
-  { code: "122300000X", label: "Dentist",                           group: "HCPs" },
-  { code: "152W00000X", label: "Optometrist",                       group: "HCPs" },
-  { code: "163W00000X", label: "Registered Nurse",                  group: "HCPs" },
-  { code: "164W00000X", label: "Licensed Practical Nurse",          group: "HCPs" },
-  { code: "170100000X", label: "Medical Genetics / Genomics",       group: "HCPs" },
-  { code: "183500000X", label: "Pharmacist",                        group: "HCPs" },
-  { code: "225100000X", label: "Physical Therapist",                group: "HCPs" },
-  { code: "225X00000X", label: "Occupational Therapist",            group: "HCPs" },
-  { code: "231H00000X", label: "Audiologist",                       group: "HCPs" },
-  { code: "235Z00000X", label: "Speech-Language Pathologist",       group: "HCPs" },
-  { code: "251B00000X", label: "Case Manager",                      group: "HCPs" },
-  { code: "332B00000X", label: "Durable Medical Equipment Supplier", group: "HCPs" },
-  { code: "3416L0300X", label: "Perfusionist",                      group: "HCPs" },
-
-  // ── HCOs ─────────────────────────────────────────────────────────────────
-  { code: "282N00000X", label: "General Acute Care Hospital",       group: "HCOs" },
-  { code: "282NC0060X", label: "Critical Access Hospital",          group: "HCOs" },
-  { code: "282NR1301X", label: "Rural Acute Care Hospital",         group: "HCOs" },
-  { code: "283Q00000X", label: "Psychiatric Hospital",              group: "HCOs" },
-  { code: "283X00000X", label: "Rehabilitation Hospital",           group: "HCOs" },
-  { code: "284300000X", label: "Special Hospital",                  group: "HCOs" },
-  { code: "261QA0600X", label: "Ambulatory Surgery Center",         group: "HCOs" },
-  { code: "261QR0200X", label: "Radiology / Imaging Center",        group: "HCOs" },
-  { code: "261QC1500X", label: "Community Health Center",           group: "HCOs" },
-  { code: "261QM1300X", label: "Multi-Specialty Group Practice",    group: "HCOs" },
-  { code: "261QP2300X", label: "Primary Care Clinic",               group: "HCOs" },
-  { code: "261QC0050X", label: "Critical Care (Intensive Care) Facility", group: "HCOs" },
-  { code: "261QH0700X", label: "Hospice",                           group: "HCOs" },
-  { code: "315D00000X", label: "Inpatient Hospice",                 group: "HCOs" },
-  { code: "315P00000X", label: "Intermediate Care Facility",        group: "HCOs" },
-  { code: "311500000X", label: "Alzheimer Center / Dementia Unit",  group: "HCOs" },
-  { code: "324500000X", label: "Substance Abuse Rehab Facility",    group: "HCOs" },
-  { code: "3416A0800X", label: "Ambulance Service",                 group: "HCOs" },
-  { code: "251G00000X", label: "Home Health Agency",                group: "HCOs" },
-  { code: "273100000X", label: "Epilepsy Unit",                     group: "HCOs" },
-  { code: "291U00000X", label: "Clinical Medical Laboratory",       group: "HCOs" },
+ 
+  // ── HCPs: Physicians & Specialists ───────────────────────────────────────
+  { code: "207K00000X", label: "Allergy & Immunology",                       group: "HCPs" },
+  { code: "207L00000X", label: "Anesthesiology",                             group: "HCPs" },
+  { code: "208C00000X", label: "Colon & Rectal Surgery",                     group: "HCPs" },
+  { code: "207N00000X", label: "Dermatology",                                group: "HCPs" },
+  { code: "204R00000X", label: "Electrodiagnostic Medicine",                 group: "HCPs" },
+  { code: "207P00000X", label: "Emergency Medicine",                         group: "HCPs" },
+  { code: "207Q00000X", label: "Family Medicine",                            group: "HCPs" },
+  { code: "208D00000X", label: "General Practice",                           group: "HCPs" },
+  { code: "208600000X", label: "General Surgery",                            group: "HCPs" },
+  { code: "207RG0100X", label: "Gastroenterology",                           group: "HCPs" },
+  { code: "207RH0000X", label: "Hematology",                                 group: "HCPs" },
+  { code: "207RH0003X", label: "Hematology & Oncology",                      group: "HCPs" },
+  { code: "207RI0008X", label: "Hepatology",                                 group: "HCPs" },
+  { code: "208M00000X", label: "Hospitalist",                                group: "HCPs" },
+  { code: "207RI0200X", label: "Infectious Disease",                         group: "HCPs" },
+  { code: "207R00000X", label: "Internal Medicine",                          group: "HCPs" },
+  { code: "202D00000X", label: "Integrative Medicine",                       group: "HCPs" },
+  { code: "207RC0000X", label: "Cardiovascular Disease",                     group: "HCPs" },
+  { code: "207RC0001X", label: "Clinical Cardiac Electrophysiology",         group: "HCPs" },
+  { code: "207RI0011X", label: "Interventional Cardiology",                  group: "HCPs" },
+  { code: "207RE0101X", label: "Endocrinology, Diabetes & Metabolism",       group: "HCPs" },
+  { code: "207RX0202X", label: "Medical Oncology",                           group: "HCPs" },
+  { code: "207RN0300X", label: "Nephrology",                                 group: "HCPs" },
+  { code: "2084N0400X", label: "Neurology",                                  group: "HCPs" },
+  { code: "207T00000X", label: "Neurological Surgery (Neurosurgery)",        group: "HCPs" },
+  { code: "207V00000X", label: "Obstetrics & Gynecology",                    group: "HCPs" },
+  { code: "207VX0000X", label: "Gynecologic Oncology",                       group: "HCPs" },
+  { code: "207W00000X", label: "Ophthalmology",                              group: "HCPs" },
+  { code: "207X00000X", label: "Orthopaedic Surgery",                        group: "HCPs" },
+  { code: "207Y00000X", label: "Otolaryngology (ENT)",                       group: "HCPs" },
+  { code: "207ZP0102X", label: "Anatomic & Clinical Pathology",              group: "HCPs" },
+  { code: "208000000X", label: "Pediatrics",                                 group: "HCPs" },
+  { code: "208200000X", label: "Plastic Surgery",                            group: "HCPs" },
+  { code: "2083P0500X", label: "Preventive Medicine",                        group: "HCPs" },
+  { code: "207RP1001X", label: "Pulmonary Disease",                          group: "HCPs" },
+  { code: "2084P0800X", label: "Psychiatry",                                 group: "HCPs" },
+  { code: "2085R0202X", label: "Diagnostic Radiology",                       group: "HCPs" },
+  { code: "2085R0001X", label: "Radiation Oncology",                         group: "HCPs" },
+  { code: "207RR0500X", label: "Rheumatology",                               group: "HCPs" },
+  { code: "2086S0129X", label: "Surgical Oncology",                          group: "HCPs" },
+  { code: "2086X0206X", label: "Surgical Oncology (Thoracic)",               group: "HCPs" },
+  { code: "208G00000X", label: "Thoracic Surgery",                           group: "HCPs" },
+  { code: "207RT0003X", label: "Transplant Hepatology",                      group: "HCPs" },
+  { code: "2086S0105X", label: "Transplant Surgery",                         group: "HCPs" },
+  { code: "207U00000X", label: "Physical Medicine & Rehabilitation",         group: "HCPs" },
+  { code: "208U00000X", label: "Clinical Pharmacology",                      group: "HCPs" },
+  { code: "208800000X", label: "Urology",                                    group: "HCPs" },
+  { code: "208VP0000X", label: "Pain Medicine",                              group: "HCPs" },
+  { code: "2083X0100X", label: "Occupational Medicine",                      group: "HCPs" },
+  { code: "204E00000X", label: "Oral & Maxillofacial Surgery",               group: "HCPs" },
+  { code: "170100000X", label: "Medical Genetics / Genomics",                group: "HCPs" },
+  { code: "202C00000X", label: "Independent Medical Examiner",               group: "HCPs" },
+ 
+  // ── HCPs: Advanced Practice & Allied Health ───────────────────────────────
+  { code: "363LF0000X", label: "Nurse Practitioner – Family",                group: "HCPs" },
+  { code: "363LA2200X", label: "Nurse Practitioner – Acute Care",            group: "HCPs" },
+  { code: "363LX0001X", label: "Nurse Practitioner – Oncology",              group: "HCPs" },
+  { code: "363LP0200X", label: "Nurse Practitioner – Pediatrics",            group: "HCPs" },
+  { code: "363LS0200X", label: "Nurse Practitioner – School",                group: "HCPs" },
+  { code: "367500000X", label: "Nurse Anesthetist (CRNA)",                   group: "HCPs" },
+  { code: "364S00000X", label: "Clinical Nurse Specialist",                  group: "HCPs" },
+  { code: "163W00000X", label: "Registered Nurse",                           group: "HCPs" },
+  { code: "164W00000X", label: "Licensed Practical Nurse",                   group: "HCPs" },
+  { code: "111N00000X", label: "Chiropractor",                               group: "HCPs" },
+  { code: "122300000X", label: "Dentist",                                    group: "HCPs" },
+  { code: "152W00000X", label: "Optometrist",                                group: "HCPs" },
+  { code: "183500000X", label: "Pharmacist",                                 group: "HCPs" },
+  { code: "225100000X", label: "Physical Therapist",                         group: "HCPs" },
+  { code: "225X00000X", label: "Occupational Therapist",                     group: "HCPs" },
+  { code: "231H00000X", label: "Audiologist",                                group: "HCPs" },
+  { code: "235Z00000X", label: "Speech-Language Pathologist",                group: "HCPs" },
+  { code: "246QB0000X", label: "Clinical Laboratory Scientist",              group: "HCPs" },
+  { code: "251B00000X", label: "Case Manager",                               group: "HCPs" },
+  { code: "261QR0206X", label: "Research Facility / Clinical Research",      group: "HCPs" },
+  { code: "332B00000X", label: "Durable Medical Equipment Supplier",         group: "HCPs" },
+  { code: "374700000X", label: "Technician / Technologist",                  group: "HCPs" },
+  { code: "3416L0300X", label: "Perfusionist",                               group: "HCPs" },
+  { code: "390200000X", label: "Student (Health Care)",                      group: "HCPs" },
+ 
+  // ── HCOs ──────────────────────────────────────────────────────────────────
+  { code: "282N00000X", label: "General Acute Care Hospital",                group: "HCOs" },
+  { code: "282NC0060X", label: "Critical Access Hospital",                   group: "HCOs" },
+  { code: "282NR1301X", label: "Rural Acute Care Hospital",                  group: "HCOs" },
+  { code: "282NW0100X", label: "Women's Hospital",                           group: "HCOs" },
+  { code: "281PC2000X", label: "Children's Hospital",                        group: "HCOs" },
+  { code: "283Q00000X", label: "Psychiatric Hospital",                       group: "HCOs" },
+  { code: "283X00000X", label: "Rehabilitation Hospital",                    group: "HCOs" },
+  { code: "284300000X", label: "Special Hospital",                           group: "HCOs" },
+  { code: "286500000X", label: "Military Hospital",                          group: "HCOs" },
+  { code: "261QA0600X", label: "Ambulatory Surgery Center",                  group: "HCOs" },
+  { code: "261QB0400X", label: "Birthing Center",                            group: "HCOs" },
+  { code: "261QC1500X", label: "Community Health Center",                    group: "HCOs" },
+  { code: "261QC0050X", label: "Critical Care (Intensive Care) Facility",    group: "HCOs" },
+  { code: "261QD0000X", label: "Dental Clinic",                              group: "HCOs" },
+  { code: "261QE0002X", label: "Emergency Care Center",                      group: "HCOs" },
+  { code: "261QE0700X", label: "ESRD Dialysis Facility",                     group: "HCOs" },
+  { code: "261QH0700X", label: "Hospice",                                    group: "HCOs" },
+  { code: "261QI0500X", label: "Infusion Therapy Clinic",                    group: "HCOs" },
+  { code: "261QM0801X", label: "Mental Health Clinic / Center",              group: "HCOs" },
+  { code: "261QM1300X", label: "Multi-Specialty Group Practice",             group: "HCOs" },
+  { code: "261QM2500X", label: "Medical Specialty Clinic",                   group: "HCOs" },
+  { code: "261QP2300X", label: "Primary Care Clinic",                        group: "HCOs" },
+  { code: "261QR0200X", label: "Radiology / Imaging Center",                 group: "HCOs" },
+  { code: "261QR0400X", label: "Rehabilitation Clinic",                      group: "HCOs" },
+  { code: "261QR0405X", label: "Substance Use Disorder Rehabilitation",      group: "HCOs" },
+  { code: "261QR1100X", label: "Research Clinic",                            group: "HCOs" },
+  { code: "261QU0200X", label: "Urgent Care Center",                         group: "HCOs" },
+  { code: "261QV0200X", label: "VA Clinic",                                  group: "HCOs" },
+  { code: "261QX0203X", label: "Oncology Clinic",                            group: "HCOs" },
+  { code: "261QX0204X", label: "Radiation Oncology Clinic",                  group: "HCOs" },
+  { code: "313M00000X", label: "Nursing Facility / Skilled Nursing Facility",group: "HCOs" },
+  { code: "315D00000X", label: "Inpatient Hospice",                          group: "HCOs" },
+  { code: "315P00000X", label: "Intermediate Care Facility",                 group: "HCOs" },
+  { code: "311500000X", label: "Alzheimer Center / Dementia Unit",           group: "HCOs" },
+  { code: "320600000X", label: "Residential Treatment – Mental Health & SA", group: "HCOs" },
+  { code: "324500000X", label: "Substance Abuse Rehab Facility",             group: "HCOs" },
+  { code: "3416A0800X", label: "Ambulance Service",                          group: "HCOs" },
+  { code: "251G00000X", label: "Home Health Agency",                         group: "HCOs" },
+  { code: "251S00000X", label: "Community / Behavioral Health Agency",       group: "HCOs" },
+  { code: "251T00000X", label: "PACE Program",                               group: "HCOs" },
+  { code: "273100000X", label: "Epilepsy Unit",                              group: "HCOs" },
+  { code: "276400000X", label: "Rehabilitation Unit",                        group: "HCOs" },
+  { code: "291U00000X", label: "Clinical Medical Laboratory",                group: "HCOs" },
+  { code: "292200000X", label: "Dental Laboratory",                          group: "HCOs" },
 ];
-
 const GROUPS = ["Doctors", "HCPs", "HCOs"] as const;
 
 export default function PhysicianPanel({
-  site, initialRadius, physicians, total, loading, error, searched, hasMore,
+  site, userCondition, initialRadius, physicians, total, loading, error, searched, hasMore,
   searchSpecialties, kpiBar, onSearch, onLoadMore, onBack,
 }: Props) {
   const [radius,            setRadius]            = useState<number>(initialRadius ?? 25);
@@ -156,7 +194,12 @@ export default function PhysicianPanel({
 
   // ── Resolve specialty on mount / site change ─────────────────────────────
   useEffect(() => {
-    const condition = site.condition?.trim() ?? "";
+    const incomingCondition = site.condition?.trim() ?? "";
+    const normalizedUserCondition = userCondition?.trim() ?? "";
+    const condition = normalizedUserCondition && normalizedUserCondition.toLowerCase() !== incomingCondition.toLowerCase()
+      ? normalizedUserCondition
+      : incomingCondition;
+
     if (!condition || condition === siteConditionRef.current) return;
     siteConditionRef.current = condition;
 
@@ -177,7 +220,7 @@ export default function PhysicianPanel({
         setResolvedSpecialty(condition);
       })
       .finally(() => setResolving(false));
-  }, [site.condition]);
+  }, [site.condition, userCondition]);
 
   useEffect(() => {
     setRadius(initialRadius ?? 25);
@@ -297,15 +340,6 @@ export default function PhysicianPanel({
     return (
       <div>
         {kpiBar}
-        <div style={{ padding: 10, display: "flex", justifyContent: "flex-end", gap: 8, background: "#fff", borderBottom: "1px solid var(--border)" }}>
-          <button
-            className="pp-search-btn"
-            onClick={() => setShowAIInsights((s) => !s)}
-            style={{ height: 36, padding: "6px 12px" }}
-          >
-            {showAIInsights ? "Back to Details" : "View AI Insights"}
-          </button>
-        </div>
 
         {!showAIInsights ? (
           <PhysicianDetailPanel
@@ -313,6 +347,7 @@ export default function PhysicianPanel({
             site={site}
             onBack={() => setDetailPhys(null)}
             onAddAsLead={() => {}}
+            onViewAIInsights={() => setShowAIInsights(true)}
           />
         ) : (
           <AIInsightsView
@@ -670,7 +705,7 @@ export default function PhysicianPanel({
         {/* Count bar */}
         {!loading && physicians.length > 0 && (
           <div className="pp-count-bar">
-            <span><strong>{physicians.length}</strong> of <strong>{total}</strong> physicians</span>
+            <span><strong>{physicians.length}</strong> of <strong>{total}</strong> HCPs/HCOs</span>
             {hasMore && (
               <button className="pp-load-more-top" onClick={() => setShowMainModal(true)} disabled={loading}>
                 Load More
@@ -727,13 +762,13 @@ export default function PhysicianPanel({
           )}
         </div>
 
-        {/* Suggested Physicians section */}
+        {/* Trial-Relevant HCPs/HCOs section */}
         {(suggested.searched || suggested.loading) && (
           <>
             <div className="pp-section-hdr">
               <div>
                 <div className="pp-section-title">
-                  ⭐ Suggested Physicians
+                  ⭐ Trial-Relevant HCPs/HCOs
                   <span className="pp-section-badge">Trial-related</span>
                 </div>
                 <div className="pp-section-sub">
@@ -751,7 +786,7 @@ export default function PhysicianPanel({
               {suggested.loading && (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", color: "var(--muted)", fontSize: 12, fontWeight: 600 }}>
                   <div className="pp-spinner-sm" />
-                  Finding suggested physicians…
+                  Finding trial-relevant HCPs/HCOs…
                 </div>
               )}
               {!suggested.loading && suggested.error && (
