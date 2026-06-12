@@ -1,9 +1,11 @@
 // components/trials/TrialSiteMap.tsx
-// v5 fix: expanded map now starts below the page header instead of covering it
+// v6: true fullscreen modal overlay (fixed inset:0), body scroll lock,
+//     Escape key closes, double-rAF invalidateSize + fitBounds,
+//     legend toggle shifts to top:56 when expanded to avoid Back button overlap.
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import StatusBadge         from "@/components/shared/StatusBadge";
 import type { TrialSite }  from "@/types/trial";
 import type { SelectedSite } from "@/types/physician";
@@ -84,19 +86,56 @@ export default function TrialSiteMap({
   const mapDivRef      = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const tileLayerRef   = useRef<any>(null);
-  // FIX: ref to the outer map wrapper, used to measure header offset on expand
-  const wrapRef        = useRef<HTMLDivElement>(null);
 
   const [showCriteria, setShowCriteria] = useState(false);
   const [showLegend,   setShowLegend]   = useState(false);
   const [mapType,      setMapType]      = useState<MapType>("map");
   const [currentZoom,  setCurrentZoom]  = useState(3);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
-  // FIX: distance from top of viewport to the map wrapper, captured right
-  // before expanding, so the expanded view starts below any page header
-  const [expandTop,    setExpandTop]    = useState(0);
 
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
+
+  // ── refreshMapSize: double-rAF + invalidateSize + fitBounds ───────────────
+  const refreshMapSize = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!mapInstanceRef.current) return;
+        mapInstanceRef.current.invalidateSize({ animate: false });
+        if (mappableSites.length > 0) {
+          mapInstanceRef.current.fitBounds(
+            window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])),
+            { padding: [44, 44] }
+          );
+        }
+      });
+    });
+  }, [mappableSites]);
+
+  // ── Expand / collapse ─────────────────────────────────────────────────────
+  const handleExpand = useCallback(() => {
+    setIsExpanded(true);
+    document.body.style.overflow = "hidden";
+    refreshMapSize();
+  }, [refreshMapSize]);
+
+  const handleCollapse = useCallback(() => {
+    setIsExpanded(false);
+    document.body.style.overflow = "";
+    refreshMapSize();
+  }, [refreshMapSize]);
+
+  // ── Escape key closes expanded map ────────────────────────────────────────
+  useEffect(() => {
+    if (!isExpanded) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleCollapse(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isExpanded, handleCollapse]);
+
+  // ── Restore body scroll on unmount (safety) ───────────────────────────────
+  useEffect(() => {
+    return () => { document.body.style.overflow = ""; };
+  }, []);
 
   // ── Switch tile layer without destroying the map ──────────────────────────
   const switchMapType = (type: MapType) => {
@@ -105,13 +144,12 @@ export default function TrialSiteMap({
     if (tileLayerRef.current) mapInstanceRef.current.removeLayer(tileLayerRef.current);
     const layer = L.mapquest.tileLayer(type);
     layer.addTo(mapInstanceRef.current);
-    // NOTE: layer.bringToBack() removed — not available on MapQuest tile layers
     tileLayerRef.current = layer;
     setMapType(type);
     setShowTypeMenu(false);
   };
 
-  // ── Zoom helpers (clamped 0–20) ───────────────────────────────────────────
+  // ── Zoom helpers ──────────────────────────────────────────────────────────
   const zoomIn = () => {
     if (!mapInstanceRef.current) return;
     const z = mapInstanceRef.current.getZoom();
@@ -128,19 +166,6 @@ export default function TrialSiteMap({
       window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])),
       { padding: [44, 44] }
     );
-  };
-
-  // ── Expand/collapse helpers ────────────────────────────────────────────────
-  const handleExpand = () => {
-    const top = wrapRef.current?.getBoundingClientRect().top ?? 0;
-    setExpandTop(Math.max(top, 0));
-    setIsExpanded(true);
-    setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100);
-  };
-
-  const handleCollapse = () => {
-    setIsExpanded(false);
-    setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100);
   };
 
   // ── Map init ──────────────────────────────────────────────────────────────
@@ -301,16 +326,15 @@ export default function TrialSiteMap({
           </div>`;
 
         marker.bindPopup(popupContent, {
-          className: "trial-popup",
-          offset: [0, -10],
-          maxWidth: 310,
+          className:   "trial-popup",
+          offset:      [0, -10],
+          maxWidth:    310,
           closeButton: true,
-          autoClose: false,
+          autoClose:   false,
           closeOnClick: false,
-          keepInView: true,
-          autoPan: true,  // ✅ valid option, ensures popup stays visible
-      });
-        // Close any open popup before opening this one so hover switches cleanly
+          keepInView:  true,
+          autoPan:     true,
+        });
         marker.on("mouseover", () => { map.closePopup(); marker.openPopup(); });
         marker.on("click",     () => marker.openPopup());
       });
@@ -350,16 +374,6 @@ export default function TrialSiteMap({
       const script = document.createElement("script");
       script.id = "mq-js";
       script.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
-      script.onload = () => {
-        if (!document.getElementById("mc-js-t")) {
-          const mc = document.createElement("script");
-          mc.id = "mc-js-t";
-          mc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js";
-          mc.onload = () => { if (window.L?.mapquest) initMap(); };
-          document.head.appendChild(mc);
-        } else { initMap(); }
-      };
-      // Remove original onload below
       script.onload = loadAndInit;
       document.head.appendChild(script);
     } else {
@@ -428,22 +442,6 @@ export default function TrialSiteMap({
           border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.12);
           overflow: hidden; min-width: 140px;
         }
-        .tsm-map-header {
-          position: absolute; top: 16px; left: 16px; right: 16px;
-          z-index: 1000; background: rgba(255,255,255,0.96);
-          border: 1px solid rgba(148,163,184,0.18);
-          border-radius: 16px; padding: 12px 14px;
-          box-shadow: 0 12px 28px rgba(15,23,42,0.08);
-          backdrop-filter: blur(8px);
-        }
-        .tsm-map-heading-title {
-          font-size: 13px; font-weight: 700; color: var(--ink);
-          line-height: 1.3;
-        }
-        .tsm-map-heading-subtitle {
-          margin-top: 4px; font-size: 11px;
-          color: var(--muted); line-height: 1.4;
-        }
         .tsm-type-item {
           display: flex; align-items: center; gap: 8px;
           width: 100%; padding: 8px 14px;
@@ -452,18 +450,8 @@ export default function TrialSiteMap({
           transition: background 0.1s;
         }
         .tsm-type-item:hover { background: var(--surface); }
-        .tsm-legend-toggle {
-          position: absolute; top: 12px; left: 12px; z-index: 1000;
-          background: white; border: 1px solid var(--border);
-          border-radius: var(--radius-md); padding: 7px 12px;
-          box-shadow: var(--shadow-md); cursor: pointer;
-          font-size: 11px; font-weight: 600; color: var(--ink-3);
-          display: flex; align-items: center; gap: 5px;
-          transition: all 0.15s; font-family: var(--font-sans);
-        }
-        .tsm-legend-toggle:hover { background: var(--surface); border-color: var(--border-mid); }
         .tsm-legend-panel {
-          position: absolute; top: 46px; left: 12px; z-index: 1000;
+          position: absolute; left: 12px; z-index: 1000;
           background: rgba(255,255,255,0.97); border: 1px solid var(--border);
           border-radius: var(--radius-lg); padding: 12px 16px;
           box-shadow: var(--shadow-lg);
@@ -538,24 +526,25 @@ export default function TrialSiteMap({
         .tsm-empty-map { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--surface-2); color: var(--muted); }
       `}</style>
 
-      {/* ── Map ──────────────────────────────────────────────────────────── */}
+      {/* ── Map modal overlay ─────────────────────────────────────────────── */}
       <div
-        ref={wrapRef}
         className="tsm-map-wrap"
-        style={{
-          position: isExpanded ? "fixed" : "relative",
-          // FIX: start below whatever header sits above the map instead of top:0
-          top: isExpanded ? expandTop : undefined,
-          left: isExpanded ? 0 : undefined,
-          width: isExpanded ? "100vw" : undefined,
-          height: isExpanded ? `calc(100vh - ${expandTop}px)` : undefined,
-          zIndex: isExpanded ? 9999 : undefined,
-          background: isExpanded ? "white" : undefined,
-          overflow: isExpanded ? "hidden" : undefined,
-        }}
+        style={
+          isExpanded
+            ? {
+                position: "fixed",
+                inset: 0,
+                width: "100vw",
+                height: "100vh",
+                zIndex: 9999,
+                background: "white",
+                overflow: "hidden",
+              }
+            : { position: "relative" }
+        }
       >
 
-        {/* Expand button */}
+        {/* Expand button (collapsed only) */}
         {!isExpanded && mappableSites.length > 0 && (
           <button
             onClick={handleExpand}
@@ -570,10 +559,12 @@ export default function TrialSiteMap({
             }}
           >⛶</button>
         )}
+
+        {/* ← Back button (expanded only) — top-left, above legend toggle */}
         {isExpanded && (
           <button
             onClick={handleCollapse}
-            title="Exit fullscreen"
+            title="Exit fullscreen (Esc)"
             style={{
               position: "absolute", top: 10, left: 10, zIndex: 1100,
               background: "white", border: "1px solid #e2e8f0",
@@ -585,6 +576,7 @@ export default function TrialSiteMap({
             }}
           >← Back</button>
         )}
+
         {!mapKey || mappableSites.length === 0 ? (
           <div className="tsm-empty-map" style={{ height: 420 }}>
             <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.35 }}>
@@ -605,7 +597,7 @@ export default function TrialSiteMap({
             <div
               ref={mapDivRef}
               style={{
-                height: isExpanded ? `calc(100vh - ${expandTop}px)` : "420px",
+                height: isExpanded ? "100vh" : "420px",
                 width: "100%",
                 background: "#e8edf2",
               }}
@@ -663,14 +655,44 @@ export default function TrialSiteMap({
               </button>
             </div>
 
-            {/* Legend toggle — top-left */}
-            <button className="tsm-legend-toggle" onClick={() => setShowLegend((v) => !v)}>
+            {/*
+              Legend toggle — top-left.
+              When expanded: top:56 (clears the 32px Back button at top:10).
+              When collapsed: top:12 (original position).
+            */}
+            <button
+              className="tsm-legend-toggle"
+              style={{
+                position: "absolute",
+                top: isExpanded ? 56 : 12,
+                left: 12,
+                zIndex: 1000,
+                background: "white",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-md)",
+                padding: "7px 12px",
+                boxShadow: "var(--shadow-md)",
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--ink-3)",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                transition: "all 0.15s",
+                fontFamily: "var(--font-sans)",
+              }}
+              onClick={() => setShowLegend((v) => !v)}
+            >
               <span>◎</span>
               {showLegend ? "Hide legend" : "Status legend"}
             </button>
 
             {showLegend && (
-              <div className="tsm-legend-panel">
+              <div
+                className="tsm-legend-panel"
+                style={{ top: isExpanded ? 100 : 46 }}
+              >
                 <div className="tsm-legend-title">Site Status</div>
                 {LEGEND.map((l) => (
                   <div key={l.label} className="tsm-legend-row">
@@ -712,15 +734,12 @@ export default function TrialSiteMap({
             {showCriteria && (
               <div className="tsm-criteria-body">
                 {(() => {
-                  // ClinicalTrials.gov sometimes puts both criteria in inclusionCriteria
-                  // Split on "Exclusion Criteria" keyword if found
                   const rawInclusion = inclusionCriteria || "";
                   const rawExclusion = exclusionCriteria || "";
                   const exclKeyword = /exclusion criteria/i;
                   let inclText = rawInclusion;
                   let exclText = rawExclusion;
 
-                  // If inclusion contains exclusion section, split it
                   const splitIdx = rawInclusion.search(exclKeyword);
                   if (splitIdx > 0 && !rawExclusion) {
                     inclText = rawInclusion.slice(0, splitIdx);
