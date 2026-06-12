@@ -1,5 +1,5 @@
 // components/trials/TrialSiteMap.tsx
-// v4 fix: removed layer.bringToBack() — not available on MapQuest tile layers
+// v5 fix: expanded map now starts below the page header instead of covering it
 
 "use client";
 
@@ -80,15 +80,21 @@ export default function TrialSiteMap({
   inclusionCriteria, exclusionCriteria, onFindPhysicians,
 }: Props) {
   const mapKey         = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
+  const [isExpanded,   setIsExpanded]   = useState(false);
   const mapDivRef      = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const tileLayerRef   = useRef<any>(null);
+  // FIX: ref to the outer map wrapper, used to measure header offset on expand
+  const wrapRef        = useRef<HTMLDivElement>(null);
 
   const [showCriteria, setShowCriteria] = useState(false);
   const [showLegend,   setShowLegend]   = useState(false);
   const [mapType,      setMapType]      = useState<MapType>("map");
   const [currentZoom,  setCurrentZoom]  = useState(3);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
+  // FIX: distance from top of viewport to the map wrapper, captured right
+  // before expanding, so the expanded view starts below any page header
+  const [expandTop,    setExpandTop]    = useState(0);
 
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
 
@@ -122,6 +128,19 @@ export default function TrialSiteMap({
       window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])),
       { padding: [44, 44] }
     );
+  };
+
+  // ── Expand/collapse helpers ────────────────────────────────────────────────
+  const handleExpand = () => {
+    const top = wrapRef.current?.getBoundingClientRect().top ?? 0;
+    setExpandTop(Math.max(top, 0));
+    setIsExpanded(true);
+    setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100);
+  };
+
+  const handleCollapse = () => {
+    setIsExpanded(false);
+    setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100);
   };
 
   // ── Map init ──────────────────────────────────────────────────────────────
@@ -315,10 +334,32 @@ export default function TrialSiteMap({
       css.href = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.css";
       document.head.appendChild(css);
     }
+    if (!document.getElementById("mc-css-t")) {
+      const mcc = document.createElement("link");
+      mcc.id = "mc-css-t"; mcc.rel = "stylesheet";
+      mcc.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css";
+      document.head.appendChild(mcc);
+    }
+    if (!document.getElementById("mc-css2-t")) {
+      const mcc2 = document.createElement("link");
+      mcc2.id = "mc-css2-t"; mcc2.rel = "stylesheet";
+      mcc2.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css";
+      document.head.appendChild(mcc2);
+    }
     if (!document.getElementById("mq-js")) {
       const script = document.createElement("script");
       script.id = "mq-js";
       script.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
+      script.onload = () => {
+        if (!document.getElementById("mc-js-t")) {
+          const mc = document.createElement("script");
+          mc.id = "mc-js-t";
+          mc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js";
+          mc.onload = () => { if (window.L?.mapquest) initMap(); };
+          document.head.appendChild(mc);
+        } else { initMap(); }
+      };
+      // Remove original onload below
       script.onload = loadAndInit;
       document.head.appendChild(script);
     } else {
@@ -498,14 +539,52 @@ export default function TrialSiteMap({
       `}</style>
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
-      <div className="tsm-map-wrap">
-        {trialTitle && (
-          <div className="tsm-map-header">
-            <div className="tsm-map-heading-title">{trialTitle}</div>
-            {condition && <div className="tsm-map-heading-subtitle">{condition}</div>}
-          </div>
-        )}
+      <div
+        ref={wrapRef}
+        className="tsm-map-wrap"
+        style={{
+          position: isExpanded ? "fixed" : "relative",
+          // FIX: start below whatever header sits above the map instead of top:0
+          top: isExpanded ? expandTop : undefined,
+          left: isExpanded ? 0 : undefined,
+          width: isExpanded ? "100vw" : undefined,
+          height: isExpanded ? `calc(100vh - ${expandTop}px)` : undefined,
+          zIndex: isExpanded ? 9999 : undefined,
+          background: isExpanded ? "white" : undefined,
+          overflow: isExpanded ? "hidden" : undefined,
+        }}
+      >
 
+        {/* Expand button */}
+        {!isExpanded && mappableSites.length > 0 && (
+          <button
+            onClick={handleExpand}
+            title="Expand map"
+            style={{
+              position: "absolute", bottom: 50, right: 10, zIndex: 1000,
+              background: "white", border: "1px solid #e2e8f0",
+              borderRadius: 8, width: 32, height: 32,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              fontSize: 14, color: "#374151",
+            }}
+          >⛶</button>
+        )}
+        {isExpanded && (
+          <button
+            onClick={handleCollapse}
+            title="Exit fullscreen"
+            style={{
+              position: "absolute", top: 10, left: 10, zIndex: 1100,
+              background: "white", border: "1px solid #e2e8f0",
+              borderRadius: 8, height: 32, padding: "0 12px",
+              display: "flex", alignItems: "center", gap: 6,
+              cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              fontSize: 13, fontWeight: 600, color: "#374151",
+              fontFamily: "sans-serif",
+            }}
+          >← Back</button>
+        )}
         {!mapKey || mappableSites.length === 0 ? (
           <div className="tsm-empty-map" style={{ height: 420 }}>
             <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.35 }}>
@@ -523,7 +602,14 @@ export default function TrialSiteMap({
           </div>
         ) : (
           <>
-            <div ref={mapDivRef} style={{ height: "420px", width: "100%", background: "#e8edf2" }} />
+            <div
+              ref={mapDivRef}
+              style={{
+                height: isExpanded ? `calc(100vh - ${expandTop}px)` : "420px",
+                width: "100%",
+                background: "#e8edf2",
+              }}
+            />
 
             {/* Zoom controls + badge — top-right */}
             <div className="tsm-map-controls">
@@ -625,18 +711,56 @@ export default function TrialSiteMap({
             </button>
             {showCriteria && (
               <div className="tsm-criteria-body">
-                {inclusionCriteria && (
-                  <div>
-                    <div className="tsm-crit-label" style={{ color: "var(--green-700)" }}>Inclusion criteria</div>
-                    <p className="tsm-crit-text">{inclusionCriteria}</p>
-                  </div>
-                )}
-                {exclusionCriteria && (
-                  <div>
-                    <div className="tsm-crit-label" style={{ color: "var(--coral-600)" }}>Exclusion criteria</div>
-                    <p className="tsm-crit-text">{exclusionCriteria}</p>
-                  </div>
-                )}
+                {(() => {
+                  // ClinicalTrials.gov sometimes puts both criteria in inclusionCriteria
+                  // Split on "Exclusion Criteria" keyword if found
+                  const rawInclusion = inclusionCriteria || "";
+                  const rawExclusion = exclusionCriteria || "";
+                  const exclKeyword = /exclusion criteria/i;
+                  let inclText = rawInclusion;
+                  let exclText = rawExclusion;
+
+                  // If inclusion contains exclusion section, split it
+                  const splitIdx = rawInclusion.search(exclKeyword);
+                  if (splitIdx > 0 && !rawExclusion) {
+                    inclText = rawInclusion.slice(0, splitIdx);
+                    exclText = rawInclusion.slice(splitIdx);
+                  }
+
+                  const parseLines = (text: string) =>
+                    text.split(/\n/)
+                      .map((l) => l.replace(/^[-•*0-9.\s]+/, "").trim())
+                      .filter((l) => l && !/^(inclusion|exclusion)\s*criteria\s*:?$/i.test(l));
+
+                  return (
+                    <>
+                      {inclText && (
+                        <div style={{ marginBottom: 12 }}>
+                          <div className="tsm-crit-label" style={{ color: "var(--green-700)", fontWeight: 700, marginBottom: 6 }}>
+                            Inclusion Criteria
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: 18, listStyleType: "disc" }}>
+                            {parseLines(inclText).map((line, i) => (
+                              <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{line}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {exclText && (
+                        <div>
+                          <div className="tsm-crit-label" style={{ color: "var(--coral-600)", fontWeight: 700, marginBottom: 6 }}>
+                            Exclusion Criteria
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: 18, listStyleType: "disc" }}>
+                            {parseLines(exclText).map((line, i) => (
+                              <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{line}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
