@@ -1,5 +1,5 @@
 // components/trials/TrialSiteMap.tsx
-// v4 fix: removed layer.bringToBack() — not available on MapQuest tile layers
+// v5 fix: expanded map now starts below the page header instead of covering it
 
 "use client";
 
@@ -84,12 +84,17 @@ export default function TrialSiteMap({
   const mapDivRef      = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const tileLayerRef   = useRef<any>(null);
+  // FIX: ref to the outer map wrapper, used to measure header offset on expand
+  const wrapRef        = useRef<HTMLDivElement>(null);
 
   const [showCriteria, setShowCriteria] = useState(false);
   const [showLegend,   setShowLegend]   = useState(false);
   const [mapType,      setMapType]      = useState<MapType>("map");
   const [currentZoom,  setCurrentZoom]  = useState(3);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
+  // FIX: distance from top of viewport to the map wrapper, captured right
+  // before expanding, so the expanded view starts below any page header
+  const [expandTop,    setExpandTop]    = useState(0);
 
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
 
@@ -123,6 +128,19 @@ export default function TrialSiteMap({
       window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])),
       { padding: [44, 44] }
     );
+  };
+
+  // ── Expand/collapse helpers ────────────────────────────────────────────────
+  const handleExpand = () => {
+    const top = wrapRef.current?.getBoundingClientRect().top ?? 0;
+    setExpandTop(Math.max(top, 0));
+    setIsExpanded(true);
+    setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100);
+  };
+
+  const handleCollapse = () => {
+    setIsExpanded(false);
+    setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100);
   };
 
   // ── Map init ──────────────────────────────────────────────────────────────
@@ -521,21 +539,26 @@ export default function TrialSiteMap({
       `}</style>
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
-      <div className="tsm-map-wrap" style={{
-        position: isExpanded ? "fixed" : "relative",
-        top: isExpanded ? 0 : undefined,
-        left: isExpanded ? 0 : undefined,
-        width: isExpanded ? "100vw" : undefined,
-        height: isExpanded ? "100vh" : undefined,
-        zIndex: isExpanded ? 9999 : undefined,
-        background: isExpanded ? "white" : undefined,
-        overflow: isExpanded ? "hidden" : undefined,
-      }}>
+      <div
+        ref={wrapRef}
+        className="tsm-map-wrap"
+        style={{
+          position: isExpanded ? "fixed" : "relative",
+          // FIX: start below whatever header sits above the map instead of top:0
+          top: isExpanded ? expandTop : undefined,
+          left: isExpanded ? 0 : undefined,
+          width: isExpanded ? "100vw" : undefined,
+          height: isExpanded ? `calc(100vh - ${expandTop}px)` : undefined,
+          zIndex: isExpanded ? 9999 : undefined,
+          background: isExpanded ? "white" : undefined,
+          overflow: isExpanded ? "hidden" : undefined,
+        }}
+      >
 
         {/* Expand button */}
         {!isExpanded && mappableSites.length > 0 && (
           <button
-            onClick={() => { setIsExpanded(true); setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100); }}
+            onClick={handleExpand}
             title="Expand map"
             style={{
               position: "absolute", bottom: 50, right: 10, zIndex: 1000,
@@ -549,7 +572,7 @@ export default function TrialSiteMap({
         )}
         {isExpanded && (
           <button
-            onClick={() => { setIsExpanded(false); setTimeout(() => { if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize(); }, 100); }}
+            onClick={handleCollapse}
             title="Exit fullscreen"
             style={{
               position: "absolute", top: 10, left: 10, zIndex: 1100,
@@ -579,7 +602,14 @@ export default function TrialSiteMap({
           </div>
         ) : (
           <>
-            <div ref={mapDivRef} style={{ height: isExpanded ? "100vh" : "420px", width: "100%", background: "#e8edf2" }} />
+            <div
+              ref={mapDivRef}
+              style={{
+                height: isExpanded ? `calc(100vh - ${expandTop}px)` : "420px",
+                width: "100%",
+                background: "#e8edf2",
+              }}
+            />
 
             {/* Zoom controls + badge — top-right */}
             <div className="tsm-map-controls">
