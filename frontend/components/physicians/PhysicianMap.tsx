@@ -115,40 +115,54 @@ export default function PhysicianMap({
   // ── Load Leaflet ─────────────────────────────────────────────────────────
   const loadLeaflet = useCallback((cb: () => void) => {
     if (window.L?.mapquest) { cb(); return; }
+
     const addLink = (id: string, href: string) => {
       if (document.getElementById(id)) return;
       const l = document.createElement("link"); l.id = id; l.rel = "stylesheet"; l.href = href;
       document.head.appendChild(l);
     };
+    // All CSS loads in parallel — no blocking
     addLink("mq-css",  "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.css");
     addLink("mc-css",  "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css");
     addLink("mc-css2", "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css");
 
+    // Wait for window.L.mapquest to be available (polls every 50ms)
     const waitReady = (fn: () => void) => {
       if (window.L?.mapquest) { fn(); return; }
       const iv = setInterval(() => { if (window.L?.mapquest) { clearInterval(iv); fn(); } }, 50);
     };
 
-    // Load MarkerCluster in parallel (doesn't depend on MapQuest)
-    const loadMC = () => {
-      if (document.getElementById("mc-js")) return;
-      const mc = document.createElement("script"); mc.id = "mc-js";
+    // Load MapQuest first, then MarkerCluster (MC needs Leaflet from MQ bundle)
+    const loadMC = (afterMC: () => void) => {
+      if (document.getElementById("mc-js")) { afterMC(); return; }
+      const mc = document.createElement("script"); mc.id = "mc-js"; mc.async = true;
       mc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js";
-      mc.async = true; mc.defer = true;
+      mc.onload = afterMC;
       document.head.appendChild(mc);
     };
 
     if (document.getElementById("mq-js")) {
-      loadMC();
-      waitReady(cb);
+      // MQ already loading/loaded — wait for it then load MC
+      waitReady(() => loadMC(cb));
       return;
     }
-    const s = document.createElement("script"); s.id = "mq-js";
+    const s = document.createElement("script"); s.id = "mq-js"; s.async = true;
     s.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
-    s.async = true;
-    s.onload = () => { loadMC(); waitReady(cb); };
+    s.onload = () => waitReady(() => loadMC(cb));
     document.head.appendChild(s);
   }, []);
+
+  // Live refs so buildMap always reads current values without stale closure
+  const mappableRef          = useRef(mappable);
+  const mappableSuggestedRef = useRef(mappableSuggested);
+  const selectedSiteRef      = useRef(selectedSite);
+  const radiusRef            = useRef(radius);
+  const selectedNpiRef       = useRef(selectedNpi);
+  useEffect(() => { mappableRef.current          = mappable;          }, [mappable]);
+  useEffect(() => { mappableSuggestedRef.current = mappableSuggested; }, [mappableSuggested]);
+  useEffect(() => { selectedSiteRef.current      = selectedSite;      }, [selectedSite]);
+  useEffect(() => { radiusRef.current            = radius;            }, [radius]);
+  useEffect(() => { selectedNpiRef.current       = selectedNpi;       }, [selectedNpi]);
 
   // ── Core map builder ─────────────────────────────────────────────────────
   const buildMap = useCallback((
@@ -162,9 +176,16 @@ export default function PhysicianMap({
     if (!L?.mapquest) return;
     L.mapquest.key = mapKey;
 
-    const allMappable = [...mappable, ...mappableSuggested];
-    const centerLat = allMappable.length ? allMappable.reduce((s, p) => s + p.lat!, 0) / allMappable.length : selectedSite.lat;
-    const centerLng = allMappable.length ? allMappable.reduce((s, p) => s + p.lng!, 0) / allMappable.length : selectedSite.lng;
+    // Always read latest values via refs — never stale
+    const currMappable          = mappableRef.current;
+    const currMappableSuggested = mappableSuggestedRef.current;
+    const currSite              = selectedSiteRef.current;
+    const currRadius            = radiusRef.current;
+    const currSelectedNpi       = selectedNpiRef.current;
+
+    const allMappable = [...currMappable, ...currMappableSuggested];
+    const centerLat = allMappable.length ? allMappable.reduce((s, p) => s + p.lat!, 0) / allMappable.length : currSite.lat;
+    const centerLng = allMappable.length ? allMappable.reduce((s, p) => s + p.lng!, 0) / allMappable.length : currSite.lng;
 
     const tile = L.mapquest.tileLayer("map");
     tileRef.current = tile;
@@ -178,20 +199,20 @@ export default function PhysicianMap({
 
     // Trial site marker
     const siteIcon = L.divIcon({ html: hospitalMarkerHtml("#ef4444", 30), className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
-    const siteMarker = L.marker([selectedSite.lat, selectedSite.lng], { icon: siteIcon }).addTo(map);
+    const siteMarker = L.marker([currSite.lat, currSite.lng], { icon: siteIcon }).addTo(map);
     siteMarker.setZIndexOffset(1000);
 
     // Radius circle
-    const circle = L.circle([selectedSite.lat, selectedSite.lng], {
-      radius: radius * 1609.34, color: "#16a34a", fillColor: "#22c55e",
+    const circle = L.circle([currSite.lat, currSite.lng], {
+      radius: currRadius * 1609.34, color: "#16a34a", fillColor: "#22c55e",
       fillOpacity: 0.08, weight: 1.6, dashArray: "6 5",
     }).addTo(map);
     circleRef.current = circle;
 
-    const siteLabel = [selectedSite.city, selectedSite.state].filter(Boolean).join(", ");
+    const siteLabel = [currSite.city, currSite.state].filter(Boolean).join(", ");
     siteMarker.bindTooltip(
       `<div style="font-weight:700;color:#dc2626;">🏥 Clinical trial site</div>
-       <div style="font-size:11px;color:#0f172a;font-weight:600;">${selectedSite.facility || "Clinical trial site"}</div>
+       <div style="font-size:11px;color:#0f172a;font-weight:600;">${currSite.facility || "Clinical trial site"}</div>
        ${siteLabel ? `<div style="font-size:11px;color:#64748b;">${siteLabel}</div>` : ""}`,
       { permanent: true, direction: "top", offset: [0, -20], className: "site-tooltip" }
     );
@@ -220,8 +241,8 @@ export default function PhysicianMap({
     if (mainCluster)      map.addLayer(mainCluster);
     if (suggestedCluster) map.addLayer(suggestedCluster);
 
-    mappable.forEach((p) => {
-      const isSelected = p.npi === selectedNpi;
+    currMappable.forEach((p) => {
+      const isSelected = p.npi === currSelectedNpi;
       const color = isSelected ? "#1d4ed8" : "#2563eb";
       const size  = isSelected ? 30 : 24;
       const icon  = L.divIcon({ html: doctorMarkerHtml(color, size, isSelected), className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
@@ -232,8 +253,8 @@ export default function PhysicianMap({
       if (mainCluster) mainCluster.addLayer(marker); else marker.addTo(map);
     });
 
-    mappableSuggested.forEach((p) => {
-      const isSelected = p.npi === selectedNpi;
+    currMappableSuggested.forEach((p) => {
+      const isSelected = p.npi === currSelectedNpi;
       const color = isSelected ? "#0f766e" : "#14b8a6";
       const size  = isSelected ? 30 : 24;
       const icon  = L.divIcon({ html: suggestedMarkerHtml(color, size, isSelected), className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
@@ -245,12 +266,13 @@ export default function PhysicianMap({
     });
 
     const allPts: [number, number][] = [
-      [selectedSite.lat, selectedSite.lng],
-      ...mappable.map((p) => [p.lat!, p.lng!] as [number, number]),
-      ...mappableSuggested.map((p) => [p.lat!, p.lng!] as [number, number]),
+      [currSite.lat, currSite.lng],
+      ...currMappable.map((p) => [p.lat!, p.lng!] as [number, number]),
+      ...currMappableSuggested.map((p) => [p.lat!, p.lng!] as [number, number]),
     ];
     if (allPts.length > 1) map.fitBounds(L.latLngBounds(allPts), { padding: [40, 40] });
-  }, [mapKey, mappable, mappableSuggested, selectedSite, radius, selectedNpi, onSelect]);
+  // mapKey is the only real dep — everything else read via live refs
+  }, [mapKey, onSelect]);
 
   // popup bridge
   useEffect(() => {
@@ -331,9 +353,9 @@ export default function PhysicianMap({
   const fitAll  = () => {
     const m = activeInstance(); if (!m || !window.L) return;
     const pts: [number, number][] = [
-      [selectedSite.lat, selectedSite.lng],
-      ...mappable.map((p) => [p.lat!, p.lng!] as [number, number]),
-      ...mappableSuggested.map((p) => [p.lat!, p.lng!] as [number, number]),
+      [selectedSiteRef.current.lat, selectedSiteRef.current.lng],
+      ...mappableRef.current.map((p) => [p.lat!, p.lng!] as [number, number]),
+      ...mappableSuggestedRef.current.map((p) => [p.lat!, p.lng!] as [number, number]),
     ];
     m.fitBounds(window.L.latLngBounds(pts), { padding: [40, 40] });
   };
