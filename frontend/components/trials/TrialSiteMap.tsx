@@ -114,7 +114,7 @@ export default function TrialSiteMap({
       @keyframes tsmModalIn{from{opacity:0;transform:scale(.96) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
       .tsm-backdrop{position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;animation:tsmFadeIn .22s ease both;}
       .tsm-modal{position:relative;width:100%;max-width:1100px;height:80vh;max-height:780px;background:white;border-radius:20px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.28);animation:tsmModalIn .26s cubic-bezier(.22,1,.36,1) both;}
-      .tsm-close{position:absolute;top:14px;right:14px;z-index:1100;width:36px;height:36px;background:white;border:1px solid #e2e8f0;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;color:#64748b;box-shadow:0 2px 8px rgba(0,0,0,.12);transition:all .15s;}
+      .tsm-close{position:absolute;top:14px;left:14px;z-index:1100;display:flex;align-items:center;gap:6px;padding:0 14px;height:34px;background:white;border:1px solid #e2e8f0;border-radius:20px;cursor:pointer;font-size:13px;font-weight:600;color:#374151;box-shadow:0 2px 8px rgba(0,0,0,.12);transition:all .15s;white-space:nowrap;}
       .tsm-close:hover{background:#fee2e2;color:#dc2626;border-color:#fecaca;}
     `;
     document.head.appendChild(style);
@@ -408,7 +408,7 @@ export default function TrialSiteMap({
             <Controls />
             {/* Expand button */}
             <button onClick={() => setIsExpanded(true)} title="Expand map"
-              style={{ position: "absolute", bottom: 50, right: 10, zIndex: 1000, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.12)", fontSize: 14, color: "#374151" }}>
+              style={{ position: "absolute", bottom: 56, right: 10, zIndex: 1000, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.12)", fontSize: 14, color: "#374151" }}>
               ⛶
             </button>
           </>
@@ -419,7 +419,7 @@ export default function TrialSiteMap({
       {isExpanded && (
         <div className="tsm-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setIsExpanded(false); }}>
           <div className="tsm-modal">
-            <button className="tsm-close" onClick={() => setIsExpanded(false)} title="Close">✕</button>
+            <button className="tsm-close" onClick={() => setIsExpanded(false)} title="Close">← Back</button>
             {/* Fresh map div for modal — Leaflet inits here independently */}
             <div ref={modalMapRef} style={{ width: "100%", height: "100%", background: "#e8edf2" }} />
             <Controls />
