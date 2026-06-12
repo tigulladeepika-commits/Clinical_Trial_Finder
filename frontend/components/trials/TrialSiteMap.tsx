@@ -1,17 +1,14 @@
 // components/trials/TrialSiteMap.tsx
-// v6: true fullscreen modal overlay (fixed inset:0), body scroll lock,
-//     Escape key closes, double-rAF invalidateSize + fitBounds,
-//     legend toggle shifts to top:56 when expanded to avoid Back button overlap.
+// v6: expanded map = modal overlay with blurred backdrop
 
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import StatusBadge         from "@/components/shared/StatusBadge";
 import type { TrialSite }  from "@/types/trial";
 import type { SelectedSite } from "@/types/physician";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
 type MapType = "map" | "satellite" | "light" | "dark";
 const RADIUS_OPTIONS = [5, 10, 25, 50, 100] as const;
 
@@ -39,7 +36,6 @@ interface Props {
 declare global { interface Window { L: any; } }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
 function statusColor(status: string | null): string {
   const s = (status || "").toUpperCase().trim();
   if (s === "RECRUITING" || s === "ENROLLING_BY_INVITATION") return "#059669";
@@ -67,16 +63,15 @@ function hospitalMarkerHtml(color: string, size = 28): string {
 }
 
 const LEGEND = [
-  { color: "#059669", label: "Recruiting"                   },
-  { color: "#d97706", label: "Not Yet / Suspended"          },
-  { color: "#2563eb", label: "Active (not recruiting)"      },
-  { color: "#64748b", label: "Completed"                    },
-  { color: "#dc2626", label: "Terminated / Withdrawn"       },
-  { color: "#94a3b8", label: "Other / Unknown"              },
+  { color: "#059669", label: "Recruiting"              },
+  { color: "#d97706", label: "Not Yet / Suspended"     },
+  { color: "#2563eb", label: "Active (not recruiting)" },
+  { color: "#64748b", label: "Completed"               },
+  { color: "#dc2626", label: "Terminated / Withdrawn"  },
+  { color: "#94a3b8", label: "Other / Unknown"         },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
-
 export default function TrialSiteMap({
   sites, trialTitle, nctId, description, condition,
   inclusionCriteria, exclusionCriteria, onFindPhysicians,
@@ -84,6 +79,7 @@ export default function TrialSiteMap({
   const mapKey         = process.env.NEXT_PUBLIC_MAPQUEST_KEY || "";
   const [isExpanded,   setIsExpanded]   = useState(false);
   const mapDivRef      = useRef<HTMLDivElement>(null);
+  const modalMapRef    = useRef<HTMLDivElement>(null);   // map div inside modal
   const mapInstanceRef = useRef<any>(null);
   const tileLayerRef   = useRef<any>(null);
 
@@ -95,49 +91,24 @@ export default function TrialSiteMap({
 
   const mappableSites = sites.filter((s) => s.lat != null && s.lon != null);
 
-  // ── refreshMapSize: double-rAF + invalidateSize + fitBounds ───────────────
-  const refreshMapSize = useCallback(() => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (!mapInstanceRef.current) return;
-        mapInstanceRef.current.invalidateSize({ animate: false });
-        if (mappableSites.length > 0) {
-          mapInstanceRef.current.fitBounds(
-            window.L.latLngBounds(mappableSites.map((s) => [s.lat, s.lon])),
-            { padding: [44, 44] }
-          );
-        }
-      });
-    });
-  }, [mappableSites]);
-
-  // ── Expand / collapse ─────────────────────────────────────────────────────
-  const handleExpand = useCallback(() => {
-    setIsExpanded(true);
-    document.body.style.overflow = "hidden";
-    refreshMapSize();
-  }, [refreshMapSize]);
-
-  const handleCollapse = useCallback(() => {
-    setIsExpanded(false);
-    document.body.style.overflow = "";
-    refreshMapSize();
-  }, [refreshMapSize]);
-
-  // ── Escape key closes expanded map ────────────────────────────────────────
+  // lock/unlock body scroll when modal opens
   useEffect(() => {
-    if (!isExpanded) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleCollapse(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [isExpanded, handleCollapse]);
-
-  // ── Restore body scroll on unmount (safety) ───────────────────────────────
-  useEffect(() => {
+    if (isExpanded) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
     return () => { document.body.style.overflow = ""; };
-  }, []);
+  }, [isExpanded]);
 
-  // ── Switch tile layer without destroying the map ──────────────────────────
+  // invalidate map size when modal opens so tiles fill the new container
+  useEffect(() => {
+    if (isExpanded && mapInstanceRef.current) {
+      setTimeout(() => mapInstanceRef.current?.invalidateSize(), 120);
+    }
+  }, [isExpanded]);
+
+  // ── Tile-layer switcher ───────────────────────────────────────────────────
   const switchMapType = (type: MapType) => {
     if (!mapInstanceRef.current || !window.L?.mapquest) return;
     const L = window.L;
@@ -149,7 +120,7 @@ export default function TrialSiteMap({
     setShowTypeMenu(false);
   };
 
-  // ── Zoom helpers ──────────────────────────────────────────────────────────
+  // ── Zoom helpers ─────────────────────────────────────────────────────────
   const zoomIn = () => {
     if (!mapInstanceRef.current) return;
     const z = mapInstanceRef.current.getZoom();
@@ -181,22 +152,18 @@ export default function TrialSiteMap({
 
       L.mapquest.key = mapKey;
 
-      if (!document.getElementById("trial-map-style-v4")) {
+      if (!document.getElementById("trial-map-style-v6")) {
         const style = document.createElement("style");
-        style.id = "trial-map-style-v4";
+        style.id = "trial-map-style-v6";
         style.textContent = `
           @keyframes pinDrop {
             0%  { transform: translateY(-14px) scale(0.6); opacity: 0; }
             70% { transform: translateY(2px) scale(1.1); opacity: 1; }
             100%{ transform: translateY(0) scale(1); opacity: 1; }
           }
-          .trial-tooltip {
-            background: white !important; border: 1px solid #e4e7f0 !important;
-            border-radius: 10px !important; padding: 8px 12px !important;
-            font-size: 12px !important; font-weight: 500 !important;
-            color: #0a0f1e !important; box-shadow: 0 6px 20px rgba(0,0,0,0.12) !important;
-            white-space: nowrap !important; pointer-events: none !important;
-            font-family: 'Sora', sans-serif !important;
+          @keyframes tsmModalIn {
+            from { opacity: 0; transform: scale(0.96) translateY(12px); }
+            to   { opacity: 1; transform: scale(1) translateY(0); }
           }
           .trial-popup .leaflet-popup-content-wrapper {
             background: white !important; border: 1px solid #e4e7f0 !important;
@@ -219,24 +186,13 @@ export default function TrialSiteMap({
           }
           .find-phys-btn:hover { background: #065f46; }
           .trial-radius-field {
-            margin-top: 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            font-size: 11px;
-            color: #475569;
+            margin-top: 12px; display: flex; flex-direction: column;
+            gap: 6px; font-size: 11px; color: #475569;
           }
-          .trial-radius-field label {
-            font-weight: 700;
-          }
+          .trial-radius-field label { font-weight: 700; }
           .trial-radius-select {
-            width: 100%;
-            border: 1px solid #cbd5e1;
-            border-radius: 10px;
-            background: #fff;
-            color: #0f172a;
-            padding: 8px 10px;
-            font-size: 12px;
+            width: 100%; border: 1px solid #cbd5e1; border-radius: 10px;
+            background: #fff; color: #0f172a; padding: 8px 10px; font-size: 12px;
           }
         `;
         document.head.appendChild(style);
@@ -249,17 +205,17 @@ export default function TrialSiteMap({
       tileLayerRef.current = initialLayer;
 
       const map = L.mapquest.map(mapDivRef.current, {
-        center: [(Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2],
-        layers:      initialLayer,
-        zoom:        3,
-        minZoom:     MIN_ZOOM,
-        maxZoom:     MAX_ZOOM,
-        zoomControl: false,
+        center: [
+          (Math.min(...lats) + Math.max(...lats)) / 2,
+          (Math.min(...lons) + Math.max(...lons)) / 2,
+        ],
+        layers: initialLayer, zoom: 3,
+        minZoom: MIN_ZOOM, maxZoom: MAX_ZOOM, zoomControl: false,
       });
       mapInstanceRef.current = map;
-
       map.on("zoomend", () => setCurrentZoom(map.getZoom()));
 
+      // click handler for "Find physicians" button inside popup
       handleMapClick = (event: MouseEvent) => {
         const target = event.target as HTMLElement | null;
         const button = target?.closest?.(".find-phys-btn") as HTMLButtonElement | null;
@@ -274,30 +230,26 @@ export default function TrialSiteMap({
         const select = popup?.querySelector<HTMLSelectElement>(".trial-radius-select");
         const radius = select ? Number(select.value) : 25;
         onFindPhysicians({
-          lat: clickedSite.lat as number,
-          lng: clickedSite.lon as number,
-          facility: clickedSite.facility,
-          city: clickedSite.city,
-          state: clickedSite.state,
-          nct_id: nctId,
-          condition: condition ?? null,
+          lat: clickedSite.lat as number, lng: clickedSite.lon as number,
+          facility: clickedSite.facility, city: clickedSite.city,
+          state: clickedSite.state, nct_id: nctId, condition: condition ?? null,
         }, radius);
       };
+      mapDivRef.current.addEventListener("click", handleMapClick);
 
-      if (mapDivRef.current) {
-        mapDivRef.current.addEventListener("click", handleMapClick);
-      }
-
+      // add markers
       mappableSites.forEach((site, index) => {
-        const color  = statusColor(site.status);
-        const icon   = L.divIcon({
+        const color = statusColor(site.status);
+        const icon  = L.divIcon({
           html: hospitalMarkerHtml(color, 28),
           className: "", iconSize: [28, 28], iconAnchor: [14, 14],
         });
         const marker = L.marker([site.lat, site.lon], { icon }).addTo(map);
         const loc    = [site.city, site.state, site.country].filter(Boolean).join(", ");
+        const radiusOptionsHtml = RADIUS_OPTIONS
+          .map((r) => `<option value="${r}"${r === 25 ? " selected" : ""}>${r} mi</option>`)
+          .join("");
 
-        const radiusOptionsHtml = RADIUS_OPTIONS.map((r) => `<option value="${r}"${r === 25 ? " selected" : ""}>${r} mi</option>`).join("");
         const popupContent = `
           <div>
             <div style="background:${color}10;border-bottom:1px solid ${color}25;padding:14px 16px 12px;">
@@ -326,14 +278,9 @@ export default function TrialSiteMap({
           </div>`;
 
         marker.bindPopup(popupContent, {
-          className:   "trial-popup",
-          offset:      [0, -10],
-          maxWidth:    310,
-          closeButton: true,
-          autoClose:   false,
-          closeOnClick: false,
-          keepInView:  true,
-          autoPan:     true,
+          className: "trial-popup", offset: [0, -10], maxWidth: 310,
+          closeButton: true, autoClose: false, closeOnClick: false,
+          keepInView: true, autoPan: true,
         });
         marker.on("mouseover", () => { map.closePopup(); marker.openPopup(); });
         marker.on("click",     () => marker.openPopup());
@@ -359,21 +306,20 @@ export default function TrialSiteMap({
       document.head.appendChild(css);
     }
     if (!document.getElementById("mc-css-t")) {
-      const mcc = document.createElement("link");
-      mcc.id = "mc-css-t"; mcc.rel = "stylesheet";
-      mcc.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css";
-      document.head.appendChild(mcc);
+      const l = document.createElement("link");
+      l.id = "mc-css-t"; l.rel = "stylesheet";
+      l.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css";
+      document.head.appendChild(l);
     }
     if (!document.getElementById("mc-css2-t")) {
-      const mcc2 = document.createElement("link");
-      mcc2.id = "mc-css2-t"; mcc2.rel = "stylesheet";
-      mcc2.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css";
-      document.head.appendChild(mcc2);
+      const l = document.createElement("link");
+      l.id = "mc-css2-t"; l.rel = "stylesheet";
+      l.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css";
+      document.head.appendChild(l);
     }
     if (!document.getElementById("mq-js")) {
       const script = document.createElement("script");
-      script.id = "mq-js";
-      script.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
+      script.id = "mq-js"; script.src = "https://api.mqcdn.com/sdk/mapquest-js/v1.3.2/mapquest.js";
       script.onload = loadAndInit;
       document.head.appendChild(script);
     } else {
@@ -381,9 +327,8 @@ export default function TrialSiteMap({
     }
 
     return () => {
-      if (handleMapClick && mapDivRef.current) {
+      if (handleMapClick && mapDivRef.current)
         mapDivRef.current.removeEventListener("click", handleMapClick);
-      }
       if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; }
       tileLayerRef.current = null;
     };
@@ -392,79 +337,123 @@ export default function TrialSiteMap({
 
   const activeType = MAP_TYPES.find((t) => t.id === mapType)!;
 
+  // ── Shared map controls (zoom + type switcher + legend) ──────────────────
+  const MapControls = () => (
+    <>
+      {/* Zoom controls — top-right */}
+      <div style={{
+        position: "absolute", top: 12, right: 12, zIndex: 1000,
+        display: "flex", flexDirection: "column", gap: 4, alignItems: "center",
+      }}>
+        <div style={{
+          width: 36, height: 20, background: "white", border: "1px solid #e2e8f0",
+          borderRadius: 6, fontSize: 10, fontWeight: 700, color: "#475569",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontFamily: "'IBM Plex Mono', monospace",
+        }}>{currentZoom}</div>
+        {[
+          { icon: "+", title: "Zoom in",  fn: zoomIn,  disabled: currentZoom >= MAX_ZOOM },
+          { icon: "−", title: "Zoom out", fn: zoomOut, disabled: currentZoom <= MIN_ZOOM },
+          { icon: "⊡", title: "Fit all",  fn: fitAll,  disabled: false },
+        ].map((b) => (
+          <button key={b.title} title={b.title} onClick={b.fn} disabled={b.disabled}
+            style={{
+              width: 36, height: 36,
+              background: b.disabled ? "#f8fafc" : "white",
+              border: "1px solid #e2e8f0", borderRadius: 8,
+              fontSize: 17, fontWeight: 700,
+              color: b.disabled ? "#cbd5e1" : "#334155",
+              cursor: b.disabled ? "default" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+            }}>{b.icon}</button>
+        ))}
+      </div>
+
+      {/* Map type switcher — bottom-right */}
+      <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 1000 }}>
+        {showTypeMenu && (
+          <div style={{
+            position: "absolute", bottom: "calc(100% + 6px)", right: 0,
+            background: "white", border: "1px solid #e2e8f0", borderRadius: 10,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.12)", overflow: "hidden", minWidth: 140,
+          }}>
+            {MAP_TYPES.map((t) => (
+              <button key={t.id} onClick={() => switchMapType(t.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  width: "100%", padding: "8px 14px", border: "none", cursor: "pointer",
+                  fontSize: 12, fontFamily: "var(--font-sans)",
+                  background:  t.id === mapType ? "var(--blue-50)"  : "transparent",
+                  fontWeight:  t.id === mapType ? 700 : 500,
+                  color:       t.id === mapType ? "var(--blue-600)" : "var(--ink-3)",
+                  borderLeft:  t.id === mapType ? "3px solid var(--blue-500)" : "3px solid transparent",
+                }}>
+                <span style={{ fontSize: 14 }}>{t.icon}</span>
+                {t.label}
+                {t.id === mapType && <span style={{ marginLeft: "auto", fontSize: 10 }}>✓</span>}
+              </button>
+            ))}
+          </div>
+        )}
+        <button onClick={() => setShowTypeMenu((v) => !v)} title="Change map type"
+          style={{
+            display: "flex", alignItems: "center", gap: 5,
+            padding: "6px 10px", background: "white",
+            border: `1px solid ${showTypeMenu ? "#3b82f6" : "#e2e8f0"}`,
+            borderRadius: 8, cursor: "pointer",
+            fontSize: 11, fontWeight: 600, color: "#334155",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.08)", fontFamily: "var(--font-sans)",
+          }}>
+          <span style={{ fontSize: 13 }}>{activeType.icon}</span>
+          {activeType.label}
+          <span style={{ fontSize: 9, color: "#94a3b8", marginLeft: 2 }}>▲</span>
+        </button>
+      </div>
+
+      {/* Legend toggle — top-left */}
+      <button onClick={() => setShowLegend((v) => !v)}
+        style={{
+          position: "absolute", top: 12, left: 12, zIndex: 1000,
+          background: "white", border: "1px solid #e2e8f0",
+          borderRadius: 8, padding: "7px 12px",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.08)", cursor: "pointer",
+          fontSize: 11, fontWeight: 600, color: "#334155",
+          display: "flex", alignItems: "center", gap: 5, fontFamily: "var(--font-sans)",
+        }}>
+        <span>◎</span>
+        {showLegend ? "Hide legend" : "Status legend"}
+      </button>
+
+      {showLegend && (
+        <div style={{
+          position: "absolute", top: 46, left: 12, zIndex: 1000,
+          background: "rgba(255,255,255,0.97)", border: "1px solid #e2e8f0",
+          borderRadius: 10, padding: "12px 16px",
+          boxShadow: "0 6px 20px rgba(0,0,0,0.10)",
+          display: "flex", flexDirection: "column", gap: 8,
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: "#94a3b8", marginBottom: 3 }}>
+            Site Status
+          </div>
+          {LEGEND.map((l) => (
+            <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="14" height="14" viewBox="0 0 28 28" style={{ flexShrink: 0 }}>
+                <circle cx="14" cy="14" r="13" fill={l.color}/>
+                <rect x="11" y="7" width="6" height="14" rx="1.5" fill="white"/>
+                <rect x="7" y="11" width="14" height="6" rx="1.5" fill="white"/>
+              </svg>
+              <span style={{ fontSize: 11, color: "#475569", fontWeight: 500 }}>{l.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <>
       <style>{`
-        .tsm-map-wrap { position: relative; flex-shrink: 0; width: 100%; min-height: 420px; }
-        .tsm-map-controls {
-          position: absolute; top: 12px; right: 12px; z-index: 1000;
-          display: flex; flex-direction: column; gap: 4px; align-items: center;
-        }
-        .tsm-zoom-badge {
-          width: 36px; height: 20px; background: white;
-          border: 1px solid var(--border); border-radius: 6px;
-          font-size: 10px; font-weight: 700; color: var(--ink-3);
-          display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-          font-family: 'IBM Plex Mono', monospace;
-        }
-        .tsm-map-btn {
-          width: 36px; height: 36px; background: white;
-          border: 1px solid var(--border); border-radius: var(--radius-md);
-          font-size: 17px; font-weight: 700; color: var(--ink-3);
-          cursor: pointer; display: flex; align-items: center; justify-content: center;
-          box-shadow: var(--shadow-md); transition: all 0.15s;
-        }
-        .tsm-map-btn:disabled {
-          background: #f8fafc; color: #cbd5e1; cursor: default;
-          box-shadow: none;
-        }
-        .tsm-map-btn:not(:disabled):hover {
-          background: var(--blue-50); color: var(--blue-600);
-          border-color: var(--blue-200);
-          box-shadow: 0 4px 14px rgba(37,99,235,0.15);
-        }
-        .tsm-type-wrap {
-          position: absolute; bottom: 12px; right: 12px; z-index: 1000;
-        }
-        .tsm-type-btn {
-          display: flex; align-items: center; gap: 5px;
-          padding: 6px 10px; background: white;
-          border: 1px solid var(--border); border-radius: var(--radius-md);
-          cursor: pointer; font-size: 11px; font-weight: 600; color: var(--ink-3);
-          box-shadow: var(--shadow-md); font-family: var(--font-sans);
-          transition: all 0.15s;
-        }
-        .tsm-type-btn:hover { border-color: var(--blue-400); }
-        .tsm-type-menu {
-          position: absolute; bottom: calc(100% + 6px); right: 0;
-          background: white; border: 1px solid var(--border);
-          border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.12);
-          overflow: hidden; min-width: 140px;
-        }
-        .tsm-type-item {
-          display: flex; align-items: center; gap: 8px;
-          width: 100%; padding: 8px 14px;
-          border: none; cursor: pointer;
-          font-size: 12px; font-family: var(--font-sans);
-          transition: background 0.1s;
-        }
-        .tsm-type-item:hover { background: var(--surface); }
-        .tsm-legend-panel {
-          position: absolute; left: 12px; z-index: 1000;
-          background: rgba(255,255,255,0.97); border: 1px solid var(--border);
-          border-radius: var(--radius-lg); padding: 12px 16px;
-          box-shadow: var(--shadow-lg);
-          display: flex; flex-direction: column; gap: 8px;
-          pointer-events: none; max-width: 230px;
-          animation: fadeUp 0.18s ease both;
-        }
-        .tsm-legend-title {
-          font-size: 9px; font-weight: 700; letter-spacing: 1px;
-          text-transform: uppercase; color: var(--muted); margin-bottom: 3px;
-        }
-        .tsm-legend-row   { display: flex; align-items: center; gap: 8px; }
-        .tsm-legend-label { font-size: 11px; color: var(--ink-3); font-weight: 500; line-height: 1.3; }
         .tsm-section-hdr {
           font-size: 10px; font-weight: 700; text-transform: uppercase;
           letter-spacing: 1px; color: var(--muted);
@@ -488,13 +477,9 @@ export default function TrialSiteMap({
           border: 1px solid var(--border); border-top: none;
           border-radius: 0 0 var(--radius-lg) var(--radius-lg);
           display: flex; flex-direction: column; gap: 14px;
-          animation: fadeIn 0.18s ease both;
         }
-        .tsm-crit-label {
-          font-size: 10px; font-weight: 700; text-transform: uppercase;
-          letter-spacing: 0.6px; margin-bottom: 5px;
-        }
-        .tsm-crit-text { font-size: 12px; color: var(--ink-3); line-height: 1.7; }
+        .tsm-crit-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 5px; }
+        .tsm-crit-text  { font-size: 12px; color: var(--ink-3); line-height: 1.7; }
         .tsm-site-card {
           background: #fff; border: 1px solid var(--border);
           border-radius: var(--radius-lg); padding: 13px 15px;
@@ -509,9 +494,9 @@ export default function TrialSiteMap({
         .tsm-site-card:hover { border-color: var(--blue-400); box-shadow: 0 4px 16px rgba(37,99,235,0.10); transform: translateY(-1px); }
         .tsm-site-card:hover::before { background: var(--green-500); }
         .tsm-site-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
-        .tsm-facility { font-size: 13px; font-weight: 500; color: var(--ink); flex: 1; }
-        .tsm-location { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
-        .tsm-site-focus { opacity: 0; transition: opacity 0.15s; font-size: 11px; font-weight: 600; color: var(--blue-600); letter-spacing: 0.3px; }
+        .tsm-facility    { font-size: 13px; font-weight: 500; color: var(--ink); flex: 1; }
+        .tsm-location    { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+        .tsm-site-focus  { opacity: 0; transition: opacity 0.15s; font-size: 11px; font-weight: 600; color: var(--blue-600); }
         .tsm-site-card:hover .tsm-site-focus { opacity: 1; }
         .tsm-find-btn {
           display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -520,63 +505,51 @@ export default function TrialSiteMap({
           color: var(--blue-600); font-size: 11px; font-weight: 700;
           cursor: pointer; font-family: var(--font-sans); transition: all 0.15s;
         }
-        .tsm-find-btn:hover { background: var(--blue-600); color: #fff; border-color: var(--blue-600); box-shadow: 0 3px 10px rgba(37,99,235,0.25); }
-        .tsm-no-coords { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted-light); margin-top: 5px; }
-        .tsm-sites-list { padding: 12px 20px 24px; }
-        .tsm-empty-map { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--surface-2); color: var(--muted); }
+        .tsm-find-btn:hover { background: var(--blue-600); color: #fff; border-color: var(--blue-600); }
+        .tsm-no-coords   { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted-light); margin-top: 5px; }
+        .tsm-sites-list  { padding: 12px 20px 24px; }
+        .tsm-empty-map   { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--surface-2); color: var(--muted); }
+
+        /* ── Modal overlay ── */
+        .tsm-modal-backdrop {
+          position: fixed; inset: 0; z-index: 9998;
+          background: rgba(15, 23, 42, 0.55);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          display: flex; align-items: center; justify-content: center;
+          padding: 24px;
+          animation: tsmFadeIn 0.22s ease both;
+        }
+        @keyframes tsmFadeIn  { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes tsmModalIn {
+          from { opacity: 0; transform: scale(0.96) translateY(16px); }
+          to   { opacity: 1; transform: scale(1)    translateY(0);     }
+        }
+        .tsm-modal-panel {
+          position: relative;
+          width: 100%; max-width: 1100px;
+          height: 80vh; max-height: 780px;
+          background: white;
+          border-radius: 20px;
+          overflow: hidden;
+          box-shadow: 0 32px 80px rgba(0,0,0,0.28), 0 0 0 1px rgba(255,255,255,0.08);
+          animation: tsmModalIn 0.26s cubic-bezier(.22,1,.36,1) both;
+        }
+        .tsm-modal-close {
+          position: absolute; top: 14px; right: 14px; z-index: 1100;
+          width: 36px; height: 36px;
+          background: white; border: 1px solid #e2e8f0;
+          border-radius: 50%; cursor: pointer;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 18px; color: #64748b;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+          transition: all 0.15s;
+        }
+        .tsm-modal-close:hover { background: #fee2e2; color: #dc2626; border-color: #fecaca; }
       `}</style>
 
-      {/* ── Map modal overlay ─────────────────────────────────────────────── */}
-      <div
-        className="tsm-map-wrap"
-        style={
-          isExpanded
-            ? {
-                position: "fixed",
-                inset: 0,
-                width: "100vw",
-                height: "100vh",
-                zIndex: 9999,
-                background: "white",
-                overflow: "hidden",
-              }
-            : { position: "relative" }
-        }
-      >
-
-        {/* Expand button (collapsed only) */}
-        {!isExpanded && mappableSites.length > 0 && (
-          <button
-            onClick={handleExpand}
-            title="Expand map"
-            style={{
-              position: "absolute", bottom: 50, right: 10, zIndex: 1000,
-              background: "white", border: "1px solid #e2e8f0",
-              borderRadius: 8, width: 32, height: 32,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-              fontSize: 14, color: "#374151",
-            }}
-          >⛶</button>
-        )}
-
-        {/* ← Back button (expanded only) — top-left, above legend toggle */}
-        {isExpanded && (
-          <button
-            onClick={handleCollapse}
-            title="Exit fullscreen (Esc)"
-            style={{
-              position: "absolute", top: 10, left: 10, zIndex: 1100,
-              background: "white", border: "1px solid #e2e8f0",
-              borderRadius: 8, height: 32, padding: "0 12px",
-              display: "flex", alignItems: "center", gap: 6,
-              cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-              fontSize: 13, fontWeight: 600, color: "#374151",
-              fontFamily: "sans-serif",
-            }}
-          >← Back</button>
-        )}
-
+      {/* ── Inline (collapsed) map ────────────────────────────────────────── */}
+      <div style={{ position: "relative", width: "100%", minHeight: 420 }}>
         {!mapKey || mappableSites.length === 0 ? (
           <div className="tsm-empty-map" style={{ height: 420 }}>
             <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.35 }}>
@@ -586,129 +559,51 @@ export default function TrialSiteMap({
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-3)" }}>
               {!mapKey ? "MapQuest key not configured" : "No geocoded sites available"}
             </div>
-            <div style={{ fontSize: 12, maxWidth: 240, textAlign: "center", lineHeight: 1.6 }}>
-              {!mapKey
-                ? "Set NEXT_PUBLIC_MAPQUEST_KEY in your environment"
-                : "Site location data was not returned from ClinicalTrials.gov"}
-            </div>
           </div>
         ) : (
           <>
-            <div
-              ref={mapDivRef}
-              style={{
-                height: isExpanded ? "100vh" : "420px",
-                width: "100%",
-                background: "#e8edf2",
-              }}
-            />
-
-            {/* Zoom controls + badge — top-right */}
-            <div className="tsm-map-controls">
-              <div className="tsm-zoom-badge">{currentZoom}</div>
-              {[
-                { icon: "+", title: "Zoom in",  fn: zoomIn,  disabled: currentZoom >= MAX_ZOOM },
-                { icon: "−", title: "Zoom out", fn: zoomOut, disabled: currentZoom <= MIN_ZOOM },
-                { icon: "⊡", title: "Fit all",  fn: fitAll,  disabled: false },
-              ].map((b) => (
-                <button
-                  key={b.title} title={b.title} onClick={b.fn}
-                  disabled={b.disabled} className="tsm-map-btn"
-                >
-                  {b.icon}
-                </button>
-              ))}
-            </div>
-
-            {/* Map type switcher — bottom-right */}
-            <div className="tsm-type-wrap">
-              {showTypeMenu && (
-                <div className="tsm-type-menu">
-                  {MAP_TYPES.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => switchMapType(t.id)}
-                      className="tsm-type-item"
-                      style={{
-                        background:  t.id === mapType ? "var(--blue-50)"  : "transparent",
-                        fontWeight:  t.id === mapType ? 700 : 500,
-                        color:       t.id === mapType ? "var(--blue-600)" : "var(--ink-3)",
-                        borderLeft:  t.id === mapType ? "3px solid var(--blue-500)" : "3px solid transparent",
-                      }}
-                    >
-                      <span style={{ fontSize: 14 }}>{t.icon}</span>
-                      {t.label}
-                      {t.id === mapType && <span style={{ marginLeft: "auto", fontSize: 10 }}>✓</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <button
-                className="tsm-type-btn"
-                style={{ borderColor: showTypeMenu ? "var(--blue-400)" : "var(--border)" }}
-                onClick={() => setShowTypeMenu((v) => !v)}
-                title="Change map type"
-              >
-                <span style={{ fontSize: 13 }}>{activeType.icon}</span>
-                {activeType.label}
-                <span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 2 }}>▲</span>
-              </button>
-            </div>
-
-            {/*
-              Legend toggle — top-left.
-              When expanded: top:56 (clears the 32px Back button at top:10).
-              When collapsed: top:12 (original position).
-            */}
+            <div ref={mapDivRef} style={{ height: 420, width: "100%", background: "#e8edf2" }} />
+            <MapControls />
+            {/* Expand button */}
             <button
-              className="tsm-legend-toggle"
+              onClick={() => setIsExpanded(true)}
+              title="Expand map"
               style={{
-                position: "absolute",
-                top: isExpanded ? 56 : 12,
-                left: 12,
-                zIndex: 1000,
-                background: "white",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)",
-                padding: "7px 12px",
-                boxShadow: "var(--shadow-md)",
-                cursor: "pointer",
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--ink-3)",
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                transition: "all 0.15s",
-                fontFamily: "var(--font-sans)",
+                position: "absolute", bottom: 50, right: 10, zIndex: 1000,
+                background: "white", border: "1px solid #e2e8f0",
+                borderRadius: 8, width: 32, height: 32,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+                fontSize: 14, color: "#374151",
               }}
-              onClick={() => setShowLegend((v) => !v)}
-            >
-              <span>◎</span>
-              {showLegend ? "Hide legend" : "Status legend"}
-            </button>
-
-            {showLegend && (
-              <div
-                className="tsm-legend-panel"
-                style={{ top: isExpanded ? 100 : 46 }}
-              >
-                <div className="tsm-legend-title">Site Status</div>
-                {LEGEND.map((l) => (
-                  <div key={l.label} className="tsm-legend-row">
-                    <svg width="14" height="14" viewBox="0 0 28 28" style={{ flexShrink: 0 }}>
-                      <circle cx="14" cy="14" r="13" fill={l.color}/>
-                      <rect x="11" y="7" width="6" height="14" rx="1.5" fill="white"/>
-                      <rect x="7" y="11" width="14" height="6" rx="1.5" fill="white"/>
-                    </svg>
-                    <span className="tsm-legend-label">{l.label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            >⛶</button>
           </>
         )}
       </div>
+
+      {/* ── Modal overlay (expanded) ──────────────────────────────────────── */}
+      {isExpanded && (
+        <div className="tsm-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setIsExpanded(false); }}>
+          <div className="tsm-modal-panel">
+            {/* Close button */}
+            <button className="tsm-modal-close" onClick={() => setIsExpanded(false)} title="Close">✕</button>
+            {/* The same map instance is re-used; we teleport it in via a portal-like div that mirrors the ref */}
+            <div
+              style={{ width: "100%", height: "100%", background: "#e8edf2" }}
+              ref={(el) => {
+                if (!el || !mapInstanceRef.current) return;
+                // Move the leaflet container into the modal div
+                const container = mapDivRef.current?.querySelector(".leaflet-container") as HTMLElement | null;
+                if (container && container.parentElement !== el) {
+                  el.appendChild(container);
+                  setTimeout(() => mapInstanceRef.current?.invalidateSize(), 80);
+                }
+              }}
+            />
+            <MapControls />
+          </div>
+        </div>
+      )}
 
       {/* ── Below-map content ─────────────────────────────────────────────── */}
       <div>
@@ -736,28 +631,22 @@ export default function TrialSiteMap({
                 {(() => {
                   const rawInclusion = inclusionCriteria || "";
                   const rawExclusion = exclusionCriteria || "";
-                  const exclKeyword = /exclusion criteria/i;
                   let inclText = rawInclusion;
                   let exclText = rawExclusion;
-
-                  const splitIdx = rawInclusion.search(exclKeyword);
+                  const splitIdx = rawInclusion.search(/exclusion criteria/i);
                   if (splitIdx > 0 && !rawExclusion) {
                     inclText = rawInclusion.slice(0, splitIdx);
                     exclText = rawInclusion.slice(splitIdx);
                   }
-
                   const parseLines = (text: string) =>
                     text.split(/\n/)
                       .map((l) => l.replace(/^[-•*0-9.\s]+/, "").trim())
                       .filter((l) => l && !/^(inclusion|exclusion)\s*criteria\s*:?$/i.test(l));
-
                   return (
                     <>
                       {inclText && (
                         <div style={{ marginBottom: 12 }}>
-                          <div className="tsm-crit-label" style={{ color: "var(--green-700)", fontWeight: 700, marginBottom: 6 }}>
-                            Inclusion Criteria
-                          </div>
+                          <div className="tsm-crit-label" style={{ color: "var(--green-700)", marginBottom: 6 }}>Inclusion Criteria</div>
                           <ul style={{ margin: 0, paddingLeft: 18, listStyleType: "disc" }}>
                             {parseLines(inclText).map((line, i) => (
                               <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{line}</li>
@@ -767,9 +656,7 @@ export default function TrialSiteMap({
                       )}
                       {exclText && (
                         <div>
-                          <div className="tsm-crit-label" style={{ color: "var(--coral-600)", fontWeight: 700, marginBottom: 6 }}>
-                            Exclusion Criteria
-                          </div>
+                          <div className="tsm-crit-label" style={{ color: "var(--coral-600)", marginBottom: 6 }}>Exclusion Criteria</div>
                           <ul style={{ margin: 0, paddingLeft: 18, listStyleType: "disc" }}>
                             {parseLines(exclText).map((line, i) => (
                               <li key={i} className="tsm-crit-text" style={{ marginBottom: 4 }}>{line}</li>
@@ -790,9 +677,7 @@ export default function TrialSiteMap({
         </div>
 
         {sites.length === 0 ? (
-          <p style={{ fontSize: 13, color: "var(--muted)", padding: "14px 20px" }}>
-            No site data available for this trial.
-          </p>
+          <p style={{ fontSize: 13, color: "var(--muted)", padding: "14px 20px" }}>No site data available for this trial.</p>
         ) : (
           <div className="tsm-sites-list">
             {sites.map((site, i) => {
@@ -833,14 +718,10 @@ export default function TrialSiteMap({
                             state: site.state, nct_id: nctId, condition: condition ?? null,
                           }, 25);
                         }}
-                      >
-                        🩺 Find physicians nearby
-                      </button>
+                      >🩺 Find physicians nearby</button>
                     </>
                   ) : (
-                    <div className="tsm-no-coords">
-                      <span>○</span> No map coordinates available
-                    </div>
+                    <div className="tsm-no-coords"><span>○</span> No map coordinates available</div>
                   )}
                 </div>
               );
