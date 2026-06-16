@@ -523,7 +523,7 @@ export default function PhysicianPanel({
 
         /* Map */
         .pp-map-wrap {
-          height: 380px; min-height: 380px; position: relative;
+          height: 480px; min-height: 480px; position: relative;
           background: var(--surface-2);
           border-bottom: 1px solid var(--border);
           overflow: hidden;
