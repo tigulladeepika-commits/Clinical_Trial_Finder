@@ -526,6 +526,7 @@ export default function PhysicianPanel({
           height: 380px; min-height: 380px; position: relative;
           background: var(--surface-2);
           border-bottom: 1px solid var(--border);
+          overflow: hidden;
         }
         .pp-map-empty {
           display: flex; align-items: center; justify-content: center;
