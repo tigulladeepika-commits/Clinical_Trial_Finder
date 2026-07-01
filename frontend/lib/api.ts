@@ -213,16 +213,16 @@ function buildLeadPayload(raw: LeadPayload): Record<string, unknown> {
   const name  = raw.name?.trim()  ?? "";
   const email = raw.email?.trim() ?? "";
 
-  if (!name)  throw new Error("Lead submission requires a name.");
-  if (!email) throw new Error("Lead submission requires an email address.");
+  if (!name) throw new Error("Lead submission requires a name.");
 
   const payload: Record<string, unknown> = {
     name,
-    email,
     lead_source: raw.lead_source ?? "Clinical Trial",
     company:     raw.company     ?? "Individual Physicians",
     auto:        raw.auto        ?? false,
   };
+
+  if (email) payload.email = email;
 
   if (raw.phone?.trim())          payload.phone           = raw.phone.trim();
   if (raw.npi?.trim())            payload.npi             = raw.npi.trim();

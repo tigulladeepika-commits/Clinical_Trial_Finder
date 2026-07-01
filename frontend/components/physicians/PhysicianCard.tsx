@@ -8,6 +8,9 @@ interface Props {
   physician: Physician;
   nctId:     string;
   siteName?: string | null;
+  selectable?: boolean;
+  selected?:   boolean;
+  onToggleSelect?: (physician: Physician) => void;
   onClick:   (physician: Physician) => void;
 }
 
@@ -34,15 +37,11 @@ function FallbackPopup({ physicianName, reason, onConfirm, onCancel, isSubmittin
     <div className="popup-overlay" onClick={onCancel}>
       <div className="popup-card" onClick={(e) => e.stopPropagation()}>
         <div className="popup-icon">⚠️</div>
-        <div className="popup-title">
-          {reason === "no_email"
-            ? "Email not available"
-            : "Physician not found on Apollo"}
-        </div>
+        <div className="popup-title">Physician not found on Apollo</div>
         <div className="popup-body">
           {reason === "no_email" ? (
             <>
-              <strong>{physicianName}</strong> was found on Apollo but no
+              <strong>{physicianName}</strong> was found on Apollo, but no
               verified email address is available.
             </>
           ) : (
@@ -53,7 +52,7 @@ function FallbackPopup({ physicianName, reason, onConfirm, onCancel, isSubmittin
           )}
         </div>
         <div className="popup-note">
-          Add this lead to Salesforce with a <strong>placeholder email</strong>?
+          Do you still want to add this lead to Salesforce without an email?
         </div>
         <div className="popup-actions">
           <button className="popup-btn popup-btn-cancel" onClick={onCancel} type="button">
@@ -65,7 +64,7 @@ function FallbackPopup({ physicianName, reason, onConfirm, onCancel, isSubmittin
             disabled={isSubmitting}
             type="button"
           >
-            {isSubmitting ? "Adding…" : "Add with placeholder"}
+            {isSubmitting ? "Adding…" : "Add without email"}
           </button>
         </div>
       </div>
@@ -111,7 +110,7 @@ function maskPhone(phone: string): string {
   return phone;
 }
 
-export default function PhysicianCard({ physician, nctId, siteName, onClick }: Props) {
+export default function PhysicianCard({ physician, nctId, siteName, selectable = false, selected = false, onToggleSelect, onClick }: Props) {
   const [leadState, setLeadState] = useState<LeadFlow>("idle");
   const [popupReason, setPopupReason] = useState<PopupReason>("not_found");
   const av = avatarColor(physician.name);
@@ -144,24 +143,29 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
 
     setLeadState("fetching");
 
-    const result = await fetchPhysicianEmail({
-      name:         physician.name,
-      address:      physician.address ?? "",
-      organization: siteName ?? "",
-    });
+    try {
+      const result = await fetchPhysicianEmail({
+        name:         physician.name,
+        address:      physician.address ?? "",
+        organization: siteName ?? "",
+      });
 
-    if (result.found && result.email) {
-      await submitWithEmail(result.email);
-      return;
+      if (result.found && result.email) {
+        await submitWithEmail(result.email);
+        return;
+      }
+
+      setPopupReason(result.found ? "no_email" : "not_found");
+      setLeadState("confirm");
+    } catch {
+      setLeadState("error");
+      setTimeout(() => setLeadState("idle"), 3000);
     }
-
-    setPopupReason(result.found ? "no_email" : "not_found");
-    setLeadState("confirm");
   }, [leadState, physician, siteName, submitWithEmail]);
 
   const handleFallbackConfirm = useCallback(async () => {
     setLeadState("submitting");
-    await submitWithEmail("placeholder@aquarient.com");
+    await submitWithEmail("");
   }, [submitWithEmail]);
 
   const handleFallbackCancel = useCallback(() => {
@@ -197,6 +201,25 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
           cursor: pointer; outline: none;
           transition: all 0.16s cubic-bezier(.22,1,.36,1);
           position: relative; overflow: hidden;
+        }
+        .phys-card.selected {
+          border-color: var(--blue-500);
+          box-shadow: 0 0 0 2px rgba(59,130,246,0.12);
+        }
+        .phys-select {
+          position: absolute; top: 16px; right: 16px;
+          width: 18px; height: 18px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: #fff;
+          display: grid; place-items: center;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+          cursor: pointer;
+          z-index: 1;
+        }
+        .phys-select input {
+          width: 16px; height: 16px;
+          margin: 0; cursor: pointer;
         }
         .phys-card::before {
           content: ''; position: absolute; left: 0; top: 0; bottom: 0;
@@ -321,13 +344,28 @@ export default function PhysicianCard({ physician, nctId, siteName, onClick }: P
       `}</style>
 
       <div
-        className="phys-card"
+        className={"phys-card" + (selected ? " selected" : "")}
         data-npi={physician.npi}
         onClick={() => onClick(physician)}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === "Enter" && onClick(physician)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+            e.preventDefault();
+            onClick(physician);
+          }
+        }}
       >
+        {selectable && onToggleSelect && (
+          <label className="phys-select" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggleSelect(physician)}
+              aria-label={`Select ${physician.name} for bulk Salesforce lead upload`}
+            />
+          </label>
+        )}
         {/* Top row */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           <div className="phys-avatar" style={{ background: av.bg, color: av.color }}>

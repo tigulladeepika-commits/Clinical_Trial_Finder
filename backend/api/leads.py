@@ -42,7 +42,7 @@ def _is_valid_email(value: str) -> bool:
 
 class LeadRequest(BaseModel):
     name:           str
-    email:          str   # plain str — NOT EmailStr (EmailStr rejects .local domains)
+    email:          str  = ""   # plain str — NOT EmailStr (EmailStr rejects .local domains)
     phone:          str  = ""
     npi:            str  = ""
     nct_id:         str  = ""
@@ -75,11 +75,11 @@ class LeadRequest(BaseModel):
     def clean_email(cls, v: object) -> str:
         """
         Validates email without EmailStr so .local domains are accepted.
-        Rejects blank / undefined / null values from JS.
+        Allows blank or falsy values for Salesforce leads without email.
         """
         raw = str(v).strip() if v is not None else ""
-        if raw.lower() in _FALSY_STRINGS:
-            raise ValueError("A valid email address is required.")
+        if raw.lower() in _FALSY_STRINGS or raw == "":
+            return ""
         if not _is_valid_email(raw):
             raise ValueError(f"'{raw}' is not a valid email address.")
         return raw

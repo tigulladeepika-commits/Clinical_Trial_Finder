@@ -9,7 +9,7 @@ import AIInsightsView             from "@/components/physicians/AIInsightsView";
 import PhysicianMap               from "@/components/physicians/PhysicianMap";
 import LeadCaptureModal           from "@/components/shared/LeadCaptureModal";
 import { useSuggestedPhysicians } from "@/hooks/usePhysicians";
-import { getConditionSpecialties } from "@/lib/api";
+import { getConditionSpecialties, fetchPhysicianEmail, submitLead } from "@/lib/api";
 import type { Physician, SelectedSite } from "@/types/physician";
 
 interface Props {
@@ -179,6 +179,9 @@ export default function PhysicianPanel({
   const [dropdownSearch,    setDropdownSearch]     = useState("");
   const [dropdownPos,       setDropdownPos]       = useState<{ top: number; left: number; width: number } | null>(null);
   const [selectedNpi,       setSelectedNpi]       = useState<string | null>(null);
+  const [selectedNpis,      setSelectedNpis]      = useState<string[]>([]);
+  const [bulkState,         setBulkState]         = useState<"idle"|"submitting"|"done"|"error">("idle");
+  const [bulkMessage,       setBulkMessage]       = useState<string | null>(null);
   const [detailPhys,        setDetailPhys]        = useState<Physician | null>(null);
   const [showMainModal,     setShowMainModal]     = useState(false);
   const [showSuggestModal,  setShowSuggestModal]  = useState(false);
@@ -189,6 +192,13 @@ export default function PhysicianPanel({
 
   const suggested          = useSuggestedPhysicians();
   const siteConditionRef   = useRef<string>("");
+
+  const selectedNpiSet = useMemo(() => new Set(selectedNpis), [selectedNpis]);
+  const selectedPhysicians = useMemo(
+    () => [...physicians, ...suggested.physicians].filter((p) => selectedNpiSet.has(p.npi)),
+    [physicians, suggested.physicians, selectedNpiSet],
+  );
+  const selectedCount = selectedNpis.length;
   const dropdownRef        = useRef<HTMLDivElement>(null);
   const triggerRef         = useRef<HTMLButtonElement>(null);
 
@@ -319,6 +329,73 @@ export default function PhysicianPanel({
     setShowAIInsights(false);
     setDetailPhys(physician);
   }, []);
+
+  const toggleSelection = useCallback((physician: Physician) => {
+    setBulkMessage(null);
+    setBulkState("idle");
+    setSelectedNpis((prev) =>
+      prev.includes(physician.npi)
+        ? prev.filter((npi) => npi !== physician.npi)
+        : [...prev, physician.npi],
+    );
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedNpis([]);
+    setBulkState("idle");
+    setBulkMessage(null);
+  }, []);
+
+  const handleBulkAdd = useCallback(async () => {
+    if (selectedCount === 0 || bulkState === "submitting") return;
+
+    setBulkState("submitting");
+    setBulkMessage(null);
+
+    const failedNpis: string[] = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const physician of selectedPhysicians) {
+      try {
+        const emailResult = await fetchPhysicianEmail({
+          name:          physician.name,
+          address:       physician.address ?? "",
+          organization:  site.facility ?? "",
+        });
+
+        const email = emailResult.found && emailResult.email
+          ? emailResult.email
+          : undefined;
+
+        await submitLead({
+          name:           physician.name,
+          email,
+          company:        "Individual Physicians",
+          lead_source:    "Clinical Trial",
+          npi:            physician.npi,
+          nct_id:         site.nct_id,
+          ...(site.facility ? { site: site.facility } : {}),
+          ...(physician.taxonomy_desc ? { title: physician.taxonomy_desc } : {}),
+          ...(physician.phone ? { phone: physician.phone } : {}),
+          physician_name: physician.name,
+          auto:           true,
+        });
+
+        successCount += 1;
+      } catch (err) {
+        failureCount += 1;
+        failedNpis.push(physician.npi);
+        console.warn("Bulk lead submission failed for %s: %o", physician.npi, err);
+      }
+    }
+
+    setSelectedNpis(failedNpis);
+    setBulkState(failureCount === 0 ? "done" : "error");
+    setBulkMessage(
+      `Added ${successCount} lead${successCount === 1 ? "" : "s"}${failureCount > 0 ? `, ${failureCount} failed.` : "."}`,
+    );
+  }, [bulkState, selectedCount, selectedPhysicians, site]);
 
   // ── Filtered options for dropdown search ────────────────────────────────
   const filteredOptions = useMemo(() => {
@@ -715,6 +792,38 @@ export default function PhysicianPanel({
           </div>
         )}
 
+        {selectedCount > 0 && (
+          <div className="pp-bulk-bar">
+            <div className="pp-bulk-summary">
+              <strong>{selectedCount}</strong> physician{selectedCount === 1 ? "" : "s"} selected
+            </div>
+            <div className="pp-bulk-actions">
+              <button
+                type="button"
+                className="pp-bulk-btn"
+                onClick={handleBulkAdd}
+                disabled={bulkState === "submitting"}
+              >
+                {bulkState === "submitting" ? "Adding selected…" : "Add selected to Salesforce"}
+              </button>
+              <button
+                type="button"
+                className="pp-bulk-clear"
+                onClick={clearSelection}
+                disabled={bulkState === "submitting"}
+              >
+                Clear selection
+              </button>
+            </div>
+          </div>
+        )}
+
+        {bulkMessage && (
+          <div className={`pp-bulk-status ${bulkState}`}>
+            {bulkMessage}
+          </div>
+        )}
+
         <div className="pp-list">
           {loading && (
             <div className="pp-center">
@@ -748,6 +857,9 @@ export default function PhysicianPanel({
                 physician={p}
                 nctId={site.nct_id}
                 siteName={site.facility}
+                selectable
+                selected={selectedNpiSet.has(p.npi)}
+                onToggleSelect={toggleSelection}
                 onClick={openPhysicianDetail}
               />
             </div>
@@ -808,6 +920,9 @@ export default function PhysicianPanel({
                     physician={p}
                     nctId={site.nct_id}
                     siteName={site.facility}
+                    selectable
+                    selected={selectedNpiSet.has(p.npi)}
+                    onToggleSelect={toggleSelection}
                     onClick={openPhysicianDetail}
                   />
                 </div>

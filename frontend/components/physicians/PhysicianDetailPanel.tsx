@@ -130,8 +130,7 @@ function FallbackPopup({ physicianName, reason, onConfirm, onCancel, isSubmittin
           </div>
 
           <div className="fb-note">
-            Do you still want to add this lead to Salesforce with a{" "}
-            <strong>placeholder email</strong>? You can update it manually later.
+            Do you still want to add this lead to Salesforce without an email?
           </div>
 
           <div className="fb-actions">
@@ -146,7 +145,7 @@ function FallbackPopup({ physicianName, reason, onConfirm, onCancel, isSubmittin
             >
               {isSubmitting
                 ? <><div className="pdp-btn-spinner" /> Adding…</>
-                : "Add with placeholder"}
+                : "Add without email"}
             </button>
           </div>
         </div>
@@ -214,10 +213,10 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
     setLeadFlow("confirm");
   }, [leadFlow, physician, site, submitWithEmail]);
 
-  // ── Popup confirm (add with placeholder) ───────────────────────────────────
+  // ── Popup confirm (add without email) ───────────────────────────────────
   const handleFallbackConfirm = useCallback(async () => {
     setLeadFlow("submitting");
-    await submitWithEmail("placeholder@aquarient.com");
+    await submitWithEmail("");
   }, [submitWithEmail]);
 
   // ── Popup cancel ────────────────────────────────────────────────────────────

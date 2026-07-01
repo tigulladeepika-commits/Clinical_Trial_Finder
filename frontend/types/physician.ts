@@ -121,7 +121,7 @@ export interface AIInsightsData {
 
 export interface LeadPayload {
   name:            string;
-  email:           string;
+  email?:          string;
   phone?:          string;
   npi?:            string;
   nct_id?:         string;
