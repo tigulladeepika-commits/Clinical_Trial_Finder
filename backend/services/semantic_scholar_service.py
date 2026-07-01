@@ -116,15 +116,16 @@ async def _fetch_with_retry(
 def _affiliation_matches_state(affiliations: list[str], npi_state: str) -> bool:
     """
     Return True if any affiliation string matches the physician's NPI state.
-    Returns True if affiliations is empty (can't rule out).
+    Returns True if affiliations is empty (can't rule out) - S2's author/search
+    endpoint frequently omits affiliation even for the correct author, so
+    treating "no data" as a hard reject made S2 verification almost never
+    succeed for anyone. Missing affiliation is now "unconfirmed" rather than
+    "disqualified" - name-match and medical-field checks upstream still apply,
+    and confidence is scored lower (45 vs 70) when affiliation isn't confirmed.
     Returns False if a wrong country signal is found.
     """
     if not affiliations:
-        # When we know the physician's state, require affiliation confirmation.
-        # No affiliation = cannot verify = reject to avoid name collisions.
-        if npi_state:
-            return False
-        return True  # no state info — pass through
+        return True
 
     npi_state_upper = npi_state.upper().strip()
     correct_names   = _US_STATE_NAMES.get(npi_state_upper, [])
