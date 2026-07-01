@@ -14,7 +14,7 @@ _MAX_CONCURRENT = 2
 
 # Delay between starting each physician enrichment (seconds)
 # Prevents Semantic Scholar 429 bursts
-_ENRICH_DELAY = 1.0
+_ENRICH_DELAY = 3.0
 
 
 async def enrich_one(
@@ -82,7 +82,7 @@ async def enrich_batch(
         async with semaphore:
             # Stagger enrichments to avoid burst Groq rate limit errors
             import asyncio as _asyncio
-            await _asyncio.sleep(1.5)
+            await _asyncio.sleep(2.5)
             await enrich_one(
                 npi          = p.get("npi", ""),
                 name         = p.get("name", "Unknown Physician"),
