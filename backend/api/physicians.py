@@ -540,7 +540,10 @@ async def get_physician_insights(
     response:    Response            = None,
 ) -> dict:
     if response:
-        response.headers["Cache-Control"] = "private, max-age=3600"
+        # Must not exceed ai_cache_service's 30-min TTL - a longer client cache
+        # would keep serving a stale browser-cached response after the backend
+        # has already re-enriched with fresh data (or expired a bad result).
+        response.headers["Cache-Control"] = "private, max-age=1800"
 
     clean_name = (name or "").strip()
     clean_specialty = (specialty or "").strip()

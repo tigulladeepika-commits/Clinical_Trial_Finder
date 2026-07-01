@@ -288,8 +288,8 @@ async def semantic_scholar_lookup(
             _score += 5
         if affiliations:
             _score += 3
-        if matched_author is None or _score > getattr(matched_author, "_score", 0):
-            candidate._score = _score
+        if matched_author is None or _score > matched_author.get("_score", 0):
+            candidate["_score"] = _score
             matched_author = candidate
             matched_affiliation = affiliations[0] if affiliations else None
             logger.info(
