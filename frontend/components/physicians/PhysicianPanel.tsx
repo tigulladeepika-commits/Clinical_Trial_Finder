@@ -179,6 +179,7 @@ export default function PhysicianPanel({
   const [dropdownSearch,    setDropdownSearch]     = useState("");
   const [dropdownPos,       setDropdownPos]       = useState<{ top: number; left: number; width: number } | null>(null);
   const [selectedNpi,       setSelectedNpi]       = useState<string | null>(null);
+  const [selectMode,        setSelectMode]        = useState(false);
   const [selectedNpis,      setSelectedNpis]      = useState<string[]>([]);
   const [bulkState,         setBulkState]         = useState<"idle"|"submitting"|"done"|"error">("idle");
   const [bulkMessage,       setBulkMessage]       = useState<string | null>(null);
@@ -199,6 +200,14 @@ export default function PhysicianPanel({
     [physicians, suggested.physicians, selectedNpiSet],
   );
   const selectedCount = selectedNpis.length;
+
+  // ── All currently-loaded NPIs, for "Select all" ──────────────────────────
+  const allLoadedNpis = useMemo(
+    () => [...physicians, ...suggested.physicians].map((p) => p.npi),
+    [physicians, suggested.physicians],
+  );
+  const allSelected = allLoadedNpis.length > 0 && allLoadedNpis.every((npi) => selectedNpiSet.has(npi));
+
   const dropdownRef        = useRef<HTMLDivElement>(null);
   const triggerRef         = useRef<HTMLButtonElement>(null);
 
@@ -345,6 +354,30 @@ export default function PhysicianPanel({
     setBulkState("idle");
     setBulkMessage(null);
   }, []);
+
+  // ── Enter / exit multi-select mode ───────────────────────────────────────
+  const toggleSelectMode = useCallback(() => {
+    setSelectMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        // Leaving select mode — clear any in-progress selection
+        setSelectedNpis([]);
+        setBulkState("idle");
+        setBulkMessage(null);
+      }
+      return next;
+    });
+  }, []);
+
+  // ── Select all / deselect all currently-loaded physicians ───────────────
+  const toggleSelectAll = useCallback(() => {
+    setBulkMessage(null);
+    setBulkState("idle");
+    setSelectedNpis((prev) => {
+      const currentlyAll = allLoadedNpis.length > 0 && allLoadedNpis.every((npi) => prev.includes(npi));
+      return currentlyAll ? [] : allLoadedNpis;
+    });
+  }, [allLoadedNpis]);
 
   const handleBulkAdd = useCallback(async () => {
     if (selectedCount === 0 || bulkState === "submitting") return;
@@ -614,8 +647,35 @@ export default function PhysicianPanel({
           display: flex; align-items: center; justify-content: space-between;
           padding: 7px 14px; border-bottom: 1px solid var(--border);
           background: #fff; font-size: 11px; color: var(--muted); font-weight: 600;
+          gap: 8px; flex-wrap: wrap;
         }
         .pp-count-bar strong { color: var(--ink); }
+        .pp-count-bar-actions {
+          display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .pp-select-toggle {
+          height: 28px; padding: 0 12px;
+          background: var(--surface); color: var(--ink-2);
+          border: 1px solid var(--border); border-radius: var(--radius-md);
+          font-size: 11px; font-weight: 700; cursor: pointer;
+          font-family: var(--font-sans); transition: all 0.15s;
+        }
+        .pp-select-toggle:hover:not(:disabled) {
+          background: var(--blue-50); border-color: var(--blue-500); color: var(--blue-600);
+        }
+        .pp-select-toggle.active {
+          background: var(--blue-600); border-color: var(--blue-600); color: #fff;
+        }
+        .pp-select-toggle:disabled { opacity: 0.55; cursor: not-allowed; }
+        .pp-select-all {
+          display: flex; align-items: center; gap: 6px;
+          font-size: 11px; font-weight: 600; color: var(--ink-2);
+          cursor: pointer; user-select: none;
+          animation: fadeIn 0.14s ease both;
+        }
+        .pp-select-all input {
+          width: 14px; height: 14px; cursor: pointer; margin: 0;
+        }
         .pp-list { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
         .pp-load-more-top {
           height: 28px; padding: 0 12px;
@@ -679,6 +739,43 @@ export default function PhysicianPanel({
           display: flex; flex-direction: column; align-items: center; gap: 5px;
         }
         .pp-count-sub { font-size: 10px; color: var(--muted); }
+
+        /* ── Bulk selection action bar ── */
+        .pp-bulk-bar {
+          position: sticky; top: 41px; z-index: 15;
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 10px; flex-wrap: wrap;
+          padding: 9px 14px;
+          background: var(--blue-600); color: #fff;
+          animation: fadeIn 0.14s ease both;
+        }
+        .pp-bulk-summary { font-size: 12px; font-weight: 700; }
+        .pp-bulk-actions { display: flex; align-items: center; gap: 8px; }
+        .pp-bulk-btn {
+          height: 30px; padding: 0 14px;
+          background: #fff; color: var(--blue-700);
+          border: none; border-radius: var(--radius-md);
+          font-size: 12px; font-weight: 700; cursor: pointer;
+          font-family: var(--font-sans); transition: all 0.15s;
+        }
+        .pp-bulk-btn:hover:not(:disabled) { filter: brightness(0.96); }
+        .pp-bulk-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+        .pp-bulk-clear {
+          height: 30px; padding: 0 12px;
+          background: rgba(255,255,255,0.12); color: #fff;
+          border: 1px solid rgba(255,255,255,0.4); border-radius: var(--radius-md);
+          font-size: 12px; font-weight: 600; cursor: pointer;
+          font-family: var(--font-sans); transition: all 0.15s;
+        }
+        .pp-bulk-clear:hover:not(:disabled) { background: rgba(255,255,255,0.2); }
+        .pp-bulk-clear:disabled { opacity: 0.55; cursor: not-allowed; }
+        .pp-bulk-status {
+          padding: 8px 14px; font-size: 12px; font-weight: 600;
+          border-bottom: 1px solid var(--border);
+        }
+        .pp-bulk-status.done  { background: #ecfdf5; color: var(--green-700, #047857); }
+        .pp-bulk-status.error { background: var(--coral-50); color: var(--coral-600); }
+        .pp-bulk-status.submitting { background: var(--blue-50); color: var(--blue-600); }
       `}</style>
 
       <div className="pp-shell">
@@ -780,22 +877,42 @@ export default function PhysicianPanel({
           )}
         </div>
 
-        {/* Count bar */}
+        {/* Count bar — Select toggle, Select all, and Load More live here */}
         {!loading && physicians.length > 0 && (
           <div className="pp-count-bar">
             <span><strong>{physicians.length}</strong> of <strong>{total}</strong> HCPs/HCOs</span>
-            {hasMore && (
-              <button className="pp-load-more-top" onClick={() => setShowMainModal(true)} disabled={loading}>
-                Load More
+            <div className="pp-count-bar-actions">
+              {selectMode && (
+                <label className="pp-select-all">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                  />
+                  Select all
+                </label>
+              )}
+              <button
+                type="button"
+                className={"pp-select-toggle" + (selectMode ? " active" : "")}
+                onClick={toggleSelectMode}
+                disabled={bulkState === "submitting"}
+              >
+                {selectMode ? "Done" : "Select"}
               </button>
-            )}
+              {hasMore && (
+                <button className="pp-load-more-top" onClick={() => setShowMainModal(true)} disabled={loading}>
+                  Load More
+                </button>
+              )}
+            </div>
           </div>
         )}
 
         {selectedCount > 0 && (
           <div className="pp-bulk-bar">
             <div className="pp-bulk-summary">
-              <strong>{selectedCount}</strong> physician{selectedCount === 1 ? "" : "s"} selected
+              {selectedCount} physician{selectedCount === 1 ? "" : "s"} selected
             </div>
             <div className="pp-bulk-actions">
               <button
@@ -804,7 +921,7 @@ export default function PhysicianPanel({
                 onClick={handleBulkAdd}
                 disabled={bulkState === "submitting"}
               >
-                {bulkState === "submitting" ? "Adding selected…" : "Add selected to Salesforce"}
+                {bulkState === "submitting" ? "Adding selected…" : `Add ${selectedCount} as lead${selectedCount === 1 ? "" : "s"} to Salesforce`}
               </button>
               <button
                 type="button"
@@ -857,7 +974,7 @@ export default function PhysicianPanel({
                 physician={p}
                 nctId={site.nct_id}
                 siteName={site.facility}
-                selectable
+                selectable={selectMode}
                 selected={selectedNpiSet.has(p.npi)}
                 onToggleSelect={toggleSelection}
                 onClick={openPhysicianDetail}
@@ -920,7 +1037,7 @@ export default function PhysicianPanel({
                     physician={p}
                     nctId={site.nct_id}
                     siteName={site.facility}
-                    selectable
+                    selectable={selectMode}
                     selected={selectedNpiSet.has(p.npi)}
                     onToggleSelect={toggleSelection}
                     onClick={openPhysicianDetail}

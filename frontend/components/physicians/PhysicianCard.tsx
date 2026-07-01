@@ -145,6 +145,10 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
     leadState === "submitting"||
     leadState === "done";
 
+  // Once this card is checked for bulk-select, its individual lead button
+  // steps aside in favor of the panel's bulk action bar.
+  const showIndividualLeadButton = !selected;
+
   return (
     <>
       <style>{`
@@ -162,7 +166,7 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
           box-shadow: 0 0 0 2px rgba(59,130,246,0.12);
         }
         .phys-select {
-          position: absolute; top: 16px; right: 16px;
+          position: absolute; top: 16px; left: 14px;
           width: 18px; height: 18px;
           border: 1px solid var(--border);
           border-radius: 6px;
@@ -171,6 +175,7 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
           box-shadow: 0 2px 6px rgba(0,0,0,0.08);
           cursor: pointer;
           z-index: 1;
+          animation: fadeIn 0.14s ease both;
         }
         .phys-select input {
           width: 16px; height: 16px;
@@ -246,6 +251,12 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
           box-shadow: 0 3px 10px rgba(0,0,0,0.2);
         }
         .phys-lead-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+        .phys-selected-tag {
+          font-size: 11px; font-weight: 700; color: var(--blue-600);
+          background: var(--blue-50); border: 1px solid var(--blue-200);
+          border-radius: var(--radius-sm); padding: 5px 10px;
+          display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+        }
       `}</style>
 
       <div
@@ -271,8 +282,8 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
             />
           </label>
         )}
-        {/* Top row — paddingRight reserves space so the checkbox never overlaps the distance badge */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, paddingRight: selectable ? 26 : 0 }}>
+        {/* Top row — paddingLeft reserves space so the checkbox never overlaps the avatar */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, paddingLeft: selectable ? 26 : 0 }}>
           <div className="phys-avatar" style={{ background: av.bg, color: av.color }}>
             {initials(physician.name)}
           </div>
@@ -303,23 +314,27 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
           <span className="phys-view-link">
             View details →
           </span>
-          <button
-            type="button"
-            className="phys-lead-btn"
-            onClick={handleAddLead}
-            disabled={btnDisabled}
-            style={{ background: btnBg }}
-          >
-            {(leadState === "fetching" || leadState === "submitting") && (
-              <span style={{
-                width: 10, height: 10,
-                border: "1.5px solid rgba(255,255,255,0.4)",
-                borderTopColor: "#fff", borderRadius: "50%",
-                animation: "spinAnim 0.65s linear infinite",
-              }} />
-            )}
-            {btnLabel}
-          </button>
+          {showIndividualLeadButton ? (
+            <button
+              type="button"
+              className="phys-lead-btn"
+              onClick={handleAddLead}
+              disabled={btnDisabled}
+              style={{ background: btnBg }}
+            >
+              {(leadState === "fetching" || leadState === "submitting") && (
+                <span style={{
+                  width: 10, height: 10,
+                  border: "1.5px solid rgba(255,255,255,0.4)",
+                  borderTopColor: "#fff", borderRadius: "50%",
+                  animation: "spinAnim 0.65s linear infinite",
+                }} />
+              )}
+              {btnLabel}
+            </button>
+          ) : (
+            <span className="phys-selected-tag">✓ Selected for bulk add</span>
+          )}
         </div>
         {leadState === "done" && (
           <div className="phys-success">
