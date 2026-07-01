@@ -365,7 +365,7 @@ Answer YES for:
 
 Return ONLY a valid JSON array. No explanation, no markdown, no extra text.
 CRITICAL: Your ENTIRE response must be a JSON array starting with [ and ending with ].
-[{"index": 1, "relevant": true}, {"index": 2, "relevant": false}]
+[{{"index": 1, "relevant": true}}, {{"index": 2, "relevant": false}}]
 Titles:
 {titles_text}"""
 
