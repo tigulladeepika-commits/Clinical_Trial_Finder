@@ -351,6 +351,8 @@ STRICT rules — answer NO for:
 - Pediatric surgery, cleft palate, plastic surgery papers unless specialty includes those areas
 - Mindfulness, meditation, polyvagal theory, vagal tone, respiratory sinus arrhythmia papers unless specialty is Psychiatry or Neurology
 - Psychology, behavioral science, social science papers unless specialty includes Psychiatry
+- Public health surveys, population studies, socioeconomic/pain/abortion/lifestyle papers unless specialty explicitly covers them
+- Chinese population studies, nationwide surveys from China unrelated to the specialty
 - Animal husbandry, veterinary, public health intervention papers for animals
 
 Answer YES for:
@@ -361,13 +363,12 @@ Answer YES for:
 - Radiation oncology treatment papers for Radiation Oncology specialty
 - Breast cancer, prostate cancer, lung cancer papers for Oncology/Radiation Oncology
 
-Return ONLY a JSON array, no other text:
-[{{"index": 1, "relevant": true}}, {{"index": 2, "relevant": false}}, ...]
-
+Return ONLY a valid JSON array. No explanation, no markdown, no extra text.
+CRITICAL: Your ENTIRE response must be a JSON array starting with [ and ending with ].
+[{"index": 1, "relevant": true}, {"index": 2, "relevant": false}]
 Titles:
 {titles_text}"""
 
-    import asyncio as _aio
     import asyncio as _aio
     for _current_model in GROQ_FALLBACK_MODELS:
         _model_exhausted = False
@@ -404,8 +405,9 @@ Titles:
                 logger.debug("Groq raw response: %s", raw[:300])
                 json_match = re.search(r'\[.*?\]', raw, re.DOTALL)
                 if not json_match:
-                    logger.warning("Groq verify: no JSON found - keyword fallback")
-                    return _keyword_fallback_filter(publications, specialty)
+                    logger.warning("Groq verify: no JSON on %s - trying next model", current_model)
+                    _model_exhausted = True
+                    break
                 results = json.loads(json_match.group())
                 relevant_indices = {
                     item["index"] for item in results
