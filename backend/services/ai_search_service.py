@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL   = "openai/gpt-oss-120b"
+# Fallback chain: each model has its own separate rate limit bucket on Groq
+GROQ_FALLBACK_MODELS = [
+    "openai/gpt-oss-120b",   # primary  — 8K TPM, best quality
+    "openai/gpt-oss-20b",    # secondary — 8K TPM, 1000 tps
+    "llama-3.1-8b-instant",  # tertiary  — 6K TPM, highest availability
+]
 GROQ_TIMEOUT = 8.0
 
 MAX_CORRECTION_SECONDS = 5.0

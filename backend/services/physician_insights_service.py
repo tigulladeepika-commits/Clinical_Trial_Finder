@@ -91,6 +91,12 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 
 GROQ_MODEL   = "openai/gpt-oss-120b"
+# Fallback chain: each model has its own separate rate limit bucket on Groq
+GROQ_FALLBACK_MODELS = [
+    "openai/gpt-oss-120b",   # primary  — 8K TPM, best quality
+    "openai/gpt-oss-20b",    # secondary — 8K TPM, 1000 tps
+    "llama-3.1-8b-instant",  # tertiary  — 6K TPM, highest availability
+]
 
 HTTP_TIMEOUT = 20.0
 
@@ -250,57 +256,34 @@ async def _groq_summary(
 
 
 
-    try:
-
-        resp = await client.post(
-
-            GROQ_URL,
-
-            headers={
-
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-
-                "Content-Type":  "application/json",
-
-            },
-
-            json={
-
-                "model":       GROQ_MODEL,
-
-                "max_tokens":  300,
-
-                "temperature": 0.3,
-
-                "messages":    [{"role": "user", "content": prompt}],
-
-            },
-
-            timeout=HTTP_TIMEOUT,
-
-        )
-
-
-
-        if resp.status_code != 200:
-
-            logger.warning("Groq summary failed %d for %r", resp.status_code, name)
-
-            return ""
-
-
-
-        content = resp.json()["choices"][0]["message"]["content"].strip()
-
-        return content
-
-
-
-    except Exception as exc:
-
-        logger.warning("Groq summary error for %r: %s", name, exc)
-
-        return ""
+    for _sum_model in GROQ_FALLBACK_MODELS:
+        try:
+            resp = await client.post(
+                GROQ_URL,
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type":  "application/json",
+                },
+                json={
+                    "model":       _sum_model,
+                    "max_tokens":  300,
+                    "temperature": 0.3,
+                    "messages":    [{"role": "user", "content": prompt}],
+                },
+                timeout=HTTP_TIMEOUT,
+            )
+            if resp.status_code == 429:
+                logger.warning("Groq summary 429 on %s for %r - trying next model", _sum_model, name)
+                continue
+            if resp.status_code != 200:
+                logger.warning("Groq summary failed %d model=%s for %r", resp.status_code, _sum_model, name)
+                continue
+            content = resp.json()["choices"][0]["message"]["content"].strip()
+            return content
+        except Exception as exc:
+            logger.warning("Groq summary error model=%s for %r: %s", _sum_model, name, exc)
+            continue
+    return ""
 
 
 

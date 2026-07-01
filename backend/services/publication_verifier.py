@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL   = "openai/gpt-oss-120b"
+# Fallback chain: each model has its own separate rate limit bucket on Groq
+GROQ_FALLBACK_MODELS = [
+    "openai/gpt-oss-120b",   # primary  — 8K TPM, best quality
+    "openai/gpt-oss-20b",    # secondary — 8K TPM, 1000 tps
+    "llama-3.1-8b-instant",  # tertiary  — 6K TPM, highest availability
+]
 HTTP_TIMEOUT = 15.0
 
 
@@ -361,65 +367,67 @@ Return ONLY a JSON array, no other text:
 Titles:
 {titles_text}"""
 
-    for _attempt in range(3):
-        try:
-            resp = await client.post(
-                GROQ_URL,
-                headers={
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "Content-Type":  "application/json",
-                },
-                json={
-                    "model":       GROQ_MODEL,
-                    "max_tokens":  500,
-                    "temperature": 0.0,
-                    "messages":    [{"role": "user", "content": prompt}],
-                },
-                timeout=HTTP_TIMEOUT,
-            )
+    import asyncio as _aio
+    import asyncio as _aio
+    for _current_model in GROQ_FALLBACK_MODELS:
+        _model_exhausted = False
+        for _attempt in range(3):
+            try:
+                resp = await client.post(
+                    GROQ_URL,
+                    headers={
+                        "Authorization": f"Bearer {GROQ_API_KEY}",
+                        "Content-Type":  "application/json",
+                    },
+                    json={
+                        "model":       _current_model,
+                        "max_tokens":  500,
+                        "temperature": 0.0,
+                        "messages":    [{"role": "user", "content": prompt}],
+                    },
+                    timeout=HTTP_TIMEOUT,
+                )
+                if resp.status_code == 429:
+                    wait = 2.0 * (2 ** _attempt)
+                    logger.warning("Groq 429 attempt %d model=%s - waiting %.1fs", _attempt+1, _current_model, wait)
+                    if _attempt < 2:
+                        await _aio.sleep(wait)
+                        continue
+                    logger.warning("Groq 429 exhausted on %s - trying next model", _current_model)
+                    _model_exhausted = True
+                    break
+                if resp.status_code != 200:
+                    logger.warning("Groq failed %d model=%s - trying next", resp.status_code, _current_model)
+                    _model_exhausted = True
+                    break
+                raw = resp.json()["choices"][0]["message"]["content"].strip()
+                logger.debug("Groq raw response: %s", raw[:300])
+                json_match = re.search(r'\[.*?\]', raw, re.DOTALL)
+                if not json_match:
+                    logger.warning("Groq verify: no JSON found - keyword fallback")
+                    return _keyword_fallback_filter(publications, specialty)
+                results = json.loads(json_match.group())
+                relevant_indices = {
+                    item["index"] for item in results
+                    if item.get("relevant", True)
+                }
+                verified = []
+                for i, pub in enumerate(publications):
+                    idx = i + 1
+                    if idx in relevant_indices:
+                        verified.append(pub)
+                    else:
+                        logger.info(
+                            "Groq rejected paper: %r",
+                            pub.get("title", "")[:60],
+                        )
+                return verified if verified else publications
+            except Exception as _e:
+                logger.warning("Groq exception model=%s: %s", _current_model, _e)
+                _model_exhausted = True
+                break
+        if not _model_exhausted:
+            break
+    # All models exhausted - keyword fallback
+    return _keyword_fallback_filter(publications, specialty)
 
-            if resp.status_code == 429:
-                import asyncio as _aio
-                wait = 2.0 * (2 ** _attempt)
-                logger.warning("Groq 429 attempt %d - waiting %.1fs", _attempt+1, wait)
-                if _attempt < 2:
-                    await _aio.sleep(wait)
-                    continue
-                logger.warning("Groq 429 exhausted - keyword fallback")
-                return _keyword_fallback_filter(publications, specialty)
-
-            if resp.status_code != 200:
-                logger.warning("Groq failed %d - keyword fallback", resp.status_code)
-                return _keyword_fallback_filter(publications, specialty)
-
-            raw = resp.json()["choices"][0]["message"]["content"].strip()
-            logger.debug("Groq raw response: %s", raw[:300])
-
-            json_match = re.search(r'\[.*?\]', raw, re.DOTALL)
-            if not json_match:
-                logger.warning("Groq verify: no JSON found - keyword fallback")
-                return _keyword_fallback_filter(publications, specialty)
-
-            results = json.loads(json_match.group())
-            relevant_indices = {
-                item["index"] for item in results
-                if item.get("relevant", True)
-            }
-
-            verified = []
-            for i, pub in enumerate(publications):
-                idx = i + 1
-                if idx in relevant_indices:
-                    verified.append(pub)
-                else:
-                    logger.info(
-                        "Groq rejected paper: %r",
-                        pub.get("title", "")[:60],
-                    )
-
-            return verified if verified else publications
-
-        except Exception as exc:
-            logger.warning("Groq title verify error: %s - keyword fallback", exc)
-            return _keyword_fallback_filter(publications, specialty)
-        break
