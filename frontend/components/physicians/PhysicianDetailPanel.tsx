@@ -3,6 +3,11 @@
 import { useState, useCallback } from "react";
 import { submitLead, fetchPhysicianEmail } from "@/lib/api";
 import type { Physician, SelectedSite } from "@/types/physician";
+import {
+  LeadFallbackPopup,
+  resolvePopupReason,
+  type PopupReason,
+} from "@/components/shared/LeadFallbackPopup";
 
 interface Props {
   physician:        Physician;
@@ -28,132 +33,6 @@ function maskPhone(phone: string): string {
   return `•••-•••-${last4}`;
 }
 
-
-// ── Fallback popup ────────────────────────────────────────────────────────────
-
-interface FallbackPopupProps {
-  physicianName: string;
-  reason:        "not_found" | "no_email";
-  onConfirm:     () => void;
-  onCancel:      () => void;
-  isSubmitting:  boolean;
-}
-
-function FallbackPopup({ physicianName, reason, onConfirm, onCancel, isSubmitting }: FallbackPopupProps) {
-  return (
-    <>
-      <style>{`
-        .fb-overlay {
-          position: fixed; inset: 0; z-index: 1000;
-          background: rgba(0,0,0,0.38);
-          display: flex; align-items: center; justify-content: center;
-          padding: 20px;
-          animation: fadeIn 0.15s ease both;
-        }
-        .fb-card {
-          background: #fff; border-radius: 16px;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.18);
-          width: 100%; max-width: 380px;
-          padding: 24px;
-          animation: slideUp 0.2s cubic-bezier(.22,1,.36,1) both;
-          font-family: var(--font-sans);
-        }
-        .fb-icon-wrap {
-          width: 44px; height: 44px; border-radius: 12px;
-          background: #fff7ed; border: 1px solid #fed7aa;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 22px; margin-bottom: 14px;
-        }
-        .fb-title {
-          font-size: 15px; font-weight: 700; color: var(--ink);
-          margin-bottom: 8px; line-height: 1.35;
-        }
-        .fb-body {
-          font-size: 13px; color: var(--ink-3); line-height: 1.6;
-          margin-bottom: 6px;
-        }
-        .fb-note {
-          font-size: 11px; color: var(--muted);
-          background: var(--surface); border: 1px solid var(--border);
-          border-radius: 8px; padding: 8px 10px;
-          margin-bottom: 18px; line-height: 1.5;
-        }
-        .fb-note strong { color: var(--ink-2); }
-        .fb-actions {
-          display: flex; gap: 10px;
-        }
-        .fb-btn {
-          flex: 1; height: 38px; border-radius: 10px;
-          font-size: 13px; font-weight: 700; cursor: pointer;
-          font-family: var(--font-sans); border: none;
-          transition: all 0.15s; display: flex;
-          align-items: center; justify-content: center; gap: 6px;
-        }
-        .fb-btn-cancel {
-          background: var(--surface); border: 1px solid var(--border);
-          color: var(--ink-3);
-        }
-        .fb-btn-cancel:hover { background: var(--surface-2); }
-        .fb-btn-confirm {
-          background: var(--green-600); color: #fff;
-        }
-        .fb-btn-confirm:hover:not(:disabled) { filter: brightness(1.08); }
-        .fb-btn-confirm:disabled { opacity: 0.65; cursor: not-allowed; }
-        @keyframes slideUp {
-          from { transform: translateY(16px); opacity: 0; }
-          to   { transform: translateY(0);    opacity: 1; }
-        }
-      `}</style>
-
-      <div className="fb-overlay" onClick={onCancel}>
-        <div className="fb-card" onClick={(e) => e.stopPropagation()}>
-          <div className="fb-icon-wrap">⚠️</div>
-
-          <div className="fb-title">
-            {reason === "no_email"
-              ? "Email not available"
-              : "Physician not found on Apollo"}
-          </div>
-
-          <div className="fb-body">
-            {reason === "no_email" ? (
-              <>
-                <strong>{physicianName}</strong> was found on Apollo but no
-                verified email address is available in their database.
-              </>
-            ) : (
-              <>
-                No exact match for <strong>{physicianName}</strong> was found
-                on Apollo.
-              </>
-            )}
-          </div>
-
-          <div className="fb-note">
-            Do you still want to add this lead to Salesforce without an email?
-          </div>
-
-          <div className="fb-actions">
-            <button className="fb-btn fb-btn-cancel" onClick={onCancel} type="button">
-              Cancel
-            </button>
-            <button
-              className="fb-btn fb-btn-confirm"
-              onClick={onConfirm}
-              disabled={isSubmitting}
-              type="button"
-            >
-              {isSubmitting
-                ? <><div className="pdp-btn-spinner" /> Adding…</>
-                : "Add without email"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 type LeadFlow =
@@ -166,7 +45,7 @@ type LeadFlow =
 
 export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsLead, onViewAIInsights }: Props) {
   const [leadFlow,    setLeadFlow]    = useState<LeadFlow>("idle");
-  const [popupReason, setPopupReason] = useState<"not_found" | "no_email">("not_found");
+  const [popupReason, setPopupReason] = useState<PopupReason>("not_found");
 
   // ── Submit lead with a given email ─────────────────────────────────────────
   const submitWithEmail = useCallback(async (email: string) => {
@@ -209,7 +88,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
       return;
     }
 
-    setPopupReason(result.found ? "no_email" : "not_found");
+    setPopupReason(resolvePopupReason(result));
     setLeadFlow("confirm");
   }, [leadFlow, physician, site, submitWithEmail]);
 
@@ -373,7 +252,6 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         .pdp-trial-site { font-size: 13px; font-weight: 600; color: var(--ink); }
         .pdp-trial-loc  { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
-
         /* ── Spinner ────────────────────────────────────────────────────── */
         .pdp-btn-spinner {
           width: 12px; height: 12px;
@@ -383,9 +261,10 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         }
       `}</style>
 
-      {/* Fallback popup */}
+      {/* Fallback popup — now portaled to document.body, so it's always centered
+          on the full viewport regardless of any transformed/animated ancestor */}
       {(leadFlow === "confirm" || leadFlow === "submitting") && (
-        <FallbackPopup
+        <LeadFallbackPopup
           physicianName={physician.name}
           reason={popupReason}
           onConfirm={handleFallbackConfirm}

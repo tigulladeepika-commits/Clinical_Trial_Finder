@@ -3,6 +3,11 @@
 import { useState, useCallback } from "react";
 import { submitLead, fetchPhysicianEmail } from "@/lib/api";
 import type { Physician } from "@/types/physician";
+import {
+  LeadFallbackPopup,
+  resolvePopupReason,
+  type PopupReason,
+} from "@/components/shared/LeadFallbackPopup";
 
 interface Props {
   physician: Physician;
@@ -21,56 +26,6 @@ type LeadFlow =
   | "submitting"
   | "done"
   | "error";
-
-type PopupReason = "not_found" | "no_email";
-
-interface FallbackPopupProps {
-  physicianName: string;
-  reason:        PopupReason;
-  onConfirm:     () => void;
-  onCancel:      () => void;
-  isSubmitting:  boolean;
-}
-
-function FallbackPopup({ physicianName, reason, onConfirm, onCancel, isSubmitting }: FallbackPopupProps) {
-  return (
-    <div className="popup-overlay" onClick={onCancel}>
-      <div className="popup-card" onClick={(e) => e.stopPropagation()}>
-        <div className="popup-icon">⚠️</div>
-        <div className="popup-title">Physician not found on Apollo</div>
-        <div className="popup-body">
-          {reason === "no_email" ? (
-            <>
-              <strong>{physicianName}</strong> was found on Apollo, but no
-              verified email address is available.
-            </>
-          ) : (
-            <>
-              No exact match for <strong>{physicianName}</strong> was found
-              on Apollo.
-            </>
-          )}
-        </div>
-        <div className="popup-note">
-          Do you still want to add this lead to Salesforce without an email?
-        </div>
-        <div className="popup-actions">
-          <button className="popup-btn popup-btn-cancel" onClick={onCancel} type="button">
-            Cancel
-          </button>
-          <button
-            className="popup-btn popup-btn-confirm"
-            onClick={onConfirm}
-            disabled={isSubmitting}
-            type="button"
-          >
-            {isSubmitting ? "Adding…" : "Add without email"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function initials(name: string): string {
   return name
@@ -96,7 +51,7 @@ function avatarColor(name: string): { bg: string; color: string } {
   return colors[Math.abs(hash) % colors.length];
 }
 
-// Change 1: Mask phone number — show only last 4 digits
+// Mask phone number — show only last 4 digits
 function maskPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.length >= 10) {
@@ -155,7 +110,7 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
         return;
       }
 
-      setPopupReason(result.found ? "no_email" : "not_found");
+      setPopupReason(resolvePopupReason(result));
       setLeadState("confirm");
     } catch {
       setLeadState("error");
@@ -291,56 +246,6 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
           box-shadow: 0 3px 10px rgba(0,0,0,0.2);
         }
         .phys-lead-btn:disabled { opacity: 0.65; cursor: not-allowed; }
-
-        .popup-overlay {
-          position: fixed; inset: 0; z-index: 1000;
-          background: rgba(0,0,0,0.38);
-          display: flex; align-items: center; justify-content: center;
-          padding: 16px;
-        }
-        .popup-card {
-          width: min(100%, 360px);
-          background: #fff; border-radius: 16px;
-          border: 1px solid var(--border);
-          box-shadow: 0 22px 60px rgba(0,0,0,0.18);
-          padding: 22px;
-          font-family: var(--font-sans);
-        }
-        .popup-icon {
-          width: 46px; height: 46px; border-radius: 14px;
-          background: #fef3c7; border: 1px solid #fde68a;
-          display: flex; align-items: center; justify-content: center;
-          margin-bottom: 14px; font-size: 22px;
-        }
-        .popup-title {
-          font-size: 14px; font-weight: 700; color: var(--ink);
-          margin-bottom: 10px;
-        }
-        .popup-body {
-          font-size: 12px; color: var(--ink-3); line-height: 1.6;
-          margin-bottom: 10px;
-        }
-        .popup-note {
-          font-size: 11px; color: var(--muted);
-          background: var(--surface); border: 1px solid var(--border);
-          border-radius: 12px; padding: 10px 12px; margin-bottom: 16px;
-        }
-        .popup-actions {
-          display: flex; gap: 10px;
-        }
-        .popup-btn {
-          flex: 1; height: 38px; border-radius: 10px; border: none;
-          font-size: 12px; font-weight: 700; cursor: pointer;
-          font-family: var(--font-sans); transition: all 0.15s;
-        }
-        .popup-btn-cancel {
-          background: var(--surface); border: 1px solid var(--border);
-          color: var(--ink-3);
-        }
-        .popup-btn-confirm {
-          background: var(--green-600); color: #fff;
-        }
-        .popup-btn-confirm:disabled { opacity: 0.65; cursor: not-allowed; }
       `}</style>
 
       <div
@@ -366,8 +271,8 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
             />
           </label>
         )}
-        {/* Top row */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        {/* Top row — paddingRight reserves space so the checkbox never overlaps the distance badge */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, paddingRight: selectable ? 26 : 0 }}>
           <div className="phys-avatar" style={{ background: av.bg, color: av.color }}>
             {initials(physician.name)}
           </div>
@@ -389,7 +294,6 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
           {physician.address && (
             <span>📍 {physician.address.split(",").slice(0, 2).join(",")}</span>
           )}
-          {/* Change 1: Display masked phone number */}
           {physician.phone && <span>📞 {maskPhone(physician.phone)}</span>}
           <span className="phys-npi">NPI: {physician.npi}</span>
         </div>
@@ -425,7 +329,7 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
       </div>
 
       {(leadState === "confirm" || leadState === "submitting") && (
-        <FallbackPopup
+        <LeadFallbackPopup
           physicianName={physician.name}
           reason={popupReason}
           onConfirm={handleFallbackConfirm}
