@@ -405,7 +405,7 @@ Titles:
                 logger.debug("Groq raw response: %s", raw[:300])
                 json_match = re.search(r'\[.*?\]', raw, re.DOTALL)
                 if not json_match:
-                    logger.warning("Groq verify: no JSON on %s - trying next model", current_model)
+                    logger.warning("Groq verify: no JSON on %s - trying next model", _current_model)
                     _model_exhausted = True
                     break
                 results = json.loads(json_match.group())
