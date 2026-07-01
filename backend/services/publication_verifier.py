@@ -8,6 +8,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 import httpx
 
+from services.pubmed_service import COMMON_LAST_NAMES
+
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,7 @@ def _exact_name_confirm(publications: list[dict], physician_name: str) -> list[d
 
     last_name    = parts[-1].lower()
     first_initial = parts[0][0].lower() if parts[0] else ""
+    is_common_surname = last_name in COMMON_LAST_NAMES
 
     kept = []
     for pub in publications:
@@ -59,6 +62,7 @@ def _exact_name_confirm(publications: list[dict], physician_name: str) -> list[d
             continue
 
         matched = False
+        matched_full_name = False
         for author in authors:
             a = author.lower().replace(".", "").replace(",", "").strip()
             a_parts = a.split()
@@ -67,14 +71,33 @@ def _exact_name_confirm(publications: list[dict], physician_name: str) -> list[d
             if last_name not in a_parts:
                 continue
 
-            # Last name found — check first initial
+            # Last name found — check first initial (and full first name, if present)
             for ap in a_parts:
-                if ap != last_name and ap[0] == first_initial:
+                if ap == last_name:
+                    continue
+                if ap == first_initial:
                     matched = True
-                    break
+                if len(ap) >= 3 and ap == parts[0].lower():
+                    matched = True
+                    matched_full_name = True
 
             if matched:
                 break
+
+        # Common surname (Han, Kim, Chen...) matched only by bare initial, with
+        # no affiliation to corroborate it, is a high collision-risk match —
+        # PubMed's author field is often just "Han J", which any J-initialed
+        # Han satisfies. Require either a full first-name match or affiliation
+        # evidence before accepting.
+        if matched and not matched_full_name and is_common_surname:
+            has_affiliation = bool(pub.get("affiliation")) or pub.get("affiliation_verified") is True
+            if not has_affiliation:
+                logger.info(
+                    "Name confirm reject: common surname %r matched by initial only, "
+                    "no affiliation to corroborate - title=%r",
+                    last_name, pub.get("title", "")[:50],
+                )
+                matched = False
 
         if matched:
             kept.append(pub)
@@ -143,6 +166,7 @@ def _author_name_filter(publications: list[dict], physician_name: str) -> list[d
     last_name = parts[-1].lower()
     # Accept any initial from ANY part of the name except last (handles middle names, hyphens)
     first_initials = set(p[0].lower() for p in parts[:-1])
+    is_common_surname = last_name in COMMON_LAST_NAMES
 
     kept = []
     for pub in publications:
@@ -158,6 +182,7 @@ def _author_name_filter(publications: list[dict], physician_name: str) -> list[d
         # Word boundary match - prevents "burns" matching "Abushouk"
         import re as _re
         matched = False
+        matched_full_name = False
         # Full first name from physician (e.g. "Earl" from "Earl James Brink")
         physician_first_full = parts[0].lower() if parts else ""
         for author in authors:
@@ -177,6 +202,7 @@ def _author_name_filter(publications: list[dict], physician_name: str) -> list[d
                 # Full first name available on both sides — require exact match
                 if any(af == physician_first_full for af in author_first_candidates):
                     matched = True
+                    matched_full_name = True
                     break
                 # Also accept if physician first name starts with author initial
                 # (handles "E Brink" matching "Earl Brink") — but NOT "E.E. Brink"
@@ -196,6 +222,22 @@ def _author_name_filter(publications: list[dict], physician_name: str) -> list[d
                         break
             if matched:
                 break
+
+        # Common surname (Han, Kim, Chen...) matched only by bare initial, with
+        # no affiliation to corroborate it, is a high collision-risk match —
+        # PubMed's author field is often just "Han J", which any J-initialed
+        # Han satisfies. Require either a full first-name match or affiliation
+        # evidence before accepting.
+        if matched and not matched_full_name and is_common_surname:
+            has_affiliation = bool(pub.get("affiliation")) or pub.get("affiliation_verified") is True
+            if not has_affiliation:
+                logger.info(
+                    "Author filter reject: common surname %r matched by initial only, "
+                    "no affiliation to corroborate - title=%r",
+                    last_name, pub.get("title", "")[:50],
+                )
+                matched = False
+
         if matched:
             kept.append(pub)
         else:
@@ -292,9 +334,17 @@ def _affiliation_filter(publications: list[dict], npi_state: str) -> list[dict]:
 
 
 def _keyword_fallback_filter(publications: list[dict], specialty: str) -> list[dict]:
+    """
+    Last-resort filter when all 3 Groq models are exhausted/rate-limited.
+    Mirrors a subset of the Groq prompt's specialty-mismatch NO rules so a
+    request that never reaches Groq isn't left completely unfiltered.
+    """
     spec_lower = specialty.lower()
     reject = []
-    reject += ["quantum","nanotechnology","semiconductor","aerospace","metallurgy"]
+    reject += ["quantum","nanotechnology","semiconductor","aerospace","metallurgy",
+               "photonics","optics","qubit","nanoresonator","nanomechanics"]
+    reject += ["veterinary","piglet","livestock","poultry","bovine","canine","feline",
+               "equine","dental caries","periodontal","orthodontic"]
     is_surgical = any(s in spec_lower for s in ["surg","orthop","trauma","vascular surgery"])
     if not is_surgical:
         reject += ["laparoscopic","cholangiogram","cholecystectomy","cholecystitis",
@@ -304,6 +354,19 @@ def _keyword_fallback_filter(publications: list[dict], specialty: str) -> list[d
     if not is_psych:
         reject += ["polyvagal","vagal tone","mindfulness","meditation",
                    "respiratory sinus arrhythmia","loving-kindness","panic disorder"]
+    is_ophtho = "ophthalmol" in spec_lower
+    if not is_ophtho:
+        reject += ["retinopathy","retinal","ophthalmic","ophthalmology","vitreous",
+                   "corneal","glaucoma","macular degeneration"]
+    is_derm = "dermatolog" in spec_lower
+    if not is_derm:
+        reject += ["psoriasis","alopecia","dermatitis","dermatologic"]
+    is_onc = "oncolog" in spec_lower
+    if not is_onc:
+        reject += ["myeloma","lymphoma"]
+    is_neuro = any(s in spec_lower for s in ["neurol","neurosurg"])
+    if not is_neuro:
+        reject += ["neurodegenerat","parkinson's disease","alzheimer's disease"]
     reject += ["war of 1812","extradition","war on terror","economic development",
                "northwest ohio","swinish multitude","cycling time trial","fan cooling"]
     kept = [p for p in publications if not any(t in p.get("title","").lower() for t in reject)]

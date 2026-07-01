@@ -66,7 +66,7 @@ SPECIALTY_MESH = {
 
 COMMON_LAST_NAMES = {
     "smith", "jones", "johnson", "williams", "brown", "davis",
-    "kim", "lee", "chen", "wang", "liu", "zhang",
+    "kim", "lee", "chen", "wang", "liu", "zhang", "han",
     "singh", "patel", "kumar", "sharma", "ali", "khan", "ahmed",
     "garcia", "martinez", "rodriguez", "lopez", "gonzalez",
     "taylor", "anderson", "thomas", "jackson", "white",
