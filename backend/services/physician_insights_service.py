@@ -521,29 +521,24 @@ async def enrich_physician(
 
                 )
 
-                # S2 found no matching author — strip unverifiable PubMed papers
-
-                # (no affiliation + common name = high collision risk)
+                # S2 found no matching author. We used to strip PubMed papers here
+                # that lacked affiliation data when the name was common and PubMed
+                # confidence was low - but PubMed's esummary API never returns
+                # per-author affiliation, so that check was always false and
+                # silently zeroed out 100% of PubMed results for every common
+                # surname (Han, Kim, Ahmed, Brown...) whenever confidence dipped
+                # below 85. Disambiguation for common surnames now relies on
+                # Groq's title/specialty verification and the keyword-fallback
+                # safety net downstream instead of this dead filter.
 
                 clean = pubmed_service.clean_name(name)
 
                 is_common = pubmed_service._is_common_name(clean)
 
-                if is_common and pubmed_conf < 85:
-                    before = len(pubmed_pubs)
-                    filtered = [
-                        p for p in pubmed_pubs
-                        if p.get("affiliation") or p.get("affiliation_verified")
-                    ]
+                if is_common:
                     logger.info(
-                        "S2 no-match suppression: PubMed %d -> %d papers (common name)",
-                        before, len(filtered),
-                    )
-                    pubmed_pubs = filtered
-                elif is_common:
-                    logger.info(
-                        "S2 no-match: common name but PubMed confidence=%d is high - "
-                        "skipping affiliation-only filter, deferring to Groq verification",
+                        "S2 no-match: common name (confidence=%d) - "
+                        "deferring to Groq/keyword-fallback specialty verification",
                         pubmed_conf,
                     )
         # ── Step 3: Merge + deduplicate ───────────────────────────────────
