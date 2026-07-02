@@ -45,6 +45,7 @@ class LeadRequest(BaseModel):
     email:          str  = ""   # plain str — NOT EmailStr (EmailStr rejects .local domains)
     phone:          str  = ""
     npi:            str  = ""
+    npi_number:     str  = ""
     nct_id:         str  = ""
     site:           str  = ""
     message:        str  = ""
@@ -52,11 +53,14 @@ class LeadRequest(BaseModel):
     company:        str  = "Individual Physicians"
     title:          str  = ""
     physician_name: str  = ""
+    specialization: str  = ""
+    gender_identity: str = ""
     auto:           bool = False
 
     @field_validator(
-        "name", "phone", "npi", "nct_id", "site", "message",
+        "name", "phone", "npi", "npi_number", "nct_id", "site", "message",
         "lead_source", "company", "title", "physician_name",
+        "specialization", "gender_identity",
         mode="before",
     )
     @classmethod
@@ -180,8 +184,11 @@ async def capture_lead(request: Request, body: LeadRequest):
         "company":                  body.company,
         "title":                    body.title,
         "physician_name":           body.physician_name,
+        "specialization":           body.specialization,
+        "gender_identity":          body.gender_identity,
         # NPI ID — included in every lead record and forwarded to Salesforce
         "npi":                      body.npi,
+        "npi_number":               body.npi_number or body.npi,
         "nct_id":                   body.nct_id,
         "site":                     body.site,
         "message":                  body.message,

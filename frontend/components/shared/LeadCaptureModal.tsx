@@ -23,18 +23,20 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
   const prefillParts = physician ? physician.name.trim().split(" ") : [];
   const prefillFirst = prefillParts[0] ?? "";
   const prefillLast  = prefillParts.slice(1).join(" ");
+  const resolvedNpi = npi ?? physician?.npi ?? "";
 
   const [firstName,  setFirstName]  = useState(prefillFirst);
   const [lastName,   setLastName]   = useState(prefillLast);
   const [email,      setEmail]      = useState("");
   const [phone,      setPhone]      = useState("");
   const [company,    setCompany]    = useState("");
+  const [specialization, setSpecialization] = useState("");
+  const [genderIdentity, setGenderIdentity] = useState("");
+  const [npiNumber, setNpiNumber] = useState(resolvedNpi);
   const [message,    setMessage]    = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success,    setSuccess]    = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
-
-  const resolvedNpi = npi ?? physician?.npi ?? "";
 
   // Pure background fetch — never triggers a page reload or native form POST
   const handleSubmit = useCallback(async () => {
@@ -57,6 +59,9 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
       ...(physician?.taxonomy_desc ? { title: physician.taxonomy_desc } : {}),
       ...(phone.trim()   ? { phone:   phone.trim()   } : {}),
       ...(siteName       ? { site:    siteName        } : {}),
+      ...(specialization.trim() ? { specialization: specialization.trim() } : {}),
+      ...(genderIdentity.trim() ? { gender_identity: genderIdentity.trim() } : {}),
+      ...(npiNumber.trim() || resolvedNpi ? { npi_number: (npiNumber.trim() || resolvedNpi) } : {}),
       ...(message.trim() ? { message: message.trim() } : {}),
       auto: false,
     };
@@ -71,7 +76,7 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
       setFieldError((err as Error).message || "Something went wrong. Please try again.");
       setSubmitting(false);
     }
-  }, [firstName, lastName, email, phone, company, message, resolvedNpi, nctId, siteName, physician, onClose, onSuccess]);
+  }, [firstName, lastName, email, phone, company, specialization, genderIdentity, npiNumber, message, resolvedNpi, nctId, siteName, physician, onClose, onSuccess]);
 
   function initials(name: string) {
     return name.replace(/^Dr\.\s*/i, "").split(" ").filter(Boolean).slice(0,2).map(n=>n[0].toUpperCase()).join("");
@@ -297,6 +302,23 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
                       onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                       autoComplete="organization" />
                   </div>
+                </div>
+                <div className="lcm-row">
+                  <div className="lcm-field">
+                    <label className="lcm-label">Specialization</label>
+                    <input className="lcm-input" type="text" placeholder="Cardiology"
+                      value={specialization} onChange={(e) => setSpecialization(e.target.value)} />
+                  </div>
+                  <div className="lcm-field">
+                    <label className="lcm-label">Gender Identity</label>
+                    <input className="lcm-input" type="text" placeholder="Female"
+                      value={genderIdentity} onChange={(e) => setGenderIdentity(e.target.value)} />
+                  </div>
+                </div>
+                <div className="lcm-field">
+                  <label className="lcm-label">NPI Number</label>
+                  <input className="lcm-input" type="text" placeholder="1234567890"
+                    value={npiNumber} onChange={(e) => setNpiNumber(e.target.value)} />
                 </div>
                 <div className="lcm-field">
                   <label className="lcm-label">Message</label>

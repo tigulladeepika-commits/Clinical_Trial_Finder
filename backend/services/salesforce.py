@@ -76,6 +76,9 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
     # Build description from all available context
     physician_name = lead.get("physician_name", "")
     npi            = lead.get("npi", "")
+    npi_number     = lead.get("npi_number") or npi
+    specialization = lead.get("specialization", "")
+    gender_identity = lead.get("gender_identity", "")
     nct_id         = lead.get("nct_id", "")
     site           = lead.get("site", "")
     message        = lead.get("message", "")
@@ -84,6 +87,9 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
     desc_parts = ["Clinical Trial Navigator Lead"]
     if physician_name:          desc_parts.append(f"Physician: {physician_name}")
     if npi:                     desc_parts.append(f"NPI: {npi}")
+    if npi_number:              desc_parts.append(f"NPI Number: {npi_number}")
+    if specialization:          desc_parts.append(f"Specialization: {specialization}")
+    if gender_identity:         desc_parts.append(f"Gender Identity: {gender_identity}")
     if nct_id:                  desc_parts.append(f"Trial: {nct_id}")
     if site:                    desc_parts.append(f"Site: {site}")
     if message:                 desc_parts.append(f"Message: {message}")
@@ -102,6 +108,9 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         "title":       sanitise(lead.get("title",      ""),                   80),
         "lead_source": sanitise(lead.get("lead_source","Clinical Trial"),     40),
         "description": sanitise(" | ".join(desc_parts),                     2000),
+        "Specialization__c": sanitise(specialization, 80),
+        "GenderIdentity": sanitise(gender_identity, 80),
+        "NPI_Number__c": sanitise(npi_number, 80),
     }
 
     if cfg.SF_DEBUG_EMAIL:

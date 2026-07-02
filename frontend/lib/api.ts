@@ -226,11 +226,14 @@ function buildLeadPayload(raw: LeadPayload): Record<string, unknown> {
 
   if (raw.phone?.trim())          payload.phone           = raw.phone.trim();
   if (raw.npi?.trim())            payload.npi             = raw.npi.trim();
+  if (raw.npi_number?.trim())     payload.npi_number      = raw.npi_number.trim();
   if (raw.nct_id?.trim())         payload.nct_id          = raw.nct_id.trim();
   if (raw.site?.trim())           payload.site            = raw.site.trim();
   if (raw.message?.trim())        payload.message         = raw.message.trim();
   if (raw.title?.trim())          payload.title           = raw.title.trim();
   if (raw.physician_name?.trim()) payload.physician_name  = raw.physician_name.trim();
+  if (raw.specialization?.trim()) payload.specialization  = raw.specialization.trim();
+  if (raw.gender_identity?.trim()) payload.gender_identity = raw.gender_identity.trim();
 
   return payload;
 }

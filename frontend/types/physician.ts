@@ -124,6 +124,7 @@ export interface LeadPayload {
   email?:          string;
   phone?:          string;
   npi?:            string;
+  npi_number?:     string;
   nct_id?:         string;
   site?:           string;
   message?:        string;
@@ -131,6 +132,8 @@ export interface LeadPayload {
   lead_source?:    string;
   title?:          string;
   physician_name?: string;
+  specialization?: string;
+  gender_identity?: string;
   auto?:           boolean;
 }
 
