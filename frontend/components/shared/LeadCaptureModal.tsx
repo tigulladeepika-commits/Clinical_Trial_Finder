@@ -24,13 +24,14 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
   const prefillFirst = prefillParts[0] ?? "";
   const prefillLast  = prefillParts.slice(1).join(" ");
   const resolvedNpi = npi ?? physician?.npi ?? "";
+  const prefillSpecialization = physician?.taxonomy_desc ?? "";
 
   const [firstName,  setFirstName]  = useState(prefillFirst);
   const [lastName,   setLastName]   = useState(prefillLast);
   const [email,      setEmail]      = useState("");
   const [phone,      setPhone]      = useState("");
   const [company,    setCompany]    = useState("");
-  const [specialization, setSpecialization] = useState("");
+  const [specialization, setSpecialization] = useState(prefillSpecialization);
   const [genderIdentity, setGenderIdentity] = useState("");
   const [npiNumber, setNpiNumber] = useState(resolvedNpi);
   const [message,    setMessage]    = useState("");
