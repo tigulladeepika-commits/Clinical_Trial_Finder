@@ -295,6 +295,16 @@ def parse_physician(result: Dict) -> Optional[Dict]:
     last   = str(basic.get("last_name")   or "").strip()
     suffix = str(basic.get("name_suffix") or "").strip()
     cred   = str(basic.get("credential")  or "").strip()
+    raw_gender = str(basic.get("gender") or basic.get("gender_code") or "").strip()
+    gender = ""
+    if raw_gender.upper() in ("M", "MALE"):
+        gender = "Male"
+    elif raw_gender.upper() in ("F", "FEMALE"):
+        gender = "Female"
+    elif raw_gender.upper() in ("U", "UNKNOWN", "UNK"):
+        gender = "Unknown"
+    else:
+        gender = raw_gender
  
     # Assemble raw name then strip registry artifacts before presenting to UI
     name_parts = [prefix, first, middle, last, suffix]
@@ -338,6 +348,7 @@ def parse_physician(result: Dict) -> Optional[Dict]:
         "name":           name,
         "taxonomy_code":  tax_code,
         "taxonomy_desc":  tax_desc,
+        "gender":         gender or None,
         "all_taxonomies": all_tax,
         "address":        full_address,
         "address_1":      addr1,

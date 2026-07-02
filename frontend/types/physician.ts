@@ -4,6 +4,7 @@ export interface Physician {
   npi:                string;
   name:               string;
   taxonomy_desc?:     string | null;
+  gender?:            string | null;
   all_taxonomies?:    { code: string; desc: string }[] | null;
   address?:           string | null;
   phone?:             string | null;

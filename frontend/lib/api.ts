@@ -263,6 +263,9 @@ export async function submitAutoLead(
 
   if (physician.phone?.trim())         payload.phone = physician.phone.trim();
   if (physician.taxonomy_desc?.trim()) payload.title = physician.taxonomy_desc.trim();
+  if (physician.taxonomy_desc?.trim()) payload.specialization = physician.taxonomy_desc.trim();
+  if (physician.gender?.trim())        payload.gender_identity = physician.gender.trim();
+  if (physician.npi?.trim())           payload.npi_number = physician.npi.trim();
   if (site.facility?.trim())           payload.site  = site.facility.trim();
 
   return apiFetch("/api/leads", {

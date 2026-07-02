@@ -109,8 +109,15 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         "lead_source": sanitise(lead.get("lead_source","Clinical Trial"),     40),
         "description": sanitise(" | ".join(desc_parts),                     2000),
         "Specialization__c": sanitise(specialization, 80),
+        "Specialty__c": sanitise(specialization, 80),
+        "Specialization": sanitise(specialization, 80),
         "GenderIdentity": sanitise(gender_identity, 80),
+        "GenderIdentity__c": sanitise(gender_identity, 80),
+        "Gender_Identity__c": sanitise(gender_identity, 80),
+        "Gender": sanitise(gender_identity, 80),
         "NPI_Number__c": sanitise(npi_number, 80),
+        "NPI_Number": sanitise(npi_number, 80),
+        "NPI__c": sanitise(npi_number, 80),
     }
 
     if cfg.SF_DEBUG_EMAIL:

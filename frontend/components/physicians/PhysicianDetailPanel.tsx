@@ -58,8 +58,10 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         npi:            physician.npi,
         nct_id:         site.nct_id,
         ...(site.facility           ? { site:  site.facility           } : {}),
-        ...(physician.taxonomy_desc ? { title: physician.taxonomy_desc } : {}),
-        ...(physician.phone         ? { phone: physician.phone         } : {}),
+        ...(physician.taxonomy_desc ? { title:          physician.taxonomy_desc } : {}),
+        ...(physician.taxonomy_desc ? { specialization:  physician.taxonomy_desc } : {}),
+        ...(physician.gender?.trim() ? { gender_identity: physician.gender.trim() } : {}),
+        ...(physician.phone         ? { phone:           physician.phone         } : {}),
         physician_name: physician.name,
         auto:           true,
       });

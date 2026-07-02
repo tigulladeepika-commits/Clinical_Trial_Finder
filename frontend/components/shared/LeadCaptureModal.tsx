@@ -8,6 +8,7 @@ interface PhysicianInfo {
   name:          string;
   npi:           string;
   taxonomy_desc?: string | null;
+  gender?:       string | null;
 }
 
 interface Props {
@@ -25,6 +26,7 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
   const prefillLast  = prefillParts.slice(1).join(" ");
   const resolvedNpi = npi ?? physician?.npi ?? "";
   const prefillSpecialization = physician?.taxonomy_desc ?? "";
+  const prefillGenderIdentity = physician?.gender ?? "";
 
   const [firstName,  setFirstName]  = useState(prefillFirst);
   const [lastName,   setLastName]   = useState(prefillLast);
@@ -32,7 +34,7 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
   const [phone,      setPhone]      = useState("");
   const [company,    setCompany]    = useState("");
   const [specialization, setSpecialization] = useState(prefillSpecialization);
-  const [genderIdentity, setGenderIdentity] = useState("");
+  const [genderIdentity, setGenderIdentity] = useState(prefillGenderIdentity);
   const [npiNumber, setNpiNumber] = useState(resolvedNpi);
   const [message,    setMessage]    = useState("");
   const [submitting, setSubmitting] = useState(false);
