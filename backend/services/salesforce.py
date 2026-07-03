@@ -10,7 +10,8 @@ Fields sent:
 
 import logging
 import re
-from typing import Dict, Tuple
+import copy
+from typing import Dict, Tuple, Optional
 
 import requests
 
@@ -40,6 +41,15 @@ def _normalise_gender_identity(value: str) -> str:
 
     # Title-case common multi-word values for Salesforce picklists.
     return " ".join(part.capitalize() for part in raw.split())
+
+
+# Stores the last SF payload posted (for debug endpoint inspection)
+_last_sf_payload: Optional[dict] = None
+
+
+def get_last_payload() -> Optional[dict]:
+    """Return the last Salesforce payload sent by the server (or None)."""
+    return _last_sf_payload
 
 
 def _add_custom_field(payload: dict, value: str, custom_field: str, default_names: list[str]) -> None:
@@ -146,11 +156,12 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         cfg.SF_SPECIALIZATION_FIELD,
         ["Specialization__c", "Specialty__c", "Specialization"],
     )
+    # Send only the single standard field name `GenderIdentity` as requested.
     _add_custom_field(
         sf_payload,
         gender_identity,
         cfg.SF_GENDER_IDENTITY_FIELD or cfg.SF_GENDER_FIELD,
-        ["GenderIdentity", "GenderIdentity__c", "Gender_Identity__c", "Gender"],
+        ["GenderIdentity"],
     )
     _add_custom_field(
         sf_payload,
@@ -186,7 +197,11 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         cfg.SF_OID, email, lead.get("auto"),
     )
 
+    # Save the payload copy for debugging/inspection before sending.
     try:
+        global _last_sf_payload
+        _last_sf_payload = copy.deepcopy(sf_payload)
+
         resp = http_client.post(
             "https://webto.salesforce.com/servlet/servlet.WebToLead?encoding=UTF-8",
             data=sf_payload,

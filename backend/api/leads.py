@@ -17,6 +17,7 @@ from pydantic import BaseModel, field_validator
 
 from core.config import cfg
 from core.helpers import sanitise
+from services.salesforce import get_last_payload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -210,3 +211,19 @@ async def capture_lead(request: Request, body: LeadRequest):
         body.npi or "-", body.nct_id or "-",
     )
     return LeadResponse(success=True, id=lead_id)
+
+
+@router.get("/debug/last-sf-payload")
+async def debug_last_sf_payload(secret: str = ""):
+    """Return the last Salesforce Web-to-Lead payload the server sent.
+
+    This endpoint is protected by `DEBUG_SECRET` — set the same value in
+    your environment and pass it as the `secret` query parameter to access.
+    """
+    if not cfg.DEBUG_SECRET:
+        raise HTTPException(status_code=403, detail="DEBUG_SECRET not configured on server")
+    if secret != cfg.DEBUG_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid debug secret")
+
+    payload = get_last_payload()
+    return JSONResponse(status_code=200, content={"last_sf_payload": payload})
