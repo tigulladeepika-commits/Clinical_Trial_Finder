@@ -148,8 +148,11 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         "title":       sanitise(lead.get("title",      ""),                   80),
         "lead_source": sanitise(lead.get("lead_source","Clinical Trial"),     40),
         "description": sanitise(" | ".join(desc_parts),                     2000),
-        # Standard field (not a custom fallback) — include directly
-        "GenderIdentity": sanitise(gender_identity, 80),
+        # Sending both the plain label-style name and the __c custom-field
+        # variant - unrecognized keys are silently ignored by Salesforce, so
+        # this costs nothing and covers either possible API name until the
+        # real one is confirmed via Object Manager.
+        "GenderIdentity": sanitise(lead.get("gender_identity", ""), 80)
     }
 
     _add_custom_field(
@@ -208,7 +211,7 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         body_lower = snippet.lower()
         has_error  = (
             "error"            in body_lower
-            and "debugEmail"   not in snippet
+            and "debugemail"   not in body_lower
             and "successfully" not in body_lower
         )
         if has_error:
