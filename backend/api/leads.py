@@ -232,7 +232,29 @@ async def capture_lead(request: Request, body: LeadRequest):
         logger.error("Failed to persist lead %s: %s", lead_id, exc)
         raise HTTPException(status_code=500, detail="Could not save lead. Please try again.")
 
-    sf_result = _push_to_salesforce(lead)
+        # If gender_identity is missing but we have an NPI, try to enrich from NPPES
+        try:
+            if not lead.get("gender_identity") and lead.get("npi"):
+                try:
+                    from services.nppes import fetch_with_retry, parse_physician
+
+                    rows, _ = fetch_with_retry({"number": lead.get("npi")}, retries=2)
+                    if rows:
+                        parsed = parse_physician(rows[0])
+                        if isinstance(parsed, dict) and parsed.get("gender"):
+                            lead["gender_identity"] = parsed.get("gender")
+                            # Persist enrichment to disk for future reference
+                            try:
+                                _append_lead(lead)
+                            except Exception:
+                                logger.debug("Failed to persist enriched lead gender for %s", lead_id)
+                except Exception:
+                    logger.debug("NPPES enrichment unavailable or failed for lead %s", lead_id)
+
+        except Exception:
+            logger.exception("Unexpected error during lead enrichment for %s", lead_id)
+
+        sf_result = _push_to_salesforce(lead)
     logger.info(
         "Lead captured | id=%s auto=%s name=%s email=%s npi=%s nct_id=%s salesforce_status=%s",
         lead_id, body.auto, body.name, body.email,
