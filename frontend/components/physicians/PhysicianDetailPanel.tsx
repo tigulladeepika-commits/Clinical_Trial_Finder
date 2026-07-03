@@ -331,19 +331,37 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
               <div style={{ flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <div className="pdp-name">{physician.name}</div>
-                  <div style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#1e40af",
-                    fontFamily: "var(--font-mono)",
-                    background: "#dbeafe",
-                    border: "1px solid #93c5fd",
-                    borderRadius: 6,
-                    padding: "3px 8px",
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
-                  }}>
-                    NPI {physician.npi}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                    <div style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "#1e40af",
+                      fontFamily: "var(--font-mono)",
+                      background: "#dbeafe",
+                      border: "1px solid #93c5fd",
+                      borderRadius: 6,
+                      padding: "3px 8px",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}>
+                      NPI {physician.npi}
+                    </div>
+                    {physician.gender?.trim() && (
+                      <div style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: "#1e40af",
+                        fontFamily: "var(--font-mono)",
+                        background: "#dbeafe",
+                        border: "1px solid #93c5fd",
+                        borderRadius: 6,
+                        padding: "3px 8px",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}>
+                        {physician.gender}
+                      </div>
+                    )}
                   </div>
                 </div>
                 {physician.taxonomy_desc && (
