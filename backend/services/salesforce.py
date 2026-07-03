@@ -120,6 +120,25 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         "NPI__c": sanitise(npi_number, 80),
     }
 
+    # Helpful debug logging: show which keys we're sending and the
+    # critical custom fields so we can verify Salesforce receives them.
+    try:
+        logger.debug("SF payload keys: %s", list(sf_payload.keys()))
+        logger.debug(
+            "SF payload sample: %s",
+            {
+                k: sf_payload.get(k) for k in (
+                    "Specialization__c", "Specialty__c", "Specialization",
+                    "GenderIdentity", "GenderIdentity__c", "Gender_Identity__c", "Gender",
+                    "NPI_Number__c", "NPI_Number", "NPI__c",
+                )
+                if k in sf_payload
+            },
+        )
+    except Exception:
+        # Ensure logging never blocks the lead push
+        logger.exception("Failed to log SF payload debug info")
+
     if cfg.SF_DEBUG_EMAIL:
         sf_payload["debug"]      = "1"
         sf_payload["debugEmail"] = cfg.SF_DEBUG_EMAIL
