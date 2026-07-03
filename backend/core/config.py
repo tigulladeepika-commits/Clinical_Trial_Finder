@@ -26,9 +26,13 @@ class Config:
         self.GROQ_API_URL:    str = os.environ.get("GROQ_API_URL", "")
 
         # ── Salesforce ────────────────────────────────────────────────────────
-        self.SF_OID:         str = os.environ.get("SF_OID", "")
-        self.SF_RET_URL:     str = os.environ.get("SF_RET_URL", "")
-        self.SF_DEBUG_EMAIL: str = os.environ.get("SF_DEBUG_EMAIL", "")
+        self.SF_OID:                    str = os.environ.get("SF_OID", "")
+        self.SF_RET_URL:                str = os.environ.get("SF_RET_URL", "")
+        self.SF_DEBUG_EMAIL:            str = os.environ.get("SF_DEBUG_EMAIL", "")
+        self.SF_NPI_FIELD:              str = os.environ.get("SF_NPI_FIELD", "")
+        self.SF_SPECIALIZATION_FIELD:   str = os.environ.get("SF_SPECIALIZATION_FIELD", "")
+        self.SF_GENDER_FIELD:           str = os.environ.get("SF_GENDER_FIELD", "")
+        self.SF_GENDER_IDENTITY_FIELD:  str = os.environ.get("SF_GENDER_IDENTITY_FIELD", "")
 
         # ── CORS / Server ─────────────────────────────────────────────────────
         self.FRONTEND_URL: str = os.environ.get("FRONTEND_URL", "")

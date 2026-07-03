@@ -25,6 +25,36 @@ _EMAIL_REGEX = re.compile(
 )
 
 
+def _normalise_gender_identity(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+
+    normalized = raw.lower()
+    if normalized in ("m", "male"):
+        return "Male"
+    if normalized in ("f", "female"):
+        return "Female"
+    if normalized in ("u", "unknown", "unk"):
+        return "Unknown"
+
+    # Title-case common multi-word values for Salesforce picklists.
+    return " ".join(part.capitalize() for part in raw.split())
+
+
+def _add_custom_field(payload: dict, value: str, custom_field: str, default_names: list[str]) -> None:
+    if not value:
+        return
+
+    if custom_field:
+        payload[custom_field] = sanitise(value, 80)
+        return
+
+    for field_name in default_names:
+        payload[field_name] = sanitise(value, 80)
+
+
+
 def _is_invalid_email(email: str) -> bool:
     """Return True if email is empty or doesn't match a valid email pattern."""
     lower = email.strip().lower()
@@ -78,7 +108,7 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
     npi            = lead.get("npi", "")
     npi_number     = lead.get("npi_number") or npi
     specialization = lead.get("specialization", "")
-    gender_identity = lead.get("gender_identity", "")
+    gender_identity = _normalise_gender_identity(lead.get("gender_identity", ""))
     nct_id         = lead.get("nct_id", "")
     site           = lead.get("site", "")
     message        = lead.get("message", "")
@@ -108,23 +138,32 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         "title":       sanitise(lead.get("title",      ""),                   80),
         "lead_source": sanitise(lead.get("lead_source","Clinical Trial"),     40),
         "description": sanitise(" | ".join(desc_parts),                     2000),
-        "Specialization__c": sanitise(specialization, 80),
-        "Specialty__c": sanitise(specialization, 80),
-        "Specialization": sanitise(specialization, 80),
-        "GenderIdentity": sanitise(gender_identity, 80),
-        "GenderIdentity__c": sanitise(gender_identity, 80),
-        "Gender_Identity__c": sanitise(gender_identity, 80),
-        "Gender": sanitise(gender_identity, 80),
-        "NPI_Number__c": sanitise(npi_number, 80),
-        "NPI_Number": sanitise(npi_number, 80),
-        "NPI__c": sanitise(npi_number, 80),
     }
+
+    _add_custom_field(
+        sf_payload,
+        specialization,
+        cfg.SF_SPECIALIZATION_FIELD,
+        ["Specialization__c", "Specialty__c", "Specialization"],
+    )
+    _add_custom_field(
+        sf_payload,
+        gender_identity,
+        cfg.SF_GENDER_IDENTITY_FIELD or cfg.SF_GENDER_FIELD,
+        ["GenderIdentity", "GenderIdentity__c", "Gender_Identity__c", "Gender"],
+    )
+    _add_custom_field(
+        sf_payload,
+        npi_number,
+        cfg.SF_NPI_FIELD,
+        ["NPI_Number__c", "NPI_Number", "NPI__c"],
+    )
 
     # Helpful debug logging: show which keys we're sending and the
     # critical custom fields so we can verify Salesforce receives them.
     try:
-        logger.debug("SF payload keys: %s", list(sf_payload.keys()))
-        logger.debug(
+        logger.info("SF payload keys: %s", list(sf_payload.keys()))
+        logger.info(
             "SF payload sample: %s",
             {
                 k: sf_payload.get(k) for k in (
@@ -136,7 +175,6 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
             },
         )
     except Exception:
-        # Ensure logging never blocks the lead push
         logger.exception("Failed to log SF payload debug info")
 
     if cfg.SF_DEBUG_EMAIL:
