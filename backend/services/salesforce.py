@@ -148,6 +148,8 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         "title":       sanitise(lead.get("title",      ""),                   80),
         "lead_source": sanitise(lead.get("lead_source","Clinical Trial"),     40),
         "description": sanitise(" | ".join(desc_parts),                     2000),
+        # Standard field (not a custom fallback) — include directly
+        "GenderIdentity": sanitise(gender_identity, 80),
     }
 
     _add_custom_field(
@@ -156,13 +158,7 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         cfg.SF_SPECIALIZATION_FIELD,
         ["Specialization__c", "Specialty__c", "Specialization"],
     )
-    # Send only the single standard field name `GenderIdentity` as requested.
-    _add_custom_field(
-        sf_payload,
-        gender_identity,
-        cfg.SF_GENDER_IDENTITY_FIELD or cfg.SF_GENDER_FIELD,
-        ["GenderIdentity"],
-    )
+    # GenderIdentity is included directly in `sf_payload` above.
     _add_custom_field(
         sf_payload,
         npi_number,
