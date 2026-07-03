@@ -71,10 +71,10 @@ def _add_custom_field(payload: dict, value: str, custom_field: str, default_name
 
 
 def _is_invalid_email(email: str) -> bool:
-    """Return True if email is empty or doesn't match a valid email pattern."""
+    """Return True if email is malformed, but allow blank emails."""
     lower = email.strip().lower()
     if not lower:
-        return True
+        return False
     return not bool(_EMAIL_REGEX.match(lower))
 
 
@@ -146,6 +146,8 @@ def _build_salesforce_payload(
         "description": sanitise(" | ".join(desc_parts), 2000),
         "GenderIdentity": sanitise(gender_identity, 80),
         "GenderIdentity__c": sanitise(gender_identity, 80),
+        "Gender_Identity__c": sanitise(gender_identity, 80),
+        "Gender": sanitise(gender_identity, 80),
     }
 
     _add_custom_field(
