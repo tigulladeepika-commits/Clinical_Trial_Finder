@@ -393,7 +393,7 @@ Titles:
     import asyncio as _aio
     for _current_model in GROQ_FALLBACK_MODELS:
         _model_exhausted = False
-        for _attempt in range(3):
+        for _attempt in range(4):
             try:
                 resp = await client.post(
                     GROQ_URL,
@@ -410,9 +410,22 @@ Titles:
                     timeout=HTTP_TIMEOUT,
                 )
                 if resp.status_code == 429:
-                    wait = 2.0 * (2 ** _attempt)
-                    logger.warning("Groq 429 attempt %d model=%s - waiting %.1fs", _attempt+1, _current_model, wait)
-                    if _attempt < 2:
+                    # Respect Retry-After header when present, otherwise use exponential backoff with jitter
+                    retry_after = None
+                    try:
+                        retry_after = float(resp.headers.get("Retry-After") or 0)
+                    except Exception:
+                        retry_after = None
+                    base_wait = 1.0 * (2 ** _attempt)
+                    wait = (retry_after if retry_after and retry_after > 0 else base_wait)
+                    # add small random jitter to avoid thundering herd
+                    try:
+                        import random
+                        wait += random.uniform(0, 1.0)
+                    except Exception:
+                        pass
+                    logger.warning("Groq 429 attempt %d model=%s - waiting %.1fs (retry_after=%s)", _attempt+1, _current_model, wait, resp.headers.get('Retry-After'))
+                    if _attempt < 3:
                         await _aio.sleep(wait)
                         continue
                     logger.warning("Groq 429 exhausted on %s - trying next model", _current_model)
