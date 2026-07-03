@@ -1,10 +1,14 @@
 frontend/node_modules/
 frontend/.next/
+node_modules/
 frontend/.env.local
 frontend/.env*.local
 frontend/frontend.log
 frontend/frontend.err.log
 frontend/tsconfig.tsbuildinfo
+
+.pytest_cache/
+backend/data/*.backup*
 
 backend/.env
 backend/__pycache__/
