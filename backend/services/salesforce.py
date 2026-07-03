@@ -151,8 +151,11 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         # Sending both the plain label-style name and the __c custom-field
         # variant - unrecognized keys are silently ignored by Salesforce, so
         # this costs nothing and covers either possible API name until the
-        # real one is confirmed via Object Manager.
-        "GenderIdentity": sanitise(lead.get("gender_identity", ""), 80)
+        # real one is confirmed via Object Manager. Must use the normalized
+        # `gender_identity` variable (Male/Female/...), not the raw NPPES
+        # value (M/F) - the Salesforce picklist only accepts the full words.
+        "GenderIdentity":    sanitise(gender_identity, 80),
+        "GenderIdentity__c": sanitise(gender_identity, 80),
     }
 
     _add_custom_field(
