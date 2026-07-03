@@ -401,7 +401,7 @@ export default function PhysicianPanel({
           ? emailResult.email
           : undefined;
 
-        await submitLead({
+        const result = await submitLead({
           name:           physician.name,
           email,
           company:        "Individual Physicians",
@@ -416,6 +416,13 @@ export default function PhysicianPanel({
           physician_name: physician.name,
           auto:           true,
         });
+
+        if (result.salesforce_status === "failed") {
+          failureCount += 1;
+          failedNpis.push(physician.npi);
+          console.warn("Bulk lead submission failed for %s: %o", physician.npi, result.salesforce_message);
+          continue;
+        }
 
         successCount += 1;
       } catch (err) {

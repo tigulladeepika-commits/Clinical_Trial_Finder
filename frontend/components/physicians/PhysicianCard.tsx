@@ -72,7 +72,7 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
 
   const submitWithEmail = useCallback(async (email: string) => {
     try {
-      await submitLead({
+      const result = await submitLead({
         name:           physician.name,
         email,
         company:        "Individual Physicians",
@@ -87,6 +87,11 @@ export default function PhysicianCard({ physician, nctId, siteName, selectable =
         physician_name: physician.name,
         auto:           true,
       });
+      if (result.salesforce_status === "failed") {
+        setLeadState("error");
+        setTimeout(() => setLeadState("idle"), 3000);
+        return;
+      }
       setLeadState("done");
     } catch {
       setLeadState("error");

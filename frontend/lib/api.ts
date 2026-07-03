@@ -240,7 +240,7 @@ function buildLeadPayload(raw: LeadPayload): Record<string, unknown> {
 
 export async function submitLead(
   payload: LeadPayload,
-): Promise<{ success: boolean; id?: string }> {
+): Promise<{ success: boolean; id?: string; salesforce_status?: string; salesforce_message?: string | null }> {
   return apiFetch("/api/leads", {
     method: "POST",
     body:   JSON.stringify(buildLeadPayload(payload)),

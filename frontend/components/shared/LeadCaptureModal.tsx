@@ -70,7 +70,14 @@ export default function LeadCaptureModal({ npi, nctId, siteName, physician, onCl
     };
 
     try {
-      await submitLead(payload);
+      const result = await submitLead(payload);
+      const salesforceStatus = result.salesforce_status ?? "disabled";
+      const salesforceMessage = result.salesforce_message ?? null;
+      if (salesforceStatus === "failed") {
+        setFieldError(salesforceMessage || "Lead was saved locally but Salesforce push failed.");
+        setSubmitting(false);
+        return;
+      }
       setSuccess(true);
       // Fire loadMore (or other callback) while user reads success message
       onSuccess?.();

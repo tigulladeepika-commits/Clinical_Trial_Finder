@@ -28,6 +28,10 @@ class Config:
         # ── Salesforce ────────────────────────────────────────────────────────
         self.SF_OID:                    str = os.environ.get("SF_OID", "")
         self.SF_RET_URL:                str = os.environ.get("SF_RET_URL", "")
+        self.SF_WEB_TO_LEAD_URL:        str = os.environ.get(
+            "SF_WEB_TO_LEAD_URL",
+            "https://webto.salesforce.com/servlet/servlet.WebToLead?encoding=UTF-8",
+        )
         self.SF_DEBUG_EMAIL:            str = os.environ.get("SF_DEBUG_EMAIL", "")
         self.SF_NPI_FIELD:              str = os.environ.get("SF_NPI_FIELD", "")
         self.SF_SPECIALIZATION_FIELD:   str = os.environ.get("SF_SPECIALIZATION_FIELD", "")

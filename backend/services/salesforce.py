@@ -15,9 +15,14 @@ from typing import Dict, Tuple, Optional
 
 import requests
 
-from core.config import cfg
-from core.helpers import sanitise
-from services.http_client import http_client
+try:
+    from core.config import cfg
+    from core.helpers import sanitise
+    from services.http_client import http_client
+except ModuleNotFoundError:  # pragma: no cover - supports running from repo root
+    from backend.core.config import cfg
+    from backend.core.helpers import sanitise
+    from backend.services.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +91,87 @@ def push_lead(lead: Dict) -> None:
         )
 
 
+def _build_salesforce_payload(
+    lead: Dict,
+    oid: Optional[str] = None,
+    ret_url: Optional[str] = None,
+    debug_email: Optional[str] = None,
+) -> dict:
+    """Build a Salesforce Web-to-Lead payload from a stored lead dict."""
+    email = lead.get("email", "")
+    physician_name = lead.get("physician_name", "")
+    npi = lead.get("npi", "")
+    npi_number = lead.get("npi_number") or npi
+    specialization = lead.get("specialization", "")
+    gender_identity = _normalise_gender_identity(lead.get("gender_identity", ""))
+    nct_id = lead.get("nct_id", "")
+    site = lead.get("site", "")
+    message = lead.get("message", "")
+    ctx = lead.get("search_context", {})
+
+    desc_parts = ["Clinical Trial Navigator Lead"]
+    if physician_name:
+        desc_parts.append(f"Physician: {physician_name}")
+    if npi:
+        desc_parts.append(f"NPI: {npi}")
+    if npi_number:
+        desc_parts.append(f"NPI Number: {npi_number}")
+    if specialization:
+        desc_parts.append(f"Specialization: {specialization}")
+    if gender_identity:
+        desc_parts.append(f"Gender Identity: {gender_identity}")
+    if nct_id:
+        desc_parts.append(f"Trial: {nct_id}")
+    if site:
+        desc_parts.append(f"Site: {site}")
+    if message:
+        desc_parts.append(f"Message: {message}")
+    if ctx.get("address"):
+        desc_parts.append(f"Location: {ctx['address']}")
+    if ctx.get("descriptions"):
+        desc_parts.append(f"Specialty: {', '.join(ctx['descriptions'])}")
+    if ctx.get("total_results"):
+        desc_parts.append(f"Results: {ctx['total_results']}")
+
+    sf_payload = {
+        "oid": oid or cfg.SF_OID,
+        "retURL": ret_url or cfg.SF_RET_URL or "https://www.aquarient.com",
+        "first_name": sanitise(lead.get("first_name", ""), 80),
+        "last_name": sanitise(lead.get("last_name", "Unknown"), 80),
+        "email": sanitise(email, 254),
+        "phone": sanitise(lead.get("phone", ""), 40),
+        "company": sanitise(lead.get("company") or "Individual Physicians", 120),
+        "title": sanitise(lead.get("title", ""), 80),
+        "lead_source": sanitise(lead.get("lead_source", "Clinical Trial"), 40),
+        "description": sanitise(" | ".join(desc_parts), 2000),
+        "GenderIdentity": sanitise(gender_identity, 80),
+        "GenderIdentity__c": sanitise(gender_identity, 80),
+    }
+
+    _add_custom_field(
+        sf_payload,
+        specialization,
+        cfg.SF_SPECIALIZATION_FIELD,
+        ["Specialization__c", "Specialty__c", "Specialization"],
+    )
+    _add_custom_field(
+        sf_payload,
+        npi_number,
+        cfg.SF_NPI_FIELD,
+        ["NPI_Number__c", "NPI_Number", "NPI__c"],
+    )
+
+    gender_candidates = [cfg.SF_GENDER_IDENTITY_FIELD, cfg.SF_GENDER_FIELD]
+    for field_name in [name for name in gender_candidates if name]:
+        sf_payload[field_name] = sanitise(gender_identity, 80)
+
+    if debug_email:
+        sf_payload["debug"] = "1"
+        sf_payload["debugEmail"] = debug_email
+
+    return sf_payload
+
+
 def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
     """
     Push lead to Salesforce Web-to-Lead form.
@@ -113,63 +199,11 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         logger.info(msg)
         return True, 0, "", ""   # return success=True so caller doesn't log a warning
 
-    # Build description from all available context
-    physician_name = lead.get("physician_name", "")
-    npi            = lead.get("npi", "")
-    npi_number     = lead.get("npi_number") or npi
-    specialization = lead.get("specialization", "")
-    gender_identity = _normalise_gender_identity(lead.get("gender_identity", ""))
-    nct_id         = lead.get("nct_id", "")
-    site           = lead.get("site", "")
-    message        = lead.get("message", "")
-    ctx            = lead.get("search_context", {})
-
-    desc_parts = ["Clinical Trial Navigator Lead"]
-    if physician_name:          desc_parts.append(f"Physician: {physician_name}")
-    if npi:                     desc_parts.append(f"NPI: {npi}")
-    if npi_number:              desc_parts.append(f"NPI Number: {npi_number}")
-    if specialization:          desc_parts.append(f"Specialization: {specialization}")
-    if gender_identity:         desc_parts.append(f"Gender Identity: {gender_identity}")
-    if nct_id:                  desc_parts.append(f"Trial: {nct_id}")
-    if site:                    desc_parts.append(f"Site: {site}")
-    if message:                 desc_parts.append(f"Message: {message}")
-    if ctx.get("address"):      desc_parts.append(f"Location: {ctx['address']}")
-    if ctx.get("descriptions"): desc_parts.append(f"Specialty: {', '.join(ctx['descriptions'])}")
-    if ctx.get("total_results"):desc_parts.append(f"Results: {ctx['total_results']}")
-
-    sf_payload = {
-        "oid":         cfg.SF_OID,
-        "retURL":      cfg.SF_RET_URL or "https://www.aquarient.com",
-        "first_name":  sanitise(lead.get("first_name", ""),                  80),
-        "last_name":   sanitise(lead.get("last_name",  "Unknown"),            80),
-        "email":       sanitise(email,                                       254),
-        "phone":       sanitise(lead.get("phone",      ""),                   40),
-        "company":     sanitise(lead.get("company")    or "Individual Physicians", 120),
-        "title":       sanitise(lead.get("title",      ""),                   80),
-        "lead_source": sanitise(lead.get("lead_source","Clinical Trial"),     40),
-        "description": sanitise(" | ".join(desc_parts),                     2000),
-        # Sending both the plain label-style name and the __c custom-field
-        # variant - unrecognized keys are silently ignored by Salesforce, so
-        # this costs nothing and covers either possible API name until the
-        # real one is confirmed via Object Manager. Must use the normalized
-        # `gender_identity` variable (Male/Female/...), not the raw NPPES
-        # value (M/F) - the Salesforce picklist only accepts the full words.
-        "GenderIdentity":    sanitise(gender_identity, 80),
-        "GenderIdentity__c": sanitise(gender_identity, 80),
-    }
-
-    _add_custom_field(
-        sf_payload,
-        specialization,
-        cfg.SF_SPECIALIZATION_FIELD,
-        ["Specialization__c", "Specialty__c", "Specialization"],
-    )
-    # GenderIdentity is included directly in `sf_payload` above.
-    _add_custom_field(
-        sf_payload,
-        npi_number,
-        cfg.SF_NPI_FIELD,
-        ["NPI_Number__c", "NPI_Number", "NPI__c"],
+    sf_payload = _build_salesforce_payload(
+        lead,
+        oid=cfg.SF_OID,
+        ret_url=cfg.SF_RET_URL or "https://www.aquarient.com",
+        debug_email=cfg.SF_DEBUG_EMAIL or None,
     )
 
     # Helpful debug logging: show which keys we're sending and the
@@ -190,10 +224,6 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
     except Exception:
         logger.exception("Failed to log SF payload debug info")
 
-    if cfg.SF_DEBUG_EMAIL:
-        sf_payload["debug"]      = "1"
-        sf_payload["debugEmail"] = cfg.SF_DEBUG_EMAIL
-
     logger.info(
         "Pushing to SF | OID=%s | email=%s | auto=%s",
         cfg.SF_OID, email, lead.get("auto"),
@@ -205,7 +235,7 @@ def push_to_salesforce(lead: Dict) -> Tuple[bool, int, str, str]:
         _last_sf_payload = copy.deepcopy(sf_payload)
 
         resp = http_client.post(
-            "https://webto.salesforce.com/servlet/servlet.WebToLead?encoding=UTF-8",
+            cfg.SF_WEB_TO_LEAD_URL,
             data=sf_payload,
             timeout=cfg.REQUEST_TIMEOUT,
             allow_redirects=True,

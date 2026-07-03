@@ -50,7 +50,7 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
   // ── Submit lead with a given email ─────────────────────────────────────────
   const submitWithEmail = useCallback(async (email: string) => {
     try {
-      await submitLead({
+      const result = await submitLead({
         name:           physician.name,
         email,
         company:        "Individual Physicians",
@@ -65,6 +65,11 @@ export default function PhysicianDetailPanel({ physician, site, onBack, onAddAsL
         physician_name: physician.name,
         auto:           true,
       });
+      if (result.salesforce_status === "failed") {
+        setLeadFlow("error");
+        setTimeout(() => setLeadFlow("idle"), 3000);
+        return;
+      }
       setLeadFlow("done");
       onAddAsLead(physician);
     } catch {

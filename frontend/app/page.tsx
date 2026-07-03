@@ -13,6 +13,7 @@ import SearchForm     from "@/components/trials/SearchForm";
 import TrialList      from "@/components/trials/TrialList";
 import TrialSiteMap   from "@/components/trials/TrialSiteMap";
 import PhysicianPanel from "@/components/physicians/PhysicianPanel";
+import SalesforceDebugPanel from "@/components/shared/SalesforceDebugPanel";
 
 import { useTrials, fetchTrialSites } from "@/hooks/useTrials";
 import { usePhysicians }              from "@/hooks/usePhysicians";
@@ -569,43 +570,46 @@ function HomeInner() {
                     )}
 
                     {siteData && !sitesLoading && selectedSite && (
-                      <PhysicianPanel
-                        site={selectedSite}
-                        userCondition={filtersFromUrl.condition}
-                        initialRadius={selectedRadius}
-                        physicians={nearbyPhysicians}
-                        total={physicianTotal}
-                        loading={physiciansLoading}
-                        error={physiciansError}
-                        searched={physiciansSearched}
-                        hasMore={physiciansHasMore}
-                        searchSpecialties={physiciansSearchSpecialties}
-                        onSearch={handlePhysicianSearch}
-                        onLoadMore={loadMorePhysicians}
-                        onBack={handleBackToSites}
-                        kpiBar={
-                          kpiData && (
-                            <div className="kpi-row">
-                              <div className="kpi-cell">
-                                <div className="kpi-num">{kpiData.total}</div>
-                                <div className="kpi-label">Total Sites</div>
+                      <>
+                        <PhysicianPanel
+                          site={selectedSite}
+                          userCondition={filtersFromUrl.condition}
+                          initialRadius={selectedRadius}
+                          physicians={nearbyPhysicians}
+                          total={physicianTotal}
+                          loading={physiciansLoading}
+                          error={physiciansError}
+                          searched={physiciansSearched}
+                          hasMore={physiciansHasMore}
+                          searchSpecialties={physiciansSearchSpecialties}
+                          onSearch={handlePhysicianSearch}
+                          onLoadMore={loadMorePhysicians}
+                          onBack={handleBackToSites}
+                          kpiBar={
+                            kpiData && (
+                              <div className="kpi-row">
+                                <div className="kpi-cell">
+                                  <div className="kpi-num">{kpiData.total}</div>
+                                  <div className="kpi-label">Total Sites</div>
+                                </div>
+                                <div className="kpi-cell">
+                                  <div className="kpi-num green">{kpiData.recruiting}</div>
+                                  <div className="kpi-label">Recruiting</div>
+                                </div>
+                                <div className="kpi-cell">
+                                  <div className="kpi-num">{kpiData.onMap}</div>
+                                  <div className="kpi-label">On Map</div>
+                                </div>
+                                <div className="kpi-cell">
+                                  <div className="kpi-num">{kpiData.countries}</div>
+                                  <div className="kpi-label">Countries</div>
+                                </div>
                               </div>
-                              <div className="kpi-cell">
-                                <div className="kpi-num green">{kpiData.recruiting}</div>
-                                <div className="kpi-label">Recruiting</div>
-                              </div>
-                              <div className="kpi-cell">
-                                <div className="kpi-num">{kpiData.onMap}</div>
-                                <div className="kpi-label">On Map</div>
-                              </div>
-                              <div className="kpi-cell">
-                                <div className="kpi-num">{kpiData.countries}</div>
-                                <div className="kpi-label">Countries</div>
-                              </div>
-                            </div>
-                          )
-                        }
-                      />
+                            )
+                          }
+                        />
+                        <SalesforceDebugPanel />
+                      </>
                     )}
 
                     {siteData && !sitesLoading && !selectedSite && (

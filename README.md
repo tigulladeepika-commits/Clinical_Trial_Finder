@@ -30,7 +30,9 @@ python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 1. Copy `backend/.env.example` to `backend/.env`.
 2. Populate the required API keys and deployment settings.
 3. Configure `GROQ_API_KEY` if you want physician AI summaries.
-4. Do not commit `backend/.env` to source control.
+4. For Salesforce Web-to-Lead, set `SF_OID`, `SF_RET_URL`, `SF_WEB_TO_LEAD_URL`, `SF_DEBUG_EMAIL`, `SF_NPI_FIELD`, `SF_SPECIALIZATION_FIELD`, and `SF_GENDER_IDENTITY_FIELD` as needed.
+5. Set `DEBUG_SECRET` if you want to access the Salesforce debug endpoint.
+6. Do not commit `backend/.env` to source control.
 
 ### Frontend
 

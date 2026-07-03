@@ -15,9 +15,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
-from core.config import cfg
-from core.helpers import sanitise
-from services.salesforce import get_last_payload
+from typing import Any
+
+try:
+    from core.config import cfg
+    from core.helpers import sanitise
+    from services.salesforce import get_last_payload
+except ModuleNotFoundError:  # pragma: no cover - supports running from repo root
+    from backend.core.config import cfg
+    from backend.core.helpers import sanitise
+    from backend.services.salesforce import get_last_payload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -93,6 +100,9 @@ class LeadRequest(BaseModel):
 class LeadResponse(BaseModel):
     success: bool
     id:      str
+    salesforce_status: str = "disabled"
+    salesforce_message: str | None = None
+    error: dict[str, Any] | None = None
 
 
 def _append_lead(lead: dict) -> None:
@@ -110,31 +120,49 @@ def _append_lead(lead: dict) -> None:
     path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def _push_to_salesforce(lead: dict) -> None:
-    """
-    Push a lead dict to Salesforce.
-
-    Fields forwarded to Salesforce:
-      - Standard contact fields: first_name, last_name, email, phone, company, title
-      - Lead metadata: lead_source, nct_id, site, message
-      - Physician context: physician_name, npi  ← NPI is explicitly included here
-      - Internal tracking: id (our UUID), auto (boolean flag)
-
-    The `npi` field is mapped to the Salesforce custom field configured in
-    services/salesforce.py (e.g. NPI_ID__c or similar). Ensure the Salesforce
-    push_lead() implementation maps lead["npi"] to the correct SF field.
-    """
+def _push_to_salesforce(lead: dict) -> dict:
+    """Push a lead dict to Salesforce and return the operational status."""
     if not cfg.SF_OID:
-        return
+        return {
+            "status": "disabled",
+            "message": "Salesforce integration is disabled",
+            "error": {"code": "salesforce_disabled", "detail": "SF_OID is not configured"},
+        }
+
     try:
-        from services.salesforce import push_lead
-        push_lead(lead)
-        logger.info(
-            "Lead %s pushed to Salesforce | npi=%s",
-            lead["id"], lead.get("npi") or "-",
+        from services.salesforce import push_to_salesforce
+
+        success, status_code, snippet, error = push_to_salesforce(lead)
+        if success:
+            if status_code == 0:
+                logger.info("Lead %s skipped by Salesforce integration | npi=%s", lead["id"], lead.get("npi") or "-")
+                return {"status": "skipped", "message": error or "Salesforce skipped the lead"}
+
+            logger.info(
+                "Lead %s pushed to Salesforce | npi=%s | status=%s",
+                lead["id"], lead.get("npi") or "-", status_code,
+            )
+            return {"status": "success", "message": "", "error": None}
+
+        logger.warning(
+            "Salesforce push failed for lead %s: HTTP %s | snippet=%s | error=%s",
+            lead["id"], status_code, snippet[:200], error,
         )
+        return {
+            "status": "failed",
+            "message": error or snippet[:200] or "Salesforce push failed",
+            "error": {
+                "code": "salesforce_push_failed",
+                "detail": error or snippet[:200] or "Salesforce push failed",
+            },
+        }
     except Exception as exc:
         logger.warning("Salesforce push failed for lead %s: %s", lead["id"], exc)
+        return {
+            "status": "failed",
+            "message": str(exc),
+            "error": {"code": "salesforce_exception", "detail": str(exc)},
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -204,26 +232,36 @@ async def capture_lead(request: Request, body: LeadRequest):
         logger.error("Failed to persist lead %s: %s", lead_id, exc)
         raise HTTPException(status_code=500, detail="Could not save lead. Please try again.")
 
-    _push_to_salesforce(lead)
+    sf_result = _push_to_salesforce(lead)
     logger.info(
-        "Lead captured | id=%s auto=%s name=%s email=%s npi=%s nct_id=%s",
+        "Lead captured | id=%s auto=%s name=%s email=%s npi=%s nct_id=%s salesforce_status=%s",
         lead_id, body.auto, body.name, body.email,
-        body.npi or "-", body.nct_id or "-",
+        body.npi or "-", body.nct_id or "-", sf_result["status"],
     )
-    return LeadResponse(success=True, id=lead_id)
+    return LeadResponse(
+        success=sf_result["status"] in {"success", "disabled", "skipped"},
+        id=lead_id,
+        salesforce_status=sf_result["status"],
+        salesforce_message=sf_result["message"],
+        error=sf_result.get("error"),
+    )
 
 
 @router.get("/debug/last-sf-payload")
 async def debug_last_sf_payload(secret: str = ""):
-    """Return the last Salesforce Web-to-Lead payload the server sent.
-
-    This endpoint is protected by `DEBUG_SECRET` — set the same value in
-    your environment and pass it as the `secret` query parameter to access.
-    """
+    """Return the last Salesforce Web-to-Lead payload and status metadata."""
     if not cfg.DEBUG_SECRET:
         raise HTTPException(status_code=403, detail="DEBUG_SECRET not configured on server")
     if secret != cfg.DEBUG_SECRET:
         raise HTTPException(status_code=403, detail="Invalid debug secret")
 
     payload = get_last_payload()
-    return JSONResponse(status_code=200, content={"last_sf_payload": payload})
+    return JSONResponse(
+        status_code=200,
+        content={
+            "last_sf_payload": payload,
+            "salesforce_enabled": bool(cfg.SF_OID),
+            "web_to_lead_url": cfg.SF_WEB_TO_LEAD_URL,
+            "debug_email": cfg.SF_DEBUG_EMAIL or None,
+        },
+    )
