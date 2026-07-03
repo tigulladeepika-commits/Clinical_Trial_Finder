@@ -295,7 +295,12 @@ def parse_physician(result: Dict) -> Optional[Dict]:
     last   = str(basic.get("last_name")   or "").strip()
     suffix = str(basic.get("name_suffix") or "").strip()
     cred   = str(basic.get("credential")  or "").strip()
-    raw_gender = str(basic.get("gender") or basic.get("gender_code") or "").strip()
+    raw_gender = str(
+        basic.get("gender") or
+        basic.get("sex") or
+        basic.get("gender_code") or
+        ""
+    ).strip()
     gender = ""
     if raw_gender.upper() in ("M", "MALE"):
         gender = "Male"
