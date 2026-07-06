@@ -144,7 +144,7 @@ def _build_salesforce_payload(
         "title": sanitise(lead.get("title", ""), 80),
         "lead_source": sanitise(lead.get("lead_source", "Clinical Trial"), 40),
         "description": sanitise(" | ".join(desc_parts), 2000),
-        "gender_identity": sanitise(lead.get("gender_identity","Male"), 80),
+        "gender_identity": sanitise(lead.get("gender_identity",""),  80)
         #"GenderIdentity__c": sanitise(gender_identity, 80),
         #"Gender_Identity__c": sanitise(gender_identity, 80),
         #"Gender": sanitise(gender_identity, 80),
