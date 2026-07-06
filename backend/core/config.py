@@ -25,7 +25,7 @@ class Config:
         self.GROQ_API_KEY:    str = os.environ.get("GROQ_API_KEY", "")
         self.GROQ_API_URL:    str = os.environ.get("GROQ_API_URL", "")
 
-        # ── Salesforce ────────────────────────────────────────────────────────
+        # ── Salesforce — Web-to-Lead (legacy) ────────────────────────────────
         self.SF_OID:                    str = os.environ.get("SF_OID", "")
         self.SF_RET_URL:                str = os.environ.get("SF_RET_URL", "")
         self.SF_WEB_TO_LEAD_URL:        str = os.environ.get(
@@ -37,6 +37,15 @@ class Config:
         self.SF_SPECIALIZATION_FIELD:   str = os.environ.get("SF_SPECIALIZATION_FIELD", "")
         self.SF_GENDER_FIELD:           str = os.environ.get("SF_GENDER_FIELD", "")
         self.SF_GENDER_IDENTITY_FIELD:  str = os.environ.get("SF_GENDER_IDENTITY_FIELD", "")
+
+        # ── Salesforce — REST API (active integration) ────────────────────────
+        # SF_PASSWORD = Salesforce password + security token joined (no space)
+        self.SF_CLIENT_ID:              str = os.environ.get("SF_CLIENT_ID", "")
+        self.SF_CLIENT_SECRET:          str = os.environ.get("SF_CLIENT_SECRET", "")
+        self.SF_USERNAME:               str = os.environ.get("SF_USERNAME", "")
+        self.SF_PASSWORD:               str = os.environ.get("SF_PASSWORD", "")
+        self.SF_INSTANCE_URL:           str = os.environ.get("SF_INSTANCE_URL", "")
+        self.SF_API_VERSION:            str = os.environ.get("SF_API_VERSION", "59.0")
 
         # ── CORS / Server ─────────────────────────────────────────────────────
         self.FRONTEND_URL: str = os.environ.get("FRONTEND_URL", "")
