@@ -42,8 +42,10 @@ _EMAIL_REGEX = re.compile(
     r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$'
 )
 
-# Salesforce OAuth2 token endpoint
-_SF_TOKEN_URL = "https://login.salesforce.com/services/oauth2/token"
+# Salesforce OAuth2 token endpoint — overridable via SF_LOGIN_URL env var
+# Default: https://login.salesforce.com
+# Custom domain example: https://aquarient-agentforce.my.salesforce.com
+_SF_TOKEN_URL_TEMPLATE = "{login_url}/services/oauth2/token"
 
 # Exact picklist values configured in Salesforce for GenderIdentity field
 _GENDER_PICKLIST = {"Male", "Female", "Nonbinary", "Not Listed"}
@@ -122,9 +124,13 @@ def _get_access_token() -> Tuple[str, str]:
 
     logger.info("Fetching new Salesforce OAuth2 access token")
 
+    login_url = getattr(cfg, "SF_LOGIN_URL", "https://login.salesforce.com").rstrip("/")
+    token_url = _SF_TOKEN_URL_TEMPLATE.format(login_url=login_url)
+    logger.info("SF OAuth2 token URL: %s", token_url)
+
     try:
         resp = requests.post(
-            _SF_TOKEN_URL,
+            token_url,
             data={
                 "grant_type":    "password",
                 "client_id":     cfg.SF_CLIENT_ID,
