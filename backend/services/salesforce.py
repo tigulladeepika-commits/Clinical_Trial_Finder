@@ -140,9 +140,21 @@ def _get_access_token() -> Tuple[str, str]:
         raise RuntimeError(f"Salesforce OAuth2 request failed: {ex}") from ex
 
     if resp.status_code != 200:
+        # Log the actual Salesforce error body so we can see the exact reason
+        try:
+            err_body = resp.json()
+            sf_error = err_body.get("error", "unknown")
+            sf_desc  = err_body.get("error_description", "no description")
+        except Exception:
+            sf_error = "parse_failed"
+            sf_desc  = resp.text[:300]
+        logger.error(
+            "Salesforce OAuth2 HTTP %d | error=%s | description=%s",
+            resp.status_code, sf_error, sf_desc,
+        )
         raise RuntimeError(
-            f"Salesforce OAuth2 failed — HTTP {resp.status_code}. "
-            "Check SF_CLIENT_ID, SF_CLIENT_SECRET, SF_USERNAME, SF_PASSWORD."
+            f"Salesforce OAuth2 failed — HTTP {resp.status_code} | "
+            f"error={sf_error} | description={sf_desc}"
         )
 
     data = resp.json()
