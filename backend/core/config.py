@@ -45,7 +45,7 @@ class Config:
         self.SF_USERNAME:               str = os.environ.get("SF_USERNAME", "")
         self.SF_PASSWORD:               str = os.environ.get("SF_PASSWORD", "")
         self.SF_INSTANCE_URL:           str = os.environ.get("SF_INSTANCE_URL", "")
-        self.SF_API_VERSION:            str = os.environ.get("SF_API_VERSION", "59.0")
+        self.SF_API_VERSION:            str = os.environ.get("SF_API_VERSION", "64.0")
         # SF_LOGIN_URL: override if your org uses a custom domain
         # Default is https://login.salesforce.com — change to
         # https://yourorg.my.salesforce.com if you get invalid_grant errors
