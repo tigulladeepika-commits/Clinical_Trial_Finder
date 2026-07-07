@@ -13,7 +13,6 @@ import SearchForm     from "@/components/trials/SearchForm";
 import TrialList      from "@/components/trials/TrialList";
 import TrialSiteMap   from "@/components/trials/TrialSiteMap";
 import PhysicianPanel from "@/components/physicians/PhysicianPanel";
-import SalesforceDebugPanel from "@/components/shared/SalesforceDebugPanel";
 
 import { useTrials, fetchTrialSites } from "@/hooks/useTrials";
 import { usePhysicians }              from "@/hooks/usePhysicians";
@@ -608,7 +607,6 @@ function HomeInner() {
                             )
                           }
                         />
-                        <SalesforceDebugPanel />
                       </>
                     )}
 
