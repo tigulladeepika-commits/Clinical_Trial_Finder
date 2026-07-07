@@ -112,6 +112,16 @@ def _get_access_token() -> Tuple[str, str]:
     """
     Fetch (or return cached) Salesforce OAuth2 access token.
 
+    Tries Client Credentials flow first (no username/password needed —
+    just client_id + client_secret). Falls back to Username-Password flow
+    if SF_USERNAME is set and client credentials flow fails.
+
+    Client Credentials requires:
+      - Connected App → Enable Client Credentials Flow = ON
+      - Connected App → Run As = a valid API user
+      - Org level: Setup → OAuth and OpenID Connect Settings →
+        "Allow OAuth Client Credentials Flow" = ON  (if that toggle exists)
+
     Returns:
         Tuple of (access_token, instance_url)
 
@@ -122,12 +132,62 @@ def _get_access_token() -> Tuple[str, str]:
         logger.debug("Using cached Salesforce OAuth2 token")
         return _token_cache["access_token"], _token_cache["instance_url"]
 
-    logger.info("Fetching new Salesforce OAuth2 access token")
-
     login_url = getattr(cfg, "SF_LOGIN_URL", "https://login.salesforce.com").rstrip("/")
     token_url = _SF_TOKEN_URL_TEMPLATE.format(login_url=login_url)
     logger.info("SF OAuth2 token URL: %s", token_url)
 
+    # ── Try Client Credentials flow first ─────────────────────────────────
+    # Preferred for server-to-server — no username/password needed.
+    # Requires "Enable Client Credentials Flow" + "Run As" on Connected App.
+    logger.info("Trying Client Credentials flow (grant_type=client_credentials)")
+    try:
+        resp = requests.post(
+            token_url,
+            data={
+                "grant_type":    "client_credentials",
+                "client_id":     cfg.SF_CLIENT_ID,
+                "client_secret": cfg.SF_CLIENT_SECRET,
+            },
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if "access_token" in data:
+                _token_cache["access_token"] = data["access_token"]
+                _token_cache["instance_url"] = data.get("instance_url", cfg.SF_INSTANCE_URL)
+                logger.info(
+                    "SF OAuth2 token obtained via Client Credentials | instance=%s",
+                    _token_cache["instance_url"],
+                )
+                return _token_cache["access_token"], _token_cache["instance_url"]
+
+        # Client credentials failed — log and fall through to password flow
+        try:
+            err = resp.json()
+            logger.warning(
+                "Client Credentials flow failed — HTTP %d | error=%s | desc=%s | "
+                "falling back to Username-Password flow",
+                resp.status_code,
+                err.get("error"), err.get("error_description"),
+            )
+        except Exception:
+            logger.warning(
+                "Client Credentials flow failed — HTTP %d | falling back to Username-Password",
+                resp.status_code,
+            )
+    except Exception as ex:
+        logger.warning("Client Credentials flow exception: %s — trying Username-Password", ex)
+
+    # ── Fall back to Username-Password flow ────────────────────────────────
+    # Requires SF_USERNAME + SF_PASSWORD (password + security token joined).
+    # NOTE: blocked by MFA if enforced on the user's profile.
+    if not cfg.SF_USERNAME or not cfg.SF_PASSWORD:
+        raise RuntimeError(
+            "Client Credentials flow failed and SF_USERNAME/SF_PASSWORD not set. "
+            "Cannot authenticate with Salesforce."
+        )
+
+    logger.info("Trying Username-Password flow (grant_type=password)")
     try:
         resp = requests.post(
             token_url,
@@ -146,7 +206,6 @@ def _get_access_token() -> Tuple[str, str]:
         raise RuntimeError(f"Salesforce OAuth2 request failed: {ex}") from ex
 
     if resp.status_code != 200:
-        # Log the actual Salesforce error body so we can see the exact reason
         try:
             err_body = resp.json()
             sf_error = err_body.get("error", "unknown")
@@ -172,7 +231,10 @@ def _get_access_token() -> Tuple[str, str]:
 
     _token_cache["access_token"] = data["access_token"]
     _token_cache["instance_url"] = data.get("instance_url", "")
-    logger.info("Salesforce OAuth2 token obtained | instance=%s", _token_cache["instance_url"])
+    logger.info(
+        "SF OAuth2 token obtained via Username-Password | instance=%s",
+        _token_cache["instance_url"],
+    )
     return _token_cache["access_token"], _token_cache["instance_url"]
 
 
