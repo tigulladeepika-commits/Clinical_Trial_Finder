@@ -53,6 +53,10 @@ class Config:
             "SF_LOGIN_URL",
             "https://login.salesforce.com",
         )
+        self.SF_RECORD_TYPE_ID:         str = os.environ.get(
+            "SF_RECORD_TYPE_ID",
+            "012Hs000000j08nIAA",
+        )
 
         # ── CORS / Server ─────────────────────────────────────────────────────
         self.FRONTEND_URL: str = os.environ.get("FRONTEND_URL", "")

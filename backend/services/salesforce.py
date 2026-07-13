@@ -307,6 +307,10 @@ def _build_rest_payload(lead: Dict) -> dict:
     if specialization:
         payload["Specialization__c"] = sanitise(specialization, 255)
 
+    # RecordTypeId — specifies which record type this lead should use
+    if cfg.SF_RECORD_TYPE_ID:
+        payload["RecordTypeId"] = cfg.SF_RECORD_TYPE_ID
+
     # Remove empty strings — REST API prefers omission over "" for optional fields
     payload = {k: v for k, v in payload.items() if v != ""}
 
