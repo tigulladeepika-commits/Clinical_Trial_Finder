@@ -31,12 +31,21 @@ def _clean_name(raw_name: str) -> str:
     for cred in [
         ", M.D.", ",M.D.", " M.D.", ", MD", ",MD", " MD",
         ", D.O.", ",D.O.", " D.O.", ", DO", ",DO", " DO",
-        ", Ph.D.", ", PhD", ", M.D", ",M.D",
+        ", Ph.D.", ",Ph.D.", " Ph.D.", ", PhD", ",PhD", " PhD",
+        ", PHD", ",PHD", " PHD",
+        ", M.D", ",M.D",
         ", MD, MPH", ",MD,MPH", " MD MPH", ", MPH", ",MPH", " MPH",
+        ", MD, PhD", ",MD,PhD", " MD PhD", ", MD, PHD", ",MD,PHD",
         ",FACC", ", FACC", ",FSCAI", ", FSCAI", ",FACP", ", FACP",
         ",FAHA", ", FAHA", ",FACS", ", FACS", ",FACOG", ", FACOG",
     ]:
         name = name.replace(cred, "")
+
+    # Final catch-all: strip any remaining standalone credential tokens
+    name = re.sub(
+        r'\b(M\.?D\.?|D\.?O\.?|Ph\.?D\.?|PHD|MPH|FACC|FSCAI|FACP|FAHA|FACS|FACOG)\b',
+        '', name, flags=re.IGNORECASE
+    )
 
     # Remove honorific titles
     name = re.sub(
@@ -78,9 +87,9 @@ def _build_queries(
     spec_lower = specialty.lower() if specialty else ""
 
     spec_keyword = ""
-    for kw in ["cardiology", "cardiac", "cardiovascular", "heart",
-               "oncology", "neurology", "nephrology", "pulmonary",
-               "electrophysiology", "interventional"]:
+    for kw in ["radiation oncology", "radiation", "cardiology", "cardiac",
+               "cardiovascular", "heart", "oncology", "neurology", "nephrology",
+               "pulmonary", "electrophysiology", "interventional"]:
         if kw in spec_lower:
             spec_keyword = kw
             break

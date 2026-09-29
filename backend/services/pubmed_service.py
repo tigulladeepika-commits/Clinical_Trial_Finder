@@ -187,8 +187,27 @@ DISEASE_MESH_MAP = {
 }
 
 def _normalize_disease(disease: str) -> str:
-    """Map common disease names to PubMed MeSH terms for better search results."""
-    return DISEASE_MESH_MAP.get(disease.lower().strip(), disease.strip())
+    """Map common disease names to PubMed MeSH terms for better search results.
+    Also rejects specialty names (e.g. 'Radiation Oncology', 'Medical Oncology')
+    that get passed as disease context — these are not valid PubMed search terms
+    and produce zero results or noise when used in title/abstract queries.
+    """
+    _SPECIALTY_NAMES = {
+        "radiation oncology", "medical oncology", "internal medicine",
+        "family medicine", "general practice", "surgical oncology",
+        "hematology oncology", "hematology & oncology", "gynecologic oncology",
+        "interventional cardiology", "cardiovascular disease", "cardiology",
+        "neurology", "nephrology", "pulmonary disease", "gastroenterology",
+        "endocrinology", "rheumatology", "dermatology", "psychiatry",
+        "orthopedic surgery", "urology", "ophthalmology", "otolaryngology",
+        "infectious disease", "critical care medicine", "emergency medicine",
+        "allergy immunology", "physical medicine", "pain medicine",
+        "clinical_trial", "clinical trial",
+    }
+    cleaned = disease.lower().strip()
+    if cleaned in _SPECIALTY_NAMES:
+        return ""  # don't use specialty names as disease search terms
+    return DISEASE_MESH_MAP.get(cleaned, disease.strip())
 
 def _build_queries(
     clean: str,
@@ -230,7 +249,11 @@ def _build_queries(
     if first and last and not common_name:
         raw_full_name = f'"{last} {first}"[Author]'
         raw.insert(0, (raw_full_name, 80))
+
+    # Full name + specific topic — highest precision for prolific authors
     for topic in specific_topics:
+        if first and last and not common_name:
+            raw.append((f'"{last} {first}"[Author] AND "{topic}"[Title/Abstract]', 82))
         raw.append((f'"{last} {initials}"[Author] AND "{topic}"[Title/Abstract]', 75))
         if full_initials != initials:
             raw.append((f'"{last} {full_initials}"[Author] AND "{topic}"[Title/Abstract]', 75))
@@ -243,6 +266,11 @@ def _build_queries(
             raw.append((f'"{last} {full_initials}"[Author] AND "{disease_clean}"[Title/Abstract]', 72))
         else:
             raw.append((f'"{last} {full_initials}"[Author]', 65))
+    else:
+        # No middle name — add "Last Firstname" as explicit Tier 0 variant
+        # This catches PubMed records where full first name is indexed
+        if disease_clean and first and last and not common_name:
+            raw.append((f'"{last} {first}"[Author] AND "{disease_clean}"[Title/Abstract]', 78))
 
     # ── Tier 1 (35–64): disease/mesh broadening ───────────────────────────────
 

@@ -31,10 +31,12 @@ def _exact_name_confirm(publications: list[dict], physician_name: str) -> list[d
     initial actually appears in each paper's author list.
 
     Handles PubMed format ("Tsokos GC"), S2 format ("George C. Tsokos"),
-    and short formats ("G Tsokos", "Tsokos G").
+    short formats ("G Tsokos", "Tsokos G"), and hyphenated last names
+    ("Smith-Jones" matched as either "smith" or "jones" or "smith-jones").
 
     Papers with no authors are kept (benefit of doubt).
-    S2 papers with affiliation_verified=True are kept without re-checking.
+    S2 papers with affiliation_verified=True are kept without re-checking
+    (already verified at author level in semantic_scholar_service).
     """
     if not physician_name:
         return publications
@@ -43,7 +45,9 @@ def _exact_name_confirm(publications: list[dict], physician_name: str) -> list[d
     if len(parts) < 2:
         return publications
 
-    last_name    = parts[-1].lower()
+    # Support hyphenated last names — accept any component as a match
+    raw_last = parts[-1].lower()
+    last_variants = [raw_last] + raw_last.split("-")
     first_initial = parts[0][0].lower() if parts[0] else ""
 
     kept = []
@@ -63,13 +67,14 @@ def _exact_name_confirm(publications: list[dict], physician_name: str) -> list[d
             a = author.lower().replace(".", "").replace(",", "").strip()
             a_parts = a.split()
 
-            # Must contain last name as whole word
-            if last_name not in a_parts:
+            # Must contain at least one last-name variant as a whole word
+            last_found = any(lv in a_parts for lv in last_variants)
+            if not last_found:
                 continue
 
-            # Last name found — check first initial
+            # Last name found — check first initial against other tokens
             for ap in a_parts:
-                if ap != last_name and ap[0] == first_initial:
+                if ap not in last_variants and ap and ap[0] == first_initial:
                     matched = True
                     break
 
@@ -146,6 +151,11 @@ def _author_name_filter(publications: list[dict], physician_name: str) -> list[d
 
     kept = []
     for pub in publications:
+        # S2 affiliation-verified papers already confirmed at author level — pass through
+        if pub.get("affiliation_verified") is True and pub.get("source") == "Semantic Scholar":
+            kept.append(pub)
+            continue
+
         authors = pub.get("authors", [])
         if not authors:
             # Reject EuropePMC papers with no authors - unverifiable

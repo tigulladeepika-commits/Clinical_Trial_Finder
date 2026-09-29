@@ -554,15 +554,25 @@ async def get_physician_insights(
         raise HTTPException(status_code=422, detail="npi and name are required")
 
     cache_key = clean_disease
-    if cache.exists(npi, cache_key):
+    if cache.exists(npi, cache_key) and not cache.is_from_background(npi, cache_key):
         insights = cache.get(npi, cache_key) or {}
         logger.debug("AI insights cache hit | npi=%s disease=%r", npi, cache_key)
     else:
         broader_key = (clean_specialty or "").split(",")[0].strip()
-        if broader_key and broader_key != cache_key and cache.exists(npi, broader_key):
+        if (broader_key and broader_key != cache_key
+                and cache.exists(npi, broader_key)
+                and not cache.is_from_background(npi, broader_key)):
             insights = cache.get(npi, broader_key) or {}
             logger.info("AI insights cache hit (broader key) | npi=%s key=%r", npi, broader_key)
         else:
+            # Re-enrich: either no cache, or the cached result is a stale
+            # background enrichment — direct hits always get a fresh result.
+            if cache.is_from_background(npi, cache_key):
+                logger.info(
+                    "AI insights: stale background cache for npi=%s — re-enriching",
+                    npi,
+                )
+                cache.invalidate(npi, cache_key)
             insights = await enrich_physician(
                 npi=npi,
                 name=clean_name,
