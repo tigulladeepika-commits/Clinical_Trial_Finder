@@ -104,12 +104,22 @@ def clean_name(raw_name: str) -> str:
     for cred in [
         ", M.D.", ",M.D.", " M.D.", ", MD", ",MD", " MD",
         ", D.O.", ",D.O.", " D.O.", ", DO", ",DO", " DO",
-        ", Ph.D.", ", PhD", ", M.D", ",M.D",
+        ", Ph.D.", ",Ph.D.", " Ph.D.", ", PhD", ",PhD", " PhD",
+        ", PHD", ",PHD", " PHD",
+        ", M.D", ",M.D",
         ", MD, MPH", ",MD,MPH", " MD MPH", ", MPH", ",MPH", " MPH",
+        ", MD, PhD", ",MD,PhD", " MD PhD", ", MD, PHD", ",MD,PHD",
         ",FACC", ", FACC", ",FSCAI", ", FSCAI", ",FACP", ", FACP",
         ",FAHA", ", FAHA", ",FACS", ", FACS", ",FACOG", ", FACOG",
     ]:
         name = name.replace(cred, "")
+
+    # Final catch-all: strip any remaining standalone credential tokens
+    # (handles "MD PHD", "PHD", "Ph.D", "D.O" left over after comma stripping)
+    name = re.sub(
+        r'\b(M\.?D\.?|D\.?O\.?|Ph\.?D\.?|PHD|MPH|FACC|FSCAI|FACP|FAHA|FACS|FACOG)\b',
+        '', name, flags=re.IGNORECASE
+    )
 
     name = re.sub(r'\b(Dr\.?|Prof\.?|Drs\.?|Mr\.?|Ms\.?|Mrs\.?)\b', '', name, flags=re.IGNORECASE)
     name = re.sub(r'\s*--+\s*', ' ', name)
