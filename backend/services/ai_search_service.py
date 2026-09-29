@@ -25,9 +25,9 @@ GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL   = "openai/gpt-oss-120b"
 # Fallback chain: each model has its own separate rate limit bucket on Groq
 GROQ_FALLBACK_MODELS = [
-    "openai/gpt-oss-120b",   # primary  — 8K TPM, best quality
+    "openai/gpt-oss-120b",   # primary   — 8K TPM, best quality
     "openai/gpt-oss-20b",    # secondary — 8K TPM, 1000 tps
-    "llama-3.1-8b-instant",  # tertiary  — 6K TPM, highest availability
+    "qwen/qwen3.8-27b",      # tertiary  — 8K TPM, replaces retired llama-3.1-8b-instant
 ]
 GROQ_TIMEOUT = 8.0
 
@@ -115,48 +115,51 @@ async def _groq_correct(query: str, client: httpx.AsyncClient) -> Optional[str]:
         "Output:"
     )
 
-    try:
-        resp = await client.post(
-            GROQ_URL,
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type":  "application/json",
-            },
-            json={
-                "model":       GROQ_MODEL,
-                "max_tokens":  25,
-                "temperature": 0.0,
-                "messages":    [{"role": "user", "content": prompt}],
-            },
-            timeout=GROQ_TIMEOUT,
-        )
+    for _model in GROQ_FALLBACK_MODELS:
+        try:
+            resp = await client.post(
+                GROQ_URL,
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type":  "application/json",
+                },
+                json={
+                    "model":       _model,
+                    "max_tokens":  25,
+                    "temperature": 0.0,
+                    "messages":    [{"role": "user", "content": prompt}],
+                },
+                timeout=GROQ_TIMEOUT,
+            )
 
-        if resp.status_code == 429:
-            logger.warning("Groq rate limit hit during query correction")
-            return None
-        if resp.status_code != 200:
-            logger.warning("Groq correction returned %d for %r", resp.status_code, query)
-            return None
+            if resp.status_code == 429:
+                logger.warning("Groq rate limit on %s during query correction — trying next model", _model)
+                continue
+            if resp.status_code != 200:
+                logger.warning("Groq correction returned %d model=%s for %r — trying next model", resp.status_code, _model, query)
+                continue
 
-        corrected = resp.json()["choices"][0]["message"]["content"].strip()
+            corrected = resp.json()["choices"][0]["message"]["content"].strip()
 
-        if not corrected:
-            return None
-        if len(corrected) > 120:
-            logger.warning("Groq returned too-long correction for %r — ignoring", query)
-            return None
-        if corrected.lower().strip() == query.lower().strip():
-            return None
+            if not corrected:
+                continue
+            if len(corrected) > 120:
+                logger.warning("Groq returned too-long correction for %r on %s — ignoring", query, _model)
+                continue
+            if corrected.lower().strip() == query.lower().strip():
+                return None
 
-        logger.info(
-            "Groq correction | original=%r → corrected=%r",
-            query, corrected,
-        )
-        return corrected
+            logger.info(
+                "Groq correction | model=%s | original=%r → corrected=%r",
+                _model, query, corrected,
+            )
+            return corrected
 
-    except Exception as exc:
-        logger.warning("Groq correction failed for %r: %s", query, exc)
-        return None
+        except Exception as exc:
+            logger.warning("Groq correction failed model=%s for %r: %s", _model, query, exc)
+            continue
+
+    return None
 
 
 def _fuzzy_correct(query: str) -> Optional[str]:
