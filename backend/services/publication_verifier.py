@@ -403,7 +403,7 @@ Titles:
                     },
                     json={
                         "model":       _current_model,
-                        "max_tokens":  800,
+                        "max_tokens":  1200,
                         "temperature": 0.0,
                         "messages":    [{"role": "user", "content": prompt}],
                     },

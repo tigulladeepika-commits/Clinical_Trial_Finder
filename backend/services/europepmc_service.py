@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 EUROPEPMC_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 HTTP_TIMEOUT  = 15.0
-MAX_RESULTS   = 20
+MAX_RESULTS   = 50
 MAX_RETRIES   = 2
 RETRY_DELAY   = 1.5
 

@@ -16,7 +16,7 @@ PUBMED_SEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 PUBMED_FETCH_URL  = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 
 HTTP_TIMEOUT   = 15.0
-MAX_RESULTS    = 20
+MAX_RESULTS    = 50
 NCBI_API_KEY   = os.getenv("NCBI_API_KEY", "")
 MIN_RESULTS  = 5
 MAX_RETRIES  = 2
@@ -62,6 +62,10 @@ SPECIALTY_MESH = {
     "internal medicine":         "Internal Medicine",
     "infectious":                "Communicable Diseases",
     "immunology":                "Immune System Diseases",
+    "radiation oncology":        "Radiotherapy",
+    "radiation":                 "Radiotherapy",
+    "radiology":                 "Radiology",
+    "nuclear medicine":          "Nuclear Medicine",
 }
 
 COMMON_LAST_NAMES = {
@@ -220,11 +224,11 @@ def _build_queries(
     # ── Tier 0 (conf_bonus >= 65): specific-topic + high-precision author forms ──
 
     specific_topics = _get_specific_topics(spec_lower, disease_clean)
-    # Full first name query e.g. "Mouhamed Sabouni[Author]" (no quotes)
-    # PubMed matches partial author names - finds MA/AMR style indexing
+    # Full first name query in PubMed's last-first format: "Aziz Khaled[Author]"
+    # PubMed indexes authors as "Last First" — using "First Last[Author]" rarely matches.
     # Only for uncommon names - avoids false matches for Chen/Kim/Wang etc.
     if first and last and not common_name:
-        raw_full_name = f"{first} {last}[Author]"
+        raw_full_name = f'"{last} {first}"[Author]'
         raw.insert(0, (raw_full_name, 80))
     for topic in specific_topics:
         raw.append((f'"{last} {initials}"[Author] AND "{topic}"[Title/Abstract]', 75))
@@ -290,8 +294,14 @@ def _get_specific_topics(spec_lower: str, disease: str) -> list[str]:
     if "electrophysiology" in spec_lower:
         topics += ["ventricular tachycardia ablation", "atrial fibrillation ablation",
                    "cardiac electrophysiology"]
-    if "oncology" in spec_lower:
-        topics += ["sentinel lymph node", "MammoSite", "brachytherapy"]
+    if "radiation" in spec_lower:
+        # Radiation oncology — specific terms before generic oncology branch
+        topics += ["radiosensitization", "stereotactic body radiotherapy",
+                   "intensity modulated radiation therapy", "proton therapy",
+                   "FLASH radiotherapy", "brachytherapy"]
+    elif "oncology" in spec_lower:
+        # Medical/surgical oncology — not radiation
+        topics += ["sentinel lymph node", "MammoSite", "chemotherapy"]
     if "neurology" in spec_lower:
         topics += ["deep brain stimulation", "thrombectomy stroke"]
     if "endocrinology" in spec_lower or "diabetes" in disease_lower:

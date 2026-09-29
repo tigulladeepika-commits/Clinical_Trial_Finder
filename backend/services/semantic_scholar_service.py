@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 S2_BASE_URL      = "https://api.semanticscholar.org/graph/v1"
 HTTP_TIMEOUT     = 15.0
-MAX_RESULTS      = 20
+MAX_RESULTS      = 50
 MAX_RETRIES      = 2
 RETRY_DELAY      = 1.0
 MAX_AUTHOR_CANDIDATES = 5
@@ -190,7 +190,7 @@ async def semantic_scholar_lookup(
 
     # Clean name — strip credentials
     clean = re.sub(
-        r',?\s*(M\.D\.?|MD|D\.O\.?|DO|Ph\.D\.?|PhD|MPH|FACC|FACS|FACOG|FACP)\b',
+        r',?\s*(M\.D\.?|MD|D\.O\.?|DO|Ph\.D\.?|PhD|PHD|MPH|FACC|FACS|FACOG|FACP)\b',
         '', name, flags=re.IGNORECASE
     ).strip().strip(',').strip()
     clean = re.sub(r'\b(Dr\.?|Mr\.?|Mrs\.?|Prof\.?)\b', '', clean, flags=re.IGNORECASE).strip()
